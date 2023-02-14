@@ -2,9 +2,11 @@ package com.openrsc.server.model.entity.npc;
 
 import com.openrsc.server.constants.*;
 import com.openrsc.server.content.DropTable;
+import com.openrsc.server.content.EnchantedCrowns;
 import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.event.DelayedEvent;
 import com.openrsc.server.event.custom.NpcLootEvent;
+import com.openrsc.server.event.rsc.DuplicationStrategy;
 import com.openrsc.server.event.rsc.ImmediateEvent;
 import com.openrsc.server.external.NPCDef;
 import com.openrsc.server.external.NPCLoc;
@@ -12,12 +14,18 @@ import com.openrsc.server.model.Point;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.EntityType;
 import com.openrsc.server.model.entity.GroundItem;
+import com.openrsc.server.model.entity.KillType;
 import com.openrsc.server.model.entity.Mob;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.world.World;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.plugins.triggers.KillNpcTrigger;
+import com.openrsc.server.plugins.triggers.TalkNpcTrigger;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
+import com.openrsc.server.util.rsc.MathUtil;
+import com.openrsc.server.util.rsc.MessageType;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -60,15 +68,31 @@ public class Npc extends Mob {
 	/**
 	 * Holds players that did damage with combat
 	 */
-	private Map<UUID, Integer> combatDamagers = new HashMap<UUID, Integer>();
+	private Map<UUID, Pair<Integer, Long>> combatDamagers = new HashMap<UUID, Pair<Integer,Long>>();
 	/**
 	 * Holds players that did damage with mage
 	 */
-	private Map<UUID, Integer> mageDamagers = new HashMap<UUID, Integer>();
+	private Map<UUID, Pair<Integer, Long>> mageDamagers = new HashMap<UUID, Pair<Integer,Long>>();
 	/**
 	 * Holds players that did damage with range
 	 */
-	private Map<UUID, Integer> rangeDamagers = new HashMap<UUID, Integer>();
+	private Map<UUID, Pair<Integer, Long>> rangeDamagers = new HashMap<UUID, Pair<Integer,Long>>();
+
+	/**
+	 * The player object that is actively talking to us.
+	 */
+	private Player playerBeingTalkedTo;
+
+	/**
+	 * Tracking for timing out the multi menu if another player attempts to talk to an NPC locked in dialog
+	 */
+	private long multiTimeout = -1;
+
+	/**
+	 * Another player wants to access the NPC, and can't access it right now.
+	 */
+	private boolean playerWantsNpc = false;
+
 
 	public Npc(final World world, final int id, final int x, final int y) {
 		this(world, new NPCLoc(id, x, y, x - 5, x + 5, y - 5, y + 5));
@@ -111,11 +135,6 @@ public class Npc extends Mob {
 		getSkills().setLevelTo(Skill.STRENGTH.id(), def.getStr());
 		getSkills().setLevelTo(Skill.HITS.id(), def.getHits());
 
-		/*
-		  Unique ID for event tracking.
-		 */
-		setUUID(UUID.randomUUID());
-
 		getWorld().getServer().getGameEventHandler().add(getStatRestorationEvent());
 	}
 
@@ -127,9 +146,9 @@ public class Npc extends Mob {
 	 */
 	public void addCombatDamage(final Player mob, final int damage) {
 		if (combatDamagers.containsKey(mob.getUUID())) {
-			combatDamagers.put(mob.getUUID(), combatDamagers.get(mob.getUUID()) + damage);
+			combatDamagers.put(mob.getUUID(), Pair.of(combatDamagers.get(mob.getUUID()).getLeft() + damage, mob.getUsernameHash()));
 		} else {
-			combatDamagers.put(mob.getUUID(), damage);
+			combatDamagers.put(mob.getUUID(), Pair.of(damage, mob.getUsernameHash()));
 		}
 	}
 
@@ -139,11 +158,11 @@ public class Npc extends Mob {
 	 * @param mob    mob dealing damage
 	 * @param damage current attack's damage
 	 */
-	public void addMageDamage(final Mob mob, final int damage) {
+	public void addMageDamage(final Player mob, final int damage) {
 		if (mageDamagers.containsKey(mob.getUUID())) {
-			mageDamagers.put(mob.getUUID(), mageDamagers.get(mob.getUUID()) + damage);
+			mageDamagers.put(mob.getUUID(), Pair.of(mageDamagers.get(mob.getUUID()).getLeft() + damage, mob.getUsernameHash()));
 		} else {
-			mageDamagers.put(mob.getUUID(), damage);
+			mageDamagers.put(mob.getUUID(), Pair.of(damage, mob.getUsernameHash()));
 		}
 	}
 
@@ -153,11 +172,11 @@ public class Npc extends Mob {
 	 * @param mob    mob dealing damage
 	 * @param damage current attack's damage
 	 */
-	public void addRangeDamage(final Mob mob, final int damage) {
+	public void addRangeDamage(final Player mob, final int damage) {
 		if (rangeDamagers.containsKey(mob.getUUID())) {
-			rangeDamagers.put(mob.getUUID(), rangeDamagers.get(mob.getUUID()) + damage);
+			rangeDamagers.put(mob.getUUID(), Pair.of(rangeDamagers.get(mob.getUUID()).getLeft() + damage, mob.getUsernameHash()));
 		} else {
-			rangeDamagers.put(mob.getUUID(), damage);
+			rangeDamagers.put(mob.getUUID(), Pair.of(damage, mob.getUsernameHash()));
 		}
 	}
 
@@ -177,14 +196,14 @@ public class Npc extends Mob {
 	 * Combat damage done by Mob ID
 	 *
 	 * @param ID uuid of mob
-	 * @return int
+	 * @return Pair
 	 */
-	private int getCombatDamageDoneBy(final UUID ID) {
+	private Pair<Integer, Long> getCombatDamageInfoBy(final UUID ID) {
 		if (!combatDamagers.containsKey(ID)) {
-			return 0;
+			return Pair.of(0, 0L);
 		}
-		int dmgDone = combatDamagers.get(ID);
-		return Math.min(dmgDone, this.getDef().getHits());
+		int dmgDone = combatDamagers.get(ID).getLeft();
+		return Pair.of(Math.min(dmgDone, this.getDef().getHits()), combatDamagers.get(ID).getRight());
 	}
 
 	/**
@@ -212,14 +231,14 @@ public class Npc extends Mob {
 	 * Mage damage done by Mob ID
 	 *
 	 * @param ID uuid of mob
-	 * @return int
+	 * @return Pair
 	 */
-	private int getMageDamageDoneBy(final UUID ID) {
+	private Pair<Integer, Long> getMageDamageInfoBy(final UUID ID) {
 		if (!mageDamagers.containsKey(ID)) {
-			return 0;
+			return Pair.of(0, 0L);
 		}
-		int dmgDone = mageDamagers.get(ID);
-		return Math.min(dmgDone, this.getDef().getHits());
+		int dmgDone = mageDamagers.get(ID).getLeft();
+		return Pair.of(Math.min(dmgDone, this.getDef().getHits()), mageDamagers.get(ID).getRight());
 	}
 
 	/**
@@ -235,14 +254,14 @@ public class Npc extends Mob {
 	 * Range damage done by Mob ID
 	 *
 	 * @param ID uuid of mob
-	 * @return int
+	 * @return Pair
 	 */
-	private int getRangeDamageDoneBy(final UUID ID) {
+	private Pair<Integer, Long> getRangeDamageInfoBy(final UUID ID) {
 		if (!rangeDamagers.containsKey(ID)) {
-			return 0;
+			return Pair.of(0, 0L);
 		}
-		int dmgDone = rangeDamagers.get(ID);
-		return Math.min(dmgDone, this.getDef().getHits());
+		int dmgDone = rangeDamagers.get(ID).getLeft();
+		return Pair.of(Math.min(dmgDone, this.getDef().getHits()), rangeDamagers.get(ID).getRight());
 	}
 
 	/**
@@ -301,7 +320,7 @@ public class Npc extends Mob {
 			return;
 		}
 
-		owner.getWorld().getServer().getPluginHandler().handlePlugin(owner, "KillNpc", new Object[]{owner, this});
+		owner.getWorld().getServer().getPluginHandler().handlePlugin(KillNpcTrigger.class, owner, new Object[]{owner, this});
 		for (int npcId : removeHandledInPlugin) {
 			if (this.getID() == npcId) {
 				if (this.getID() == NpcId.RAT_TUTORIAL.id()) {
@@ -311,10 +330,13 @@ public class Npc extends Mob {
 			}
 		}
 
-		UUID ownerId = handleXpDistribution(mob);
-		owner = getWorld().getPlayerByUUID(ownerId);
+		Pair<UUID, Long> ownerInfo = handleXpDistribution(mob);
+		owner = getWorld().getPlayerByUUID(ownerInfo.getLeft());
 
 		if (owner == null) {
+			Player killOwner = new Player(getWorld(), ownerInfo.getRight());
+			/** Item Drops **/
+			dropItems(killOwner);
 			deathListeners.clear();
 			remove();
 			return;
@@ -363,11 +385,24 @@ public class Npc extends Mob {
 		/* 2. Drop bones (or nothing). */
 		int bones = getBonesDrop();
 		if (bones != ItemId.NOTHING.id()) {
-			GroundItem groundItem = new GroundItem(
-				owner.getWorld(), bones, getX(), getY(), 1, owner
-			);
-			groundItem.setAttribute("npcdrop", true);
-			getWorld().registerItem(groundItem);
+			boolean destroyBones = false;
+			if (EnchantedCrowns.shouldActivate(owner, ItemId.CROWN_OF_THE_OCCULT)) {
+				int conf = owner.getCache().hasKey("bone_conf") ? owner.getCache().getInt("bone_conf") : 7;
+				int boneTier = getBoneTier(bones);
+				destroyBones = MathUtil.isKthBitSet(conf, boneTier + 1);
+			}
+
+			if (!destroyBones) {
+				GroundItem groundItem = new GroundItem(
+					owner.getWorld(), bones, getX(), getY(), 1, owner
+				);
+				groundItem.setAttribute("npcdrop", true);
+				getWorld().registerItem(groundItem);
+			} else {
+				EnchantedCrowns.giveBonesExperience(owner, new Item(bones));
+				owner.playerServerMessage(MessageType.QUEST, "Your crown shines and the bone gets destroyed");
+				EnchantedCrowns.useCharge(owner, ItemId.CROWN_OF_THE_OCCULT);
+			}
 		}
 
 		/* 3. Get the rest of the mob's drops. */
@@ -398,6 +433,13 @@ public class Npc extends Mob {
 			ArrayList<Item> items = drops.rollItem(ringOfWealth, owner);
 			for (Item item : items) {
 				if (item != null) {
+					if ((getWorld().getServer().getConfig().RESTRICT_ITEM_ID >= 0 && item.getCatalogId() > getWorld().getServer().getConfig().RESTRICT_ITEM_ID)
+						|| (getWorld().getServer().getConfig().ONLY_BASIC_RUNES
+						&& getWorld().getServer().getEntityHandler().getItemDef(item.getCatalogId()).getName().endsWith("-Rune")
+						&& item.getCatalogId() >= ItemId.LIFE_RUNE.id())) {
+						// world does not allow drop
+						continue;
+					}
 					if (getWorld().getServer().getEntityHandler().getItemDef(item.getCatalogId()).isStackable()) {
 						dropStackItem(item.getCatalogId(), item.getAmount(), owner);
 					} else {
@@ -405,6 +447,38 @@ public class Npc extends Mob {
 					}
 				}
 			}
+		}
+	}
+
+	private int getBoneTier(int boneId) {
+		switch(ItemId.getById(boneId)) {
+			case BONES:
+			case BAT_BONES:
+			default:
+				return 0;
+			case BIG_BONES:
+				return 1;
+			case DRAGON_BONES:
+				return 2;
+		}
+	}
+
+	private int getHerbTier(int boneId) {
+		switch(ItemId.getById(boneId)) {
+			case UNIDENTIFIED_GUAM_LEAF:
+			case UNIDENTIFIED_MARRENTILL:
+			case UNIDENTIFIED_TARROMIN:
+			case UNIDENTIFIED_HARRALANDER:
+			default:
+				return 0;
+			case UNIDENTIFIED_RANARR_WEED:
+			case UNIDENTIFIED_IRIT_LEAF:
+			case UNIDENTIFIED_AVANTOE:
+				return 1;
+			case UNIDENTIFIED_KWUARM:
+			case UNIDENTIFIED_CADANTINE:
+			case UNIDENTIFIED_DWARF_WEED:
+				return 2;
 		}
 	}
 
@@ -502,9 +576,23 @@ public class Npc extends Mob {
 				&& !getConfig().MEMBER_WORLD) {
 				continue; // Members item on a non-members world.
 			} else if (dropID != ItemId.NOTHING.id()) {
-				groundItem = new GroundItem(owner.getWorld(), dropID, getX(), getY(), amount, owner, item.getNoted());
-				groundItem.setAttribute("npcdrop", true);
-				getWorld().registerItem(groundItem);
+				boolean destroyHerbs = false;
+				if (Formulae.isUnidHerb(new Item(dropID)) && EnchantedCrowns.shouldActivate(owner, ItemId.CROWN_OF_THE_HERBALIST)) {
+					int conf = owner.getCache().hasKey("herb_conf") ? owner.getCache().getInt("herb_conf") : 7;
+					int herbTier = getHerbTier(dropID);
+					destroyHerbs = MathUtil.isKthBitSet(conf, herbTier + 1);
+				}
+
+				if (!destroyHerbs) {
+					groundItem = new GroundItem(owner.getWorld(), dropID, getX(), getY(), amount, owner, item.getNoted());
+					groundItem.setAttribute("npcdrop", true);
+					getWorld().registerItem(groundItem);
+				} else {
+					EnchantedCrowns.giveHerbExperience(owner, new Item(item.getCatalogId()));
+					owner.playerServerMessage(MessageType.QUEST, "Your crown shines and the herb gets destroyed");
+					EnchantedCrowns.useCharge(owner, ItemId.CROWN_OF_THE_HERBALIST);
+				}
+
 			}
 		}
 	}
@@ -515,17 +603,61 @@ public class Npc extends Mob {
 	 * @param attacker the person that "finished off" the npc
 	 * @return the player who did the most damage / should get the loot
 	 */
-	private UUID handleXpDistribution(final Mob attacker) {
+	private Pair<UUID, Long> handleXpDistribution(final Mob attacker) {
 		final int totalCombatXP = Formulae.combatExperience(this);
 		UUID UUIDWithMostDamage = attacker.getUUID();
+		Long hashWithMostDamage = attacker instanceof Player ? ((Player)attacker).getUsernameHash() : 0;
 		int currentHighestDamage = 0;
+
+		if (this.getWorld().getServer().getConfig().WANTS_KILL_STEALING && attacker.isPlayer()) {
+			// determine to what skill give xp
+			KillType type = attacker.getKillType();
+			Player lastAttacker = (Player)attacker;
+
+			if (type == KillType.COMBAT) {
+				int[] skillsDist = new int[Skill.maxId(Skill.ATTACK.name(), Skill.DEFENSE.name(),
+					Skill.STRENGTH.name(), Skill.HITS.name()) + 1];
+				switch (lastAttacker.getCombatStyle()) {
+					case Skills.CONTROLLED_MODE: // CONTROLLED
+						for (int skillId : new int[]{Skill.ATTACK.id(), Skill.DEFENSE.id(), Skill.STRENGTH.id()}) {
+							skillsDist[skillId] = 1;
+						}
+						break;
+					case Skills.AGGRESSIVE_MODE: // AGGRESSIVE
+						skillsDist[Skill.STRENGTH.id()] = 3;
+						break;
+					case Skills.ACCURATE_MODE: // ACCURATE
+						skillsDist[Skill.ATTACK.id()] = 3;
+						break;
+					case Skills.DEFENSIVE_MODE: // DEFENSIVE
+						skillsDist[Skill.DEFENSE.id()] = 3;
+						break;
+				}
+				skillsDist[Skill.HITS.id()] = 1;
+				lastAttacker.incExp(skillsDist, totalCombatXP, true);
+			} else if (type == KillType.RANGED) {
+				int maxTotalXP = totalCombatXP * 4;
+				Pair<Integer, Long> damageInfoByPlayer = getRangeDamageInfoBy(lastAttacker.getUUID());
+				int damageDoneByPlayer = damageInfoByPlayer.getLeft();
+				int alreadyGivenXp = this.getWorld().getServer().getConfig().RANGED_GIVES_XP_HIT ? 16 * damageDoneByPlayer / 3 : 0;
+				int remainderXP = maxTotalXP - alreadyGivenXp;
+				if (remainderXP > 0) {
+					lastAttacker.incExp(Skill.RANGED.id(), remainderXP, true);
+					ActionSender.sendStat(lastAttacker, Skill.RANGED.id());
+				}
+			} // for MAGIC is of type per spell
+
+			return Pair.of(lastAttacker.getUUID(), lastAttacker.getUsernameHash());
+		}
 
 		// Melee damagers
 		for (UUID ID : getCombatDamagers()) {
-			final int damageDoneByPlayer = getCombatDamageDoneBy(ID);
+			final Pair<Integer, Long> damageInfoByPlayer = getCombatDamageInfoBy(ID);
+			final int damageDoneByPlayer = damageInfoByPlayer.getLeft();
 
 			if (damageDoneByPlayer > currentHighestDamage) {
 				UUIDWithMostDamage = ID;
+				hashWithMostDamage = damageInfoByPlayer.getRight();
 				currentHighestDamage = damageDoneByPlayer;
 			}
 
@@ -558,41 +690,60 @@ public class Npc extends Mob {
 
 		// Ranged damagers
 		for (UUID ID : getRangeDamagers()) {
-			int damageDoneByPlayer = getRangeDamageDoneBy(ID);
+			Pair<Integer, Long> damageInfoByPlayer = getRangeDamageInfoBy(ID);
+			int damageDoneByPlayer = damageInfoByPlayer.getLeft();
 			if (damageDoneByPlayer > currentHighestDamage) {
 				UUIDWithMostDamage = ID;
+				hashWithMostDamage = damageInfoByPlayer.getRight();
 				currentHighestDamage = damageDoneByPlayer;
 			}
 
 			Player player = getWorld().getPlayerByUUID(ID);
 			if (player != null) {
-				int totalXP = (int) (((double) (totalCombatXP) / (double) (getDef().hits)) * (double) (damageDoneByPlayer));
-				player.incExp(Skill.RANGED.id(), totalXP * 4, true);
-				ActionSender.sendStat(player, Skill.RANGED.id());
+				int maxTotalXP = (int) (((double) (totalCombatXP * 4) / (double) (getDef().hits)) * (double) (damageDoneByPlayer));
+				int alreadyGivenXp = this.getWorld().getServer().getConfig().RANGED_GIVES_XP_HIT ? 16 * damageDoneByPlayer / 3 : 0;
+				int remainderXP = maxTotalXP - alreadyGivenXp;
+				if (remainderXP > 0) {
+					player.incExp(Skill.RANGED.id(), remainderXP, true);
+					ActionSender.sendStat(player, Skill.RANGED.id());
+				}
 			}
 		}
 
 		// Magic damagers
 		for (UUID ID : getMageDamagers()) {
-			int dmgDoneByPlayer = getMageDamageDoneBy(ID);
+			Pair<Integer, Long> damageInfoByPlayer = getMageDamageInfoBy(ID);
+			int dmgDoneByPlayer = damageInfoByPlayer.getLeft();
 
 			if (dmgDoneByPlayer > currentHighestDamage) {
 				UUIDWithMostDamage = ID;
+				hashWithMostDamage = damageInfoByPlayer.getRight();
 				currentHighestDamage = dmgDoneByPlayer;
 			}
 		}
-		return UUIDWithMostDamage;
+		return Pair.of(UUIDWithMostDamage, hashWithMostDamage);
 	}
 
 	public void initializeTalkScript(final Player player) {
 		final Npc npc = this;
-		//p.setBusyTimer(600);
 		getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(getWorld(), "Init Talk Script") {
 			@Override
 			public void action() {
-				getWorld().getServer().getPluginHandler().handlePlugin(player, "TalkNpc", new Object[]{player, npc});
+				getWorld().getServer().getPluginHandler().handlePlugin(TalkNpcTrigger.class, player, new Object[]{player, npc});
 			}
 		});
+	}
+
+	public void setMultiTimeout(long currentTimeMillis) {
+		this.multiTimeout = currentTimeMillis;
+	}
+
+	public void setPlayerBeingTalkedTo(Player player) {
+		this.playerBeingTalkedTo = player;
+	}
+
+	public void setPlayerWantsNpc(boolean wantsNpc) {
+		this.playerWantsNpc = wantsNpc;
 	}
 
 	public void remove() {
@@ -605,7 +756,7 @@ public class Npc extends Mob {
 			startRespawning();
 			Npc n = this;
 			setRespawning(true);
-			getWorld().getServer().getGameEventHandler().add(new DelayedEvent(getWorld(), null, (long) (def.respawnTime() * respawnMult * 1000), "Respawn NPC", false) {
+			getWorld().getServer().getGameEventHandler().add(new DelayedEvent(getWorld(), null, (long) (def.respawnTime() * respawnMult * 1000), "Respawn NPC", DuplicationStrategy.ONE_PER_MOB) {
 				public void run() {
 					n.killed = false;
 					n.setRemoved(false);
@@ -723,6 +874,7 @@ public class Npc extends Mob {
 		final int radius = 8;
 		final int newX = DataConversions.random(Math.max(minP.getX(), currX - radius), Math.min(maxP.getX(), currX + radius));
 		final int newY = DataConversions.random(Math.max(minP.getY(), currY - radius), Math.min(maxP.getY(), currY + radius));
+		// gnome agility course
 		if (Point.location(newX, newY).inBounds(680, 491, 696, 511)) {
 			return Point.location(currX, currY);
 		}
@@ -735,6 +887,22 @@ public class Npc extends Mob {
 
 	public void setNpcBehavior(final NpcBehavior npcBehavior) {
 		this.npcBehavior = npcBehavior;
+	}
+
+	public void walkToRespawn() {
+		walkToEntityAStar(loc.startX, loc.startY);
+	}
+
+	public long getMultiTimeout() {
+		return multiTimeout;
+	}
+
+	public Player getPlayerBeingTalkedTo() {
+		return playerBeingTalkedTo;
+	}
+
+	public boolean getPlayerWantsNpc() {
+		return playerWantsNpc;
 	}
 
 }

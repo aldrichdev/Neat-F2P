@@ -14,7 +14,9 @@ import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.update.ChatMessage;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
+import com.openrsc.server.util.PidShuffler;
 import com.openrsc.server.util.rsc.DataConversions;
+import com.openrsc.server.util.rsc.MessageType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -72,6 +74,48 @@ public final class Event implements CommandTrigger {
 		.put("digsite", Point.location(20, 527))
 		.put("legend", Point.location(513, 543))
 		.build();
+	private static final Map<String, Point> townLocationsRetro = new ImmutableMap.Builder<String, Point>()
+		.put("varrock", Point.location(122, 509))
+		.put("falador", Point.location(304, 542))
+		.put("draynor", Point.location(210, 624))
+		.put("draynormanor", Point.location(210, 567))
+		.put("countdraynor", Point.location(204, 3382))
+		.put("goblin", Point.location(323, 448))
+		.put("portsarim", Point.location(269, 643))
+		.put("karamja", Point.location(334, 713))
+		.put("battlefield", Point.location(361, 706)) // Karamja middle
+		.put("karamjamiddle", Point.location(361, 706)) // alias
+		.put("alkharid", Point.location(72, 685))
+		.put("lumbridge", Point.location(120, 648))
+		.put("edgeville", Point.location(217, 461))
+		.put("monk", Point.location(256, 462))
+		.put("palace", Point.location(130, 470))
+		.put("reldo", Point.location(128, 457))
+		.put("thurgo", Point.location(287, 707))
+		.put("doric", Point.location(325, 489))
+		.put("cook", Point.location(179, 483))
+		.put("jollyboar", Point.location(81, 444))
+		.put("ghosttown", Point.location(217, 461)) // alias
+		.put("barbarian", Point.location(233, 513))
+		.put("rimmington", Point.location(325, 663))
+		.put("alkharidmodroom", Point.location(75, 1641))
+		.put("modroom", Point.location(81,522))
+		.put("gertrude", Point.location(160, 515))
+		.put("icemountain", Point.location(288, 461))
+		.put("champion", Point.location(151, 556))
+		.put("poh", Point.location(93, 508))
+		.put("varrockpoh", Point.location(93, 508)) // alias
+		.put("playerownedhouses", Point.location(93, 508)) // alias
+		.put("faladorpoh", Point.location(284, 556))
+		.put("wizardstower", Point.location(216, 686))
+		.put("tower", Point.location(216, 686)) // alias
+		.put("swamp", Point.location(119, 706))
+		.put("chasm", Point.location(71,592))
+		.put("eastvarrockmine", Point.location(70,545))
+		.put("varrockmineeast", Point.location(70,545)) // alias
+		.put("westvarrockmine", Point.location(158,544))
+		.put("varrockminewest", Point.location(158,544)) // alias
+		.build();
 
 	public boolean blockCommand(Player player, String command, String[] args) {
 		return player.isEvent();
@@ -93,7 +137,7 @@ public final class Event implements CommandTrigger {
 		if (command.equalsIgnoreCase("teleport") || command.equalsIgnoreCase("tp") || command.equalsIgnoreCase("tele") || command.equalsIgnoreCase("town") || command.equalsIgnoreCase("goto") || command.equalsIgnoreCase("tpto") || command.equalsIgnoreCase("teleportto") || command.equalsIgnoreCase("tpat")) {
 			teleportCommand(player, command, args);
 		}
-		else if (command.equalsIgnoreCase("rftele")) {
+		else if (command.equalsIgnoreCase("rftele") || command.equalsIgnoreCase("rtele") || command.equalsIgnoreCase("ftele")) {
 			rfteleToTp(player, command, args);
 		}
 		else if (command.equalsIgnoreCase("return")) {
@@ -105,11 +149,11 @@ public final class Event implements CommandTrigger {
 		else if (command.equalsIgnoreCase("invisible") || command.equalsIgnoreCase("invis")) {
 			enableInvisibility(player, command, args);
 		}
+		else if (command.equalsIgnoreCase("norender") || command.equalsIgnoreCase("renderself")) {
+			setNoRender(player);
+		}
 		else if (command.equalsIgnoreCase("invulnerable") || command.equalsIgnoreCase("invul")) {
 			enableInvulnerability(player, command, args);
-		}
-		else if (command.equalsIgnoreCase("check")) {
-			queryPlayerAlternateCharacters(player, command, args);
 		}
 		else if(command.equalsIgnoreCase("seers") || command.equalsIgnoreCase("toggleseers") || command.equalsIgnoreCase("partyhall") || command.equalsIgnoreCase("togglepartyhall")) {
 			toggleSeersParty(player, command, args);
@@ -131,21 +175,59 @@ public final class Event implements CommandTrigger {
 			player.setAccessingBank(true);
 			ActionSender.showBank(player);
 		}
-		else if (command.equalsIgnoreCase("xpstat") || command.equalsIgnoreCase("xpstats") || command.equalsIgnoreCase("setxpstat") || command.equalsIgnoreCase("setxpstats")
-			|| command.equalsIgnoreCase("setxp")) {
-			changeStatXP(player, command, args);
-		}
-		else if (command.equalsIgnoreCase("stat") || command.equalsIgnoreCase("stats") || command.equalsIgnoreCase("setstat") || command.equalsIgnoreCase("setstats")) {
-			changeMaxStat(player, command, args);
-		}
 		else if(command.equalsIgnoreCase("currentstat") ||command.equalsIgnoreCase("currentstats") || command.equalsIgnoreCase("setcurrentstat") || command.equalsIgnoreCase("setcurrentstats") || command.equalsIgnoreCase("curstat") ||command.equalsIgnoreCase("curstats") || command.equalsIgnoreCase("setcurstat") || command.equalsIgnoreCase("setcurstats")) {
 			changeCurrentStat(player, command, args);
 		}
-		else if (command.equalsIgnoreCase("possess") || command.equalsIgnoreCase("pos") || command.equalsIgnoreCase("possessnpc") || command.equalsIgnoreCase("pnpc") || command.equalsIgnoreCase("posnpc") || command.equalsIgnoreCase("pr") || command.equalsIgnoreCase("possessrandom")) {
+		else if (command.equalsIgnoreCase("possess") || command.equalsIgnoreCase("pos") || command.equalsIgnoreCase("possessnpc") || command.equalsIgnoreCase("pnpc") || command.equalsIgnoreCase("posnpc") || command.equalsIgnoreCase("pr") || command.equalsIgnoreCase("possessrandom") || command.equalsIgnoreCase("possessnext") || command.equalsIgnoreCase("pn")) {
 			possessMob(player, command, args);
 		}
 		else if (command.equalsIgnoreCase("npctalk") || command.equalsIgnoreCase("npcsay")) {
 			npcTalk(player, command, args);
+		}
+		else if (command.equalsIgnoreCase("setpidless") || command.equalsIgnoreCase("setpidlesscatching")) {
+			setPidless(player, command, args);
+		}
+		else if (command.equalsIgnoreCase("groupteleport") || command.equalsIgnoreCase("grouptele") || command.equalsIgnoreCase("grouptp")
+			|| command.equalsIgnoreCase("groupteleportto") || command.equalsIgnoreCase("groupteleto") || command.equalsIgnoreCase("grouptpto")) {
+			groupTeleport(player, command, args);
+		}
+		else if (command.equalsIgnoreCase("returngroup") || command.equalsIgnoreCase("grouptele") || command.equalsIgnoreCase("grouptp")) {
+			returnGroup(player, command, args);
+		}
+		else if (command.equalsIgnoreCase("shufflepid") || command.equalsIgnoreCase("pidshuffle")) {
+			shufflePid(player, command, args);
+		}
+		else if (command.equalsIgnoreCase("npckills")) {
+			npcKills(player, args);
+		}
+	}
+
+	private void setPidless(Player player, String command, String[] args) {
+		if(args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [on/off]");
+			return;
+		}
+		boolean before = player.getConfig().PIDLESS_CATCHING;
+		if (args[0].equalsIgnoreCase("on") || args[0].equalsIgnoreCase("yes") || args[0].equals("1") || args[0].equalsIgnoreCase("true")) {
+			player.getConfig().PIDLESS_CATCHING = true;
+		} else if (args[0].equalsIgnoreCase("off") || args[0].equalsIgnoreCase("no") || args[0].equals("0") || args[0].equalsIgnoreCase("false")) {
+			player.getConfig().PIDLESS_CATCHING = false;
+		} else {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [on/off]");
+			return;
+		}
+
+		if (before != player.getConfig().PIDLESS_CATCHING) {
+			String announcement = "@ran@ANNOUCEMENT: @whi@" + player.getUsername() + "@ora@ set pidless catching to @gre@" + (player.getConfig().PIDLESS_CATCHING ? "Enabled" : "Disabled");
+			for (Player playerToUpdate : player.getWorld().getPlayers()) {
+				if (!playerToUpdate.isUsingCustomClient()) {
+					ActionSender.sendMessage(playerToUpdate, null, MessageType.QUEST, announcement, player.getIconAuthentic(), null);
+				} else {
+					ActionSender.sendMessage(playerToUpdate, player, MessageType.GLOBAL_CHAT, announcement, player.getIcon(), null);
+				}
+			}
+		} else {
+			player.playerServerMessage(MessageType.QUEST, "@ora@Nothing changed, PIDLESS_CATCHING remains @gre@" + player.getConfig().PIDLESS_CATCHING);
 		}
 	}
 
@@ -172,8 +254,16 @@ public final class Event implements CommandTrigger {
 
 		Point absoluteCoordinate;
 		if (args.length >= 2 && !secondArgIsPlayer) {
+			if (command.equalsIgnoreCase("rtele")) {
+				tellBadRfTele(player, command);
+				return;
+			}
 			absoluteCoordinate = Point.jagexPointToPoint(args[0] + " " + args[1]);
 		} else {
+			if (command.equalsIgnoreCase("ftele")) {
+				tellBadRfTele(player, command);
+				return;
+			}
 			absoluteCoordinate = Point.jagexPointToPoint(args[0]);
 		}
 
@@ -183,9 +273,6 @@ public final class Event implements CommandTrigger {
 				case Point.NOT_A_NUMBER:
 				default:
 					tellBadRfTele(player, command);
-					return;
-				case Point.OFFSET_OUT_OF_BOUNDS:
-					player.message("Offset out of bounds, must be 47 or less");
 					return;
 			}
 		}
@@ -320,7 +407,11 @@ public final class Event implements CommandTrigger {
 			// Check player first
 			Player tpTo = player.getWorld().getPlayer(DataConversions.usernameToHash(town));
 			if (tpTo == null) {
-				teleportTo = townLocations.get(town.toLowerCase());
+				if (player.isUsing38CompatibleClient() || player.isUsing39CompatibleClient() || player.isUsing69CompatibleClient()) {
+					teleportTo = townLocationsRetro.get(town.toLowerCase());
+				} else {
+					teleportTo = townLocations.get(town.toLowerCase());
+				}
 				if (teleportTo == null) {
 					player.message(messagePrefix + "Invalid target");
 					return;
@@ -356,7 +447,7 @@ public final class Event implements CommandTrigger {
 		targetPlayer.resetFollowing();
 
 		player.message(messagePrefix + "You have teleported " + targetPlayer.getUsername() + " to " + targetPlayer.getLocation() + " from " + originalLocation);
-		if(targetPlayer.getUsernameHash() != player.getUsernameHash() && targetPlayer.getLocation() != originalLocation) {
+		if(targetPlayer.getUsernameHash() != player.getUsernameHash() && targetPlayer.getLocation() != originalLocation && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "You have been teleported to " + targetPlayer.getLocation() + " from " + originalLocation);
 		}
 
@@ -394,7 +485,7 @@ public final class Event implements CommandTrigger {
 				+ targetPlayer.getUsername() + " to " + targetPlayer.getLocation() + " from " + originalLocation));
 		player.message(messagePrefix + "You have returned " + targetPlayer.getUsername() + " to "
 			+ targetPlayer.getLocation() + " from " + originalLocation);
-		if(targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if(targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "You have been returned by " + player.getStaffName());
 		}
 	}
@@ -439,6 +530,36 @@ public final class Event implements CommandTrigger {
 					player.message(messagePrefix + "Could not find player to possess.");
 					return;
 				}
+			} else if (command.equalsIgnoreCase("possessnext") || command.equalsIgnoreCase("pn")) {
+					int preferredPid = -1;
+					if (args.length > 0) {
+						try {
+							preferredPid = Integer.parseInt(args[0]);
+						} catch (NumberFormatException e) {
+							player.message(badSyntaxPrefix + command.toUpperCase() + " (preferred player pid)");
+							return;
+						}
+					}
+
+					if (preferredPid < 0) {
+						if (player.getPossessing() instanceof Player) {
+							preferredPid = player.getPossessing().getIndex() + 1;
+						} else if (player.getPossessing() instanceof Npc) {
+							player.message(messagePrefix + "Not supported to go to next npc.");
+							player.message(messagePrefix + "Please free your soul from this monster, then try again.");
+							return;
+						} else {
+							// not currently possessing anything
+							preferredPid = 0;
+						}
+					}
+
+					targetPlayer = player.getWorld().getNextPlayer(preferredPid, player.getIndex());
+
+					if (targetPlayer == null || targetPlayer.getUsername().equals(player.getUsername())) {
+						player.message(messagePrefix + "Could not find player to possess.");
+						return;
+					}
 			} else {
 				if (1 > args.length) {
 					player.message(badSyntaxPrefix + command.toUpperCase() + " [player name]");
@@ -540,11 +661,18 @@ public final class Event implements CommandTrigger {
 
 		String invisibleText = newInvisible ? "invisible" : "visible";
 		player.message(messagePrefix + targetPlayer.getUsername() + " is now " + invisibleText);
-		if(targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if(targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "A staff member has made you " + invisibleText);
 		}
 		player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 14, player.getUsername() + " has made " + targetPlayer.getUsername() + " " + invisibleText));
 
+	}
+
+	private void setNoRender(Player player) {
+		for (int i = 0; i < 12; i++) {
+			player.updateWornItems(i, 0);
+		}
+		player.message("you're truly invisible now!");
 	}
 
 	private void enableInvulnerability(Player player, String command, String[] args) {
@@ -591,89 +719,10 @@ public final class Event implements CommandTrigger {
 
 		String invulnerbleText = newInvulnerable ? "invulnerable" : "vulnerable";
 		player.message(messagePrefix + targetPlayer.getUsername() + " is now " + invulnerbleText);
-		if(targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if(targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "A staff member has made you " + invulnerbleText);
 		}
 		player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, player.getUsername() + " has made " + targetPlayer.getUsername() + " " + invulnerbleText));
-	}
-
-	private void queryPlayerAlternateCharacters(Player player, String command, String[] args) {
-		if(args.length < 1) {
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [player]");
-		}
-
-		String targetUsername	= args[0];
-		Player target			= player.getWorld().getPlayer(DataConversions.usernameToHash(targetUsername));
-
-		String currentIp = null;
-		if (target == null) {
-			try {
-				currentIp = player.getWorld().getServer().getDatabase().playerLoginIp(targetUsername);
-
-				if(currentIp == null) {
-					player.message(messagePrefix + "No character named '" + targetUsername + "' is online or was found in the database.");
-					return;
-				}
-			} catch (final GameDatabaseException e) {
-				LOGGER.catching(e);
-				player.message(messagePrefix + "A Database error has occurred! " + e.getMessage());
-				return;
-			}
-		} else {
-			currentIp = target.getCurrentIP();
-		}
-
-		try {
-			final LinkedPlayer[] linkedPlayers = player.getWorld().getServer().getDatabase().linkedPlayers(currentIp);
-
-			// Check if any of the found users have a group less than the player who is running this command
-			boolean authorized = true;
-			for (final LinkedPlayer linkedPlayer : linkedPlayers) {
-				if(linkedPlayer.groupId < player.getGroupID())
-				{
-					authorized = false;
-					break;
-				}
-			}
-
-			List<String> names = new ArrayList<>();
-			for (final LinkedPlayer linkedPlayer : linkedPlayers) {
-				String dbUsername	= linkedPlayer.username;
-				// Only display usernames if the player running the action has a better rank or if the username is the one being targeted
-				if(authorized || dbUsername.toLowerCase().trim().equals(targetUsername.toLowerCase().trim()))
-					names.add(dbUsername);
-			}
-			StringBuilder builder = new StringBuilder("@red@")
-				.append(targetUsername.toUpperCase());
-			if (target != null) {
-				builder.append(" (" + target.getX() + "," + target.getY() + ")");
-			}
-			builder.append(" @whi@currently has ")
-				.append(names.size() > 0 ? "@gre@" : "@red@")
-				.append(names.size())
-				.append(" @whi@registered characters.");
-
-			if(player.isAdmin())
-				builder.append(" %IP Address: " + currentIp);
-
-			if (names.size() > 0) {
-				builder.append(" % % They are: ");
-			}
-			for (int i = 0; i < names.size(); i++) {
-
-				builder.append("@yel@").append(player.getWorld().getPlayer(DataConversions.usernameToHash(names.get(i))) != null
-					? "@gre@" : "@red@").append(names.get(i));
-
-				if (i != names.size() - 1) {
-					builder.append("@whi@, ");
-				}
-			}
-
-			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 18, target));
-			ActionSender.sendBox(player, builder.toString(), names.size() > 10);
-		} catch (final GameDatabaseException ex) {
-			player.message(messagePrefix + "A MySQL error has occured! " + ex.getMessage());
-		}
 	}
 
 	private void toggleEventChest(Player player, String command, String[] args) {
@@ -916,7 +965,7 @@ public final class Event implements CommandTrigger {
 			}
 
 			targetPlayer.setGroupID(newGroup);
-			if(targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+			if(targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 				targetPlayer.message(messagePrefix + player.getStaffName()
 					+ "@whi@ has set your group to " + Group.getStaffPrefix(targetPlayer.getWorld(), newGroup)
 					+ newGroupName + (targetPlayer.isDev() ? " (" + newGroup + ")" : ""));
@@ -928,326 +977,6 @@ public final class Event implements CommandTrigger {
 			player.getWorld().getServer().getGameLogger().addQuery(
 				new StaffLog(player, 23, player.getUsername() + " has changed " + targetPlayer.getUsername()
 					+ "'s group to " + newGroupName + " from " + oldGroupName));
-		}
-	}
-
-	private void changeStatXP(Player player, String command, String[] args) {
-		if (args.length < 1) {
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
-			return;
-		}
-
-		String statName;
-		boolean shouldZero = false;
-		int experience;
-		int stat;
-		Player otherPlayer;
-
-		try {
-			if(args.length == 1) {
-				if (Long.parseLong(args[0]) < 0) shouldZero = true;
-				experience = (int)Long.parseLong(args[0]);
-				stat = -1;
-				statName = "";
-			}
-			else {
-				if (Long.parseLong(args[0]) < 0) shouldZero = true;
-				experience = (int)Long.parseLong(args[0]);
-				try {
-					stat = Integer.parseInt(args[1]);
-				}
-				catch (NumberFormatException ex) {
-					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[1].toLowerCase());
-
-					if(stat == -1) {
-						player.message(messagePrefix + "Invalid stat");
-						return;
-					}
-				}
-
-				try {
-					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
-				}
-				catch (IndexOutOfBoundsException ex) {
-					player.message(messagePrefix + "Invalid stat");
-					return;
-				}
-			}
-
-			otherPlayer = player;
-		}
-		catch(NumberFormatException ex) {
-			otherPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
-
-			if (args.length < 2) {
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
-				return;
-			}
-			else if(args.length == 2) {
-				try {
-					if (Long.parseLong(args[1]) < 0) shouldZero = true;
-					experience = (int)Long.parseLong(args[1]);
-				} catch (NumberFormatException e) {
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
-					return;
-				}
-				stat = -1;
-				statName = "";
-			}
-			else {
-				try {
-					if (Long.parseLong(args[1]) < 0) shouldZero = true;
-					experience = (int)Long.parseLong(args[1]);
-				} catch (NumberFormatException e) {
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
-					return;
-				}
-
-				try {
-					stat = Integer.parseInt(args[2]);
-				}
-				catch (NumberFormatException e) {
-					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[2].toLowerCase());
-
-					if(stat == -1) {
-						player.message(messagePrefix + "Invalid stat");
-						return;
-					}
-				}
-
-				try {
-					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
-				}
-				catch (IndexOutOfBoundsException e) {
-					player.message(messagePrefix + "Invalid stat");
-					return;
-				}
-			}
-		}
-
-		if (otherPlayer == null) {
-			player.message(messagePrefix + "Invalid name or player is not online");
-			return;
-		}
-
-		if(!player.isAdmin() && otherPlayer.getUsernameHash() != player.getUsernameHash()) {
-			player.message(messagePrefix + "You can not modify other players' stats.");
-			return;
-		}
-
-		if(!otherPlayer.isDefaultUser() && otherPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= otherPlayer.getGroupID()) {
-			player.message(messagePrefix + "You can not modify stats of a staff member of equal or greater rank.");
-			return;
-		}
-
-		if(shouldZero)
-			experience = 0;
-		if(player.getWorld().getServer().getConfig().WANT_EXPERIENCE_CAP &&
-			Integer.toUnsignedLong(experience) >= Integer.toUnsignedLong(otherPlayer.getWorld().getServer().getConfig().EXPERIENCE_LIMIT))
-			experience = otherPlayer.getWorld().getServer().getConfig().EXPERIENCE_LIMIT;
-		String experienceSt = Integer.toUnsignedString(experience);
-		if(stat != -1) {
-			otherPlayer.getSkills().setExperience(stat, experience);
-			if (stat == Skill.PRAYER.id()) {
-				otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
-			}
-
-			otherPlayer.checkEquipment();
-			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s " + statName + " to experience " + experienceSt);
-			otherPlayer.getSkills().sendUpdateAll();
-			if(player.getUsernameHash() != player.getUsernameHash()) {
-				otherPlayer.message(messagePrefix + "Your " + statName + " has been set to experience " + experienceSt + " by a staff member");
-				otherPlayer.getSkills().sendUpdateAll();
-			}
-		}
-		else {
-			for(int i = 0; i < player.getWorld().getServer().getConstants().getSkills().getSkillsCount(); i++) {
-				otherPlayer.getSkills().setExperience(i, experience);
-			}
-			otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
-
-			otherPlayer.checkEquipment();
-			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s stats to experience " + experienceSt);
-			otherPlayer.getSkills().sendUpdateAll();
-			if(player.getParty() != null){
-				player.getParty().sendParty();
-			}
-			if(otherPlayer.getUsernameHash() != player.getUsernameHash()) {
-				if(otherPlayer.getParty() != null){
-					otherPlayer.getParty().sendParty();
-				}
-				otherPlayer.message(messagePrefix + "All of your stats have been set to experience " + experienceSt + " by a staff member");
-				otherPlayer.getSkills().sendUpdateAll();
-			}
-		}
-	}
-
-	private void changeMaxStat(Player player, String command, String[] args) {
-		if (args.length < 1) {
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
-			return;
-		}
-
-		String statName;
-		int level;
-		int stat;
-		Player otherPlayer;
-
-		try {
-			if(args.length == 1) {
-				level = Integer.parseInt(args[0]);
-				stat = -1;
-				statName = "";
-			}
-			else {
-				level = Integer.parseInt(args[0]);
-				try {
-					stat = Integer.parseInt(args[1]);
-				}
-				catch (NumberFormatException ex) {
-					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[1].toLowerCase());
-
-					if(stat == -1) {
-						player.message(messagePrefix + "Invalid stat");
-						return;
-					}
-				}
-
-				try {
-					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
-				}
-				catch (IndexOutOfBoundsException ex) {
-					player.message(messagePrefix + "Invalid stat");
-					return;
-				}
-			}
-
-			otherPlayer = player;
-		}
-		catch(NumberFormatException ex) {
-			otherPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
-
-			if (args.length < 2) {
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
-				return;
-			}
-			else if(args.length == 2) {
-				try {
-					level = Integer.parseInt(args[1]);
-				} catch (NumberFormatException e) {
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
-					return;
-				}
-				stat = -1;
-				statName = "";
-			}
-			else {
-				try {
-					level = Integer.parseInt(args[1]);
-				} catch (NumberFormatException e) {
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
-					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
-					return;
-				}
-
-				try {
-					stat = Integer.parseInt(args[2]);
-				}
-				catch (NumberFormatException e) {
-					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[2].toLowerCase());
-
-					if(stat == -1) {
-						player.message(messagePrefix + "Invalid stat");
-						return;
-					}
-				}
-
-				try {
-					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
-				}
-				catch (IndexOutOfBoundsException e) {
-					player.message(messagePrefix + "Invalid stat");
-					return;
-				}
-			}
-		}
-
-		if (otherPlayer == null) {
-			player.message(messagePrefix + "Invalid name or player is not online");
-			return;
-		}
-
-		if(!player.isAdmin() && otherPlayer.getUsernameHash() != player.getUsernameHash()) {
-			player.message(messagePrefix + "You can not modify other players' stats.");
-			return;
-		}
-
-		if(!otherPlayer.isDefaultUser() && otherPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= otherPlayer.getGroupID()) {
-			player.message(messagePrefix + "You can not modify stats of a staff member of equal or greater rank.");
-			return;
-		}
-
-		if(level < 1)
-			level = 1;
-		if(level > config().PLAYER_LEVEL_LIMIT)
-			level = config().PLAYER_LEVEL_LIMIT;
-
-		if(stat != -1) {
-			otherPlayer.getSkills().setLevelTo(stat, level);
-			if (stat == Skill.PRAYER.id()) {
-				otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
-			}
-
-			otherPlayer.checkEquipment();
-			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s " + statName + " to level " + level);
-			otherPlayer.getSkills().sendUpdateAll();
-			if(player.getUsernameHash() != player.getUsernameHash()) {
-				otherPlayer.message(messagePrefix + "Your " + statName + " has been set to level " + level + " by a staff member");
-				otherPlayer.getSkills().sendUpdateAll();
-			}
-		}
-		else {
-			for(int i = 0; i < player.getWorld().getServer().getConstants().getSkills().getSkillsCount(); i++) {
-				otherPlayer.getSkills().setLevelTo(i, level);
-			}
-			otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
-
-			otherPlayer.checkEquipment();
-			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s stats to level " + level);
-			otherPlayer.getSkills().sendUpdateAll();
-			if(player.getParty() != null){
-				player.getParty().sendParty();
-			}
-			if(otherPlayer.getUsernameHash() != player.getUsernameHash()) {
-				if(otherPlayer.getParty() != null){
-					otherPlayer.getParty().sendParty();
-				}
-				otherPlayer.message(messagePrefix + "All of your stats have been set to level " + level + " by a staff member");
-				otherPlayer.getSkills().sendUpdateAll();
-			}
 		}
 	}
 
@@ -1377,7 +1106,7 @@ public final class Event implements CommandTrigger {
 			otherPlayer.checkEquipment();
 			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s effective " + statName + " level " + level);
 			otherPlayer.getSkills().sendUpdateAll();
-			if(otherPlayer.getUsernameHash() != player.getUsernameHash()) {
+			if(otherPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(otherPlayer)) {
 				otherPlayer.message(messagePrefix + "Your effective " + statName + " level has been set to " + level + " by a staff member");
 				otherPlayer.getSkills().sendUpdateAll();
 			}
@@ -1390,7 +1119,7 @@ public final class Event implements CommandTrigger {
 			otherPlayer.checkEquipment();
 			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s effective levels to " + level);
 			otherPlayer.getSkills().sendUpdateAll();
-			if(otherPlayer.getUsernameHash() != player.getUsernameHash()) {
+			if(otherPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(otherPlayer)) {
 				otherPlayer.message(messagePrefix + "All of your stats' effective levels have been set to " + level + " by a staff member");
 				otherPlayer.getSkills().sendUpdateAll();
 			}
@@ -1403,4 +1132,242 @@ public final class Event implements CommandTrigger {
 		player.message(badSyntaxPrefix + command.toUpperCase() + " [hXXYY] [xxyy] OR");
 		player.message(badSyntaxPrefix + command.toUpperCase() + " [hXXYY] [xxyy] [player] OR ");
 	}
+
+	private void groupTeleport(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [town/player] OR ");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [x] [y] OR");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [town/player] [radius] OR");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [x] [y] [radius]");
+			return;
+		}
+
+		boolean isTownOrPlayer = false; // false if input is an X & Y coordinate.
+		String town = "";
+		int x = -1;
+		int y = -1;
+		int radius = 5;
+		Point originalLocation;
+		Point teleportTo;
+		boolean isSummon = command.toLowerCase().endsWith("to");
+
+		// determine if will be to town/player
+		try {
+			x = Integer.parseInt(args[0]);
+			isTownOrPlayer = false;
+			boolean missingCoord = false;
+			if (args.length < 2) {
+				// y coordinate not supplied
+				missingCoord = true;
+			} else {
+				try {
+					y = Integer.parseInt(args[1]);
+				} catch (NumberFormatException ex1) {
+					missingCoord = true;
+				}
+			}
+
+			if (missingCoord) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [x] [y] OR");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [x] [y] [radius]");
+				return;
+			}
+
+			if (args.length > 2) {
+				// grab radius
+				try {
+					radius = Integer.parseInt(args[2]);
+					if (radius < 0) {
+						radius = 0;
+					}
+					if (radius > 16) {
+						radius = 16;
+					}
+				} catch (NumberFormatException ex1) {
+					// ignore, use default radius
+				}
+			}
+
+		} catch (NumberFormatException ex) {
+			// town/player
+			town = args[0];
+			isTownOrPlayer = true;
+
+			if (args.length > 1) {
+				// grab radius
+				try {
+					radius = Integer.parseInt(args[1]);
+					if (radius < 0) {
+						radius = 0;
+					}
+					if (radius > 16) {
+						radius = 16;
+					}
+				} catch (NumberFormatException ex1) {
+					// ignore, use default radius
+				}
+			}
+		}
+
+		if (isTownOrPlayer) {
+
+			// Check player first
+			Player tpTo = player.getWorld().getPlayer(DataConversions.usernameToHash(town));
+			if (tpTo == null) {
+				if (player.isUsing38CompatibleClient() || player.isUsing39CompatibleClient() || player.isUsing69CompatibleClient()) {
+					teleportTo = townLocationsRetro.get(town.toLowerCase());
+				} else {
+					teleportTo = townLocations.get(town.toLowerCase());
+				}
+				if (teleportTo == null) {
+					player.message(messagePrefix + "Invalid target");
+					return;
+				}
+			} else {
+				if (tpTo.isInvisibleTo(player) && !player.isAdmin()) {
+					player.message(messagePrefix + "You can not teleport group to an invisible player.");
+					return;
+				}
+				teleportTo = tpTo.getLocation();
+			}
+		}
+		else {
+			teleportTo = new Point(x, y);
+		}
+
+		if (!player.getWorld().withinWorld(teleportTo.getX(), teleportTo.getY())) {
+			player.message(messagePrefix + "Invalid coordinates");
+			return;
+		}
+
+		if (player.isJailed() && !player.isAdmin()) {
+			player.message(messagePrefix + "You can not teleport while you are jailed.");
+			return;
+		}
+
+		// for performance reasons only search within the players region
+		int numTeleported = 0;
+		for (Player targetPlayer : player.getRegion().getPlayers()) {
+			// only teleport those near the staff player
+			if (!targetPlayer.withinRange(player.getLocation(), radius)) continue;
+			if (targetPlayer.equals(player)) continue;
+
+			if (!targetPlayer.isDefaultUser() && player.getGroupID() >= targetPlayer.getGroupID()) {
+				// not able to teleport staff member of equal or greater rank
+				continue;
+			}
+
+			// Same player and command usage, we want to set a return point in order to use either ::return or ::returngroup later
+			if (isSummon) {
+				targetPlayer.setSummonReturnPoint();
+			}
+
+			originalLocation = targetPlayer.getLocation();
+			targetPlayer.teleport(teleportTo.getX(), teleportTo.getY(), true);
+			targetPlayer.resetFollowing();
+
+			if(targetPlayer.getUsernameHash() != player.getUsernameHash() && targetPlayer.getLocation() != originalLocation && !player.isInvisibleTo(targetPlayer)) {
+				targetPlayer.message(messagePrefix + "You have been teleported to " + targetPlayer.getLocation() + " from " + originalLocation);
+			}
+			numTeleported++;
+		}
+
+		if (numTeleported > 0) {
+			if (isSummon) {
+				player.setSummonReturnPoint();
+			}
+
+			originalLocation = player.getLocation();
+			player.teleport(teleportTo.getX(), teleportTo.getY(), true);
+			player.resetFollowing();
+
+			player.message(messagePrefix + "You have teleported local group to " + teleportTo + " from nearby " + originalLocation);
+
+			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 15, player.getUsername() + " has teleported local group to " + teleportTo + " from  nearby " + originalLocation));
+		} else {
+			player.message(messagePrefix + "No nearby players within " + radius + " tiles were found in your region");
+		}
+	}
+
+	private void returnGroup(Player player, String command, String[] args) {
+		if(!player.isMod()) {
+			player.message(messagePrefix + "You can not return other players.");
+			return;
+		}
+		int radius = 15;
+
+		// for performance reasons only search within the players region
+		int numReturned = 0;
+		for (Player targetPlayer : player.getRegion().getPlayers()) {
+			// only return those near the staff player
+			if (!targetPlayer.withinRange(player.getLocation(), radius)) continue;
+			if (targetPlayer.equals(player)) continue;
+
+			if (!targetPlayer.isDefaultUser() && player.getGroupID() >= targetPlayer.getGroupID()) {
+				// not able to return staff member of equal or greater rank
+				continue;
+			}
+
+			if(!targetPlayer.wasSummoned()) {
+				// player was not summoned
+				continue;
+			}
+
+			targetPlayer.returnFromSummon();
+			if(!player.isInvisibleTo(targetPlayer)) {
+				targetPlayer.message(messagePrefix + "You have been returned by " + player.getStaffName());
+			}
+			numReturned++;
+		}
+
+		if (numReturned > 0) {
+			Point originalLocation = player.getLocation();
+			if (!player.wasSummoned()) {
+				// was not summoned
+			} else {
+				player.returnFromSummon();
+			}
+
+			player.message(messagePrefix + "You have returned local group from nearby " + originalLocation);
+
+			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 15, player.getUsername() + " has returned local group from nearby " + originalLocation));
+		} else {
+			player.message(messagePrefix + "No nearby players within " + radius + " tiles were found in your region");
+		}
+	}
+
+
+	private void shufflePid(Player player, String command, String[] args) {
+		if (!player.isAdmin() && !player.getConfig().SHUFFLE_PID_ORDER) {
+			player.message("PID shuffling is administratively disabled!");
+			return;
+		}
+		if (args.length == 0 || !player.isAdmin()) {
+			player.getConfig().SHUFFLE_PID_ORDER = true;
+			PidShuffler.shuffle();
+			player.message("PID @ran@sHuffLeD");
+		}
+		if (args.length == 1 && player.isAdmin()) {
+			if (args[0].equalsIgnoreCase("on") || args[0].equalsIgnoreCase("yes") || args[0].equals("1") || args[0].equalsIgnoreCase("true")) {
+				player.getConfig().SHUFFLE_PID_ORDER = true;
+				player.message("PID shuffling enabled");
+			} else if (args[0].equalsIgnoreCase("off") || args[0].equalsIgnoreCase("no") || args[0].equals("0") || args[0].equalsIgnoreCase("false")) {
+				player.getConfig().SHUFFLE_PID_ORDER = false;
+				player.message("PID shuffling disabled");
+			} else {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (on/off)");
+				return;
+			}
+		}
+	}
+
+	private void npcKills(Player player, String[] args) {
+		Player targetPlayer = args.length > 0 ? player.getWorld().getPlayer(DataConversions.usernameToHash(args[0])) : player;
+		if (targetPlayer == null) {
+			player.message(messagePrefix + "Invalid name or player is not online");
+			return;
+		}
+		player.message(targetPlayer.getNpcKills() + "");
+	}
+
 }

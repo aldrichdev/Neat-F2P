@@ -5,6 +5,7 @@ import com.openrsc.server.model.struct.EquipRequest;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.EquipStruct;
+import com.openrsc.server.plugins.triggers.WearObjTrigger;
 
 public final class ItemEquip implements PayloadProcessor<EquipStruct, OpcodeIn> {
 
@@ -53,8 +54,9 @@ public final class ItemEquip implements PayloadProcessor<EquipStruct, OpcodeIn> 
 			request.item = player.getBank().get(bankSlot);
 			request.requestType = EquipRequest.RequestType.FROM_BANK;
 			request.bankSlot = bankSlot;
-		} else
+		} else {
 			return;
+		}
 
 		//Check to make sure the item is wieldable
 		if (request.item == null || !request.item.getDef(player.getWorld()).isWieldable()) {
@@ -75,7 +77,7 @@ public final class ItemEquip implements PayloadProcessor<EquipStruct, OpcodeIn> 
 			}
 		}
 
-		player.getWorld().getServer().getPluginHandler().handlePlugin(player, "WearObj", new Object[]{player, request.inventorySlot, request});
+		player.getWorld().getServer().getPluginHandler().handlePlugin(WearObjTrigger.class, player, new Object[]{player, request.inventorySlot, request});
 	}
 
 

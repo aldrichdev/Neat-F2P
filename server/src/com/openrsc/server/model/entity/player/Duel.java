@@ -125,11 +125,14 @@ public class Duel implements ContainerListener {
 	}
 
 	public void resetAll() {
-		Player duelOpponent = getDuelRecipient();
+		if (duelRecipient != null) {
+			final Player duelRecipient = this.duelRecipient;
 
-		if (duelOpponent != null) {
-			setDuelRecipient(null);
-			duelOpponent.getDuel().resetAll();
+			this.duelRecipient = null;
+
+			if (player.equals(duelRecipient.getDuel().getDuelRecipient())) {
+				duelRecipient.getDuel().resetAll();
+			}
 		}
 
 		if (isDuelActive()) {
@@ -175,16 +178,18 @@ public class Duel implements ContainerListener {
 						player.updateWornItems(item.getDef(player.getWorld()).getWieldPosition(),
 							player.getSettings().getAppearance().getSprite(item.getDef(player.getWorld()).getWieldPosition()),
 							item.getDef(player.getWorld()).getWearableId(), false);
-						player.getCarriedItems().getEquipment().remove(item, item.getAmount());
-						log.addDroppedItem(item);
-						player.getWorld().registerItem(new GroundItem(duelOpponent.getWorld(), item.getCatalogId(), player.getX(), player.getY(), item.getAmount(), duelOpponent));
+						if (player.getCarriedItems().getEquipment().remove(item, item.getAmount()) != -1) {
+							log.addDroppedItem(item);
+							player.getWorld().registerItem(new GroundItem(duelOpponent.getWorld(), item.getCatalogId(), player.getX(), player.getY(), item.getAmount(), duelOpponent));
+						}
 					}
 					LOGGER.info("Missing staked item [" + item.getCatalogId() + ", " + item.getAmount()
 						+ "] from = " + player.getUsername() + "; to = " + duelRecipient.getUsername() + ";");
 				} else {
-					player.getCarriedItems().remove(new Item(item.getCatalogId(), item.getAmount(), item.getNoted(), affectedItem.getItemId()));
-					log.addDroppedItem(item);
-					player.getWorld().registerItem(new GroundItem(duelOpponent.getWorld(), item.getCatalogId(), player.getX(), player.getY(), item.getAmount(), duelOpponent, item.getNoted()));
+					if (player.getCarriedItems().remove(new Item(item.getCatalogId(), item.getAmount(), item.getNoted(), affectedItem.getItemId())) != -1) {
+						log.addDroppedItem(item);
+						player.getWorld().registerItem(new GroundItem(duelOpponent.getWorld(), item.getCatalogId(), player.getX(), player.getY(), item.getAmount(), duelOpponent, item.getNoted()));
+					}
 				}
 			}
 		}
@@ -195,5 +200,16 @@ public class Duel implements ContainerListener {
 			player.save();
 			duelOpponent.save();
 		}
+	}
+
+	/**
+	 * Check if the player is dueling.
+	 *
+	 * Returns true if both the player and opponent have confirmed the duel.
+	 *
+	 * @return true if player is dueling, otherwise returns false.
+	 */
+	public boolean isDueling() {
+		return duelActive && duelConfirmAccepted && duelRecipient != null && duelRecipient.getDuel().isDuelConfirmAccepted();
 	}
 }

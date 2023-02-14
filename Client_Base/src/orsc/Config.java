@@ -18,12 +18,11 @@ public class Config {
 	public static String WELCOME_TEXT = "You need a members account to use this server";
 	public static String SERVER_IP = null; // Modify this to override "Cache/ip.txt"
 	public static int SERVER_PORT; // Modify SERVER_IP above to override "Cache/port.txt" with this value
-	public static final int CLIENT_VERSION = 10008;
+	public static final int CLIENT_VERSION = 10009;
 	private static final int CACHE_VERSION = 4;
 	public static boolean MEMBER_WORLD = false;
 	public static boolean DISPLAY_LOGO_SPRITE = false;
 	private static final boolean CUSTOM_CACHE_DIR_ENABLED = false;
-	private static final boolean CACHE_APPEND_VERSION = false;
 	private static final String CUSTOM_CACHE_DIR = System.getProperty("user.home") + File.separator + "OpenRSC";
 	public static String F_CACHE_DIR = "";
 
@@ -40,6 +39,7 @@ public class Config {
 	public static boolean C_BATCH_PROGRESS_BAR = false;
 	public static boolean C_HIDE_ROOFS = false;
 	public static boolean C_HIDE_FOG = false;
+	public static boolean C_HIDE_UNDERGROUND_FLICKER = false;
 	public static int C_SHOW_GROUND_ITEMS = 0;
 	public static boolean C_MESSAGE_TAB_SWITCH = false;
 	public static boolean C_NAME_CLAN_TAG_OVERLAY = false;
@@ -109,6 +109,7 @@ public class Config {
 	public static boolean S_EXPERIENCE_DROPS_TOGGLE = false;
 	public static boolean S_ITEMS_ON_DEATH_MENU = false;
 	public static boolean S_SHOW_ROOF_TOGGLE = false;
+	public static boolean S_SHOW_UNDERGROUND_FLICKER_TOGGLE = false;
 	public static boolean S_WANT_GLOBAL_CHAT = false;
 	public static boolean S_WANT_GLOBAL_FRIEND = false;
 	public static boolean S_WANT_HIDE_IP = false;
@@ -142,6 +143,8 @@ public class Config {
 	public static boolean S_WANT_CERT_AS_NOTES = false;
 	public static boolean S_WANT_OPENPK_POINTS = false;
 	public static int S_OPENPK_POINTS_TO_GP_RATIO = 1;
+	public static boolean S_WANT_OPENPK_PRESETS = false;
+	public static boolean S_DISABLE_MINIMAP_ROTATION = true;
 
 	public static void set(String key, Object value) {
 		prop.setProperty(key, value.toString());
@@ -150,17 +153,20 @@ public class Config {
 	static void initConfig() {
 		if (!F_ANDROID_BUILD) {
 			if (CUSTOM_CACHE_DIR_ENABLED) {
-				if (CACHE_APPEND_VERSION) {
-					F_CACHE_DIR = CUSTOM_CACHE_DIR + "_v" + CACHE_VERSION;
-				} else {
-					F_CACHE_DIR = CUSTOM_CACHE_DIR;
-				}
+				F_CACHE_DIR = CUSTOM_CACHE_DIR;
 			} else {
-				if (CACHE_APPEND_VERSION) {
-					F_CACHE_DIR = "Cache" + "_v" + CACHE_VERSION;
-				} else {
-					F_CACHE_DIR = "Cache";
-				}
+				F_CACHE_DIR = "Cache";
+				System.out.println("Set Cache dir to " + F_CACHE_DIR);
+        // Check if F_CACHE_DIR exists, if not, set it to "." (current directory)
+        File f = new File(F_CACHE_DIR);
+        if (!f.exists()) {
+          System.out.println("Could not find cache at " + F_CACHE_DIR + ", using current directory instead.");
+          F_CACHE_DIR = ".";
+          f = new File(F_CACHE_DIR);
+          if (!f.exists()) {
+            System.out.println("Could not find cache at current directory either. Game will crash.");
+          }
+        }
 			}
 		} else {
 			return;

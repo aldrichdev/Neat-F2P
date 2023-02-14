@@ -1,5 +1,6 @@
 package com.openrsc.server.plugins.authentic.commands;
 
+import com.openrsc.server.constants.AppearanceId;
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.NpcDrops;
 import com.openrsc.server.constants.Skills;
@@ -18,6 +19,7 @@ import com.openrsc.server.plugins.authentic.quests.members.touristtrap.Tourist_T
 import com.openrsc.server.plugins.authentic.skills.fishing.Fishing;
 import com.openrsc.server.plugins.authentic.skills.woodcutting.Woodcutting;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
+import com.openrsc.server.util.rsc.AppearanceRetroConverter;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.MessageType;
 import org.apache.logging.log4j.LogManager;
@@ -37,6 +39,8 @@ public final class Development implements CommandTrigger {
 	public boolean blockCommand(Player player, String command, String[] args) {
 		return player.isDev();
 	}
+
+	public static boolean abortFlag = false;
 
 	/**
 	 * Template for ::dev commands
@@ -63,6 +67,9 @@ public final class Development implements CommandTrigger {
 		else if (command.equalsIgnoreCase("createobject") || command.equalsIgnoreCase("cobject") || command.equalsIgnoreCase("addobject") || command.equalsIgnoreCase("aobject") || command.equalsIgnoreCase("createscenery") || command.equalsIgnoreCase("cscenery") || command.equalsIgnoreCase("addscenery") || command.equalsIgnoreCase("ascenery")) {
 			createObject(player, command, args);
 		}
+		else if (command.equalsIgnoreCase("createwallobject") || command.equalsIgnoreCase("cwallobject") || command.equalsIgnoreCase("addwallobject") || command.equalsIgnoreCase("awallobject") || command.equalsIgnoreCase("createboundary") || command.equalsIgnoreCase("cboundary") || command.equalsIgnoreCase("addboundary") || command.equalsIgnoreCase("aboundary")) {
+			createWallObject(player, command, args);
+		}
 		else if (command.equalsIgnoreCase("rotateobject") || command.equalsIgnoreCase("rotatescenery")) {
 			rotateObject(player, command, args);
 		}
@@ -76,7 +83,7 @@ public final class Development implements CommandTrigger {
 			currentCoordinates(player, args);
 		}
 		else if (command.equalsIgnoreCase("serverstats")) {
-			ActionSender.sendBox(player, player.getWorld().getServer().getGameEventHandler().buildProfilingDebugInformation(true),true);
+			serverStats(player, args);
 		}
 		else if (command.equalsIgnoreCase("error")) {
 			// used to verify logging of errors/stdout
@@ -103,6 +110,137 @@ public final class Development implements CommandTrigger {
 		else if (command.equalsIgnoreCase("sound")) {
 			playSound(player, args);
 		}
+		else if (command.equalsIgnoreCase("cyclescenery")) {
+			cycleScenery(player, args);
+		}
+		else if (command.equalsIgnoreCase("cycleclothing")) {
+			cycleClothing(player, args);
+		}
+		else if (command.equalsIgnoreCase("abort")) {
+			setAbortFlag();
+		}
+		else if (command.equalsIgnoreCase("getappearance")) {
+			dumpAppearance(player, args);
+		}
+		else if (command.equalsIgnoreCase("boundarydemo")) {
+			showBoundaries(player, command, args);
+		}
+		else if (command.equalsIgnoreCase("scenerydemo")) {
+			showScenery(player, command, args);
+		}
+	}
+
+	private void serverStats(Player player, String[] args) {
+		if (player.getConfig().WANT_DISCORD_MONITORING_UPDATES) {
+			player.getWorld().getServer().getDiscordService().monitoringSendServerBehind(
+				"Profiling information requested by **" + player.getUsername() + "** for world **" + player.getWorld().getServer().getName() + "**:\n\n" +
+				player.getWorld().getServer().getGameEventHandler().buildProfilingDebugInformation(false)
+				, false);
+		}
+		ActionSender.sendBox(player, player.getWorld().getServer().getGameEventHandler().buildProfilingDebugInformation(true),true);
+	}
+
+	private void showBoundaries(Player player, String command, String[] args) {
+		int boundariesInARow = player.getClientLimitations().maxBoundaryId;
+		if (args.length >= 1) {
+			try {
+				int candidateBoundariesInARow = Integer.parseInt(args[0]);
+				if (candidateBoundariesInARow > 0) {
+					boundariesInARow = candidateBoundariesInARow;
+				}
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (boundaries in a row) (limit) (spacing)");
+				return;
+			}
+		}
+
+		int limit = player.getClientLimitations().maxBoundaryId;
+		if (args.length >= 2) {
+			try {
+				int candidateLimit = Integer.parseInt(args[1]);
+				limit = Math.min(candidateLimit, player.getClientLimitations().maxBoundaryId);
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (boundaries in a row) (limit) (spacing)");
+				return;
+			}
+		}
+
+		int spacing = 2;
+		if (args.length >= 3) {
+			try {
+				int candidateSpacing = Integer.parseInt(args[2]);
+				if (candidateSpacing > 0) {
+					spacing = candidateSpacing;
+				}
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (boundaries in a row) (limit) (spacing)");
+				return;
+			}
+		}
+
+		int id = 0;
+		for (int y = player.getY(); id < limit; y += spacing) {
+			for (int x = player.getX(); x < boundariesInARow + player.getX() && id < limit; x++) {
+				final GameObject newObject = new GameObject(player.getWorld(), Point.location(x, y), id++, 0, 1);
+				player.getWorld().registerGameObject(newObject);
+			}
+		}
+	}
+
+	private void showScenery(Player player, String command, String[] args) {
+		int sceneryInARow = player.getClientLimitations().maxSceneryId;
+		if (args.length >= 1) {
+			try {
+				int candidateBoundariesInARow = Integer.parseInt(args[0]);
+				if (candidateBoundariesInARow > 0) {
+					sceneryInARow = candidateBoundariesInARow;
+				}
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (scenery in a row) (limit) (spacing)");
+				return;
+			}
+		}
+
+		int limit = player.getClientLimitations().maxSceneryId;
+		if (args.length >= 2) {
+			try {
+				int candidateLimit = Integer.parseInt(args[1]);
+				limit = Math.min(candidateLimit, player.getClientLimitations().maxSceneryId);
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (scenery in a row) (limit) (spacing)");
+				return;
+			}
+		}
+
+		int spacing = 2;
+		if (args.length >= 3) {
+			try {
+				int candidateSpacing = Integer.parseInt(args[2]);
+				if (candidateSpacing > 0) {
+					spacing = candidateSpacing;
+				}
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (scenery in a row) (limit) (spacing)");
+				return;
+			}
+		}
+
+		int id = 0;
+		for (int y = player.getY(); id < limit; y += spacing) {
+			for (int x = player.getX(); x < (sceneryInARow * spacing) + player.getX() && id < limit; x += spacing) {
+				final GameObject newObject = new GameObject(player.getWorld(), Point.location(x, y), id++, 0, 0);
+				player.getWorld().registerGameObject(newObject);
+			}
+		}
+
+	}
+
+	private void dumpAppearance(Player player, String[] args) {
+		for (int i = 0; i < player.getSettings().getAppearance().getSprites().length; i++) {
+			mes(i + ": " +  player.getSettings().getAppearance().getSprites()[i]);
+		}
+		mes("Top color: " + player.getSettings().getAppearance().getTopColour());
+		mes("Trouser color: " + player.getSettings().getAppearance().getTrouserColour());
 	}
 
 	private void createNpc(Player player, String command, String[] args) {
@@ -245,6 +383,78 @@ public final class Development implements CommandTrigger {
 		player.message(messagePrefix + "Added scenery: " + newObject.getGameObjectDef().getName() + " with ID " + newObject.getID() + " at " + newObject.getLocation());
 	}
 
+	private void createWallObject(Player player, String command, String[] args) {
+		if (args.length < 1 || args.length == 3) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [id] (dir) (x) (y)");
+			return;
+		}
+
+		int id = -1;
+		try {
+			id = Integer.parseInt(args[0]);
+		}
+		catch(NumberFormatException ex) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [id] (dir) (x) (y)");
+			return;
+		}
+
+		int dir = 0;
+		if (args.length >= 2) {
+			try {
+				dir = Integer.parseInt(args[1]);
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [id] (dir) (x) (y)");
+				return;
+			}
+		}
+
+		int x = -1;
+		int y = -1;
+		if(args.length >= 4) {
+			try {
+				x = Integer.parseInt(args[2]);
+				y = Integer.parseInt(args[3]);
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [id] (dir) (x) (y)");
+				return;
+			}
+		}
+		else {
+			x = player.getX();
+			y = player.getY();
+		}
+
+		if(!player.getWorld().withinWorld(x, y))
+		{
+			player.message(messagePrefix + "Invalid coordinates");
+			return;
+		}
+
+
+		Point objectLoc = Point.location(x, y);
+		final GameObject object = player.getViewArea().getGameObject(objectLoc);
+
+		if (object != null && object.getType() == 1) {
+			player.message("There is already a boundary in that spot: " + object.getGameObjectDef().getName());
+			return;
+		}
+
+		/* TODO: check boundary id is within bounds properly per server & not per client
+		if (player.getWorld().getServer().getEntityHandler().getGameObjectDef(id) == null) {
+			player.message(messagePrefix + "Invalid scenery id");
+			return;
+		}*/
+		if (id > player.getClientLimitations().maxBoundaryId) {
+			player.message(messagePrefix + "Invalid boundary id");
+			return;
+		}
+
+		final GameObject newObject = new GameObject(player.getWorld(), Point.location(x, y), id, dir, 1);
+
+		player.getWorld().registerGameObject(newObject);
+		player.message(messagePrefix + "Added boundary: " + newObject.getGameObjectDef().getName() + " with ID " + newObject.getID() + " at " + newObject.getLocation());
+	}
+
 	private void removeObject(Player player, String command, String[] args) {
 		if(args.length == 1) {
 			player.message(badSyntaxPrefix + command.toUpperCase() + " (x) (y)");
@@ -293,6 +503,72 @@ public final class Development implements CommandTrigger {
 		player.message(messagePrefix + "Removed scenery: " + object.getGameObjectDef().getName() + " with ID " + object.getID());
 		player.getWorld().unregisterGameObject(object);
 	}
+
+	private void cycleScenery(Player player, String[] args) {
+		// render player invisible
+		for (int i = 0; i < 12; i++) {
+			player.updateWornItems(i, 0);
+		}
+		player.toggleDenyAllLogoutRequests();
+
+		player.message("Now displaying all scenery in RuneScape Classic in 5 second intervals.");
+
+		int maxScenery;
+		if (player.getConfig().RESTRICT_SCENERY_ID >= 0) {
+			maxScenery = Math.min(player.getClientLimitations().maxSceneryId, player.getConfig().RESTRICT_SCENERY_ID);
+		} else {
+			maxScenery = player.getClientLimitations().maxSceneryId;
+		}
+		for (int id = 0; id <= maxScenery; id++) {
+			GameObject object = player.getViewArea().getGameObject(player.getLocation());
+			if (object != null) {
+				player.getWorld().unregisterGameObject(object);
+			}
+			GameObject newObject = new GameObject(player.getWorld(), player.getLocation(), id, 0, 0);
+			player.getWorld().registerGameObject(newObject);
+			player.message("scenery id: " + id);
+			delay(8);
+			if (abortFlag) {
+				player.message("Aborting cycle!");
+				abortFlag = false;
+				return;
+			}
+		}
+		player.message("That is all of the scenery in RuneScape Classic!");
+		player.message("If you'd like to see it lit from a different angle, I'd suggest editing map tile " + player.getLocation().pointToJagexPoint());
+		player.message("Then play this same replay again.");
+		delay(8);
+		player.toggleDenyAllLogoutRequests();
+	}
+
+	private void cycleClothing(Player player, String[] args) {
+		// render player invisible
+		for (int i = 0; i < 12; i++) {
+			player.updateWornItems(i, 0);
+		}
+		player.toggleDenyAllLogoutRequests();
+
+		boolean isRetroClient = player.isUsing38CompatibleClient() || player.isUsing39CompatibleClient();
+		int delayLen = Integer.parseInt(args[0]);
+
+		player.message("Now displaying all animations in RuneScape Classic in 5 second intervals.");
+
+		for (int id = 0; id <= player.getClientLimitations().maxAnimationId; id++) {
+			player.message("animation id: " + (isRetroClient ? AppearanceRetroConverter.convert(id) : id));
+			player.updateWornItems(AppearanceId.SLOT_BODY, id);
+			delay(delayLen);
+			if (abortFlag) {
+				player.message("Aborting cycle!");
+				abortFlag = false;
+				return;
+			}
+		}
+		player.message("That is all of the animations in RuneScape Classic!");
+		delay(8);
+		player.toggleDenyAllLogoutRequests();
+	}
+
+	private void setAbortFlag() { abortFlag = true; }
 
 	private void rotateObject(Player player, String command, String[] args) {
 		if(args.length == 1) {

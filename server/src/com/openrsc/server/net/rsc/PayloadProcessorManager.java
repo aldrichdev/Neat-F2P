@@ -128,7 +128,7 @@ public class PayloadProcessorManager {
 		bind(OpcodeIn.SKIP_TUTORIAL, TutorialHandler.class);
 		bind(OpcodeIn.ON_BLACK_HOLE, BlackHoleHandler.class);
 
-		bind(OpcodeIn.COMBAT_STYLE_CHANGED, StyleHandler.class);
+		bind(OpcodeIn.COMBAT_STYLE_CHANGED, CombatStyleHandler.class);
 		bind(OpcodeIn.SEND_DEBUG_INFO, ClientDebugHandler.class);
 
 		bind(OpcodeIn.KNOWN_PLAYERS, KnownPlayersHandler.class); // TODO: class logic needs to be implemented
@@ -161,6 +161,7 @@ public class PayloadProcessorManager {
 					}
 				}
 				if (method != null) {
+					checkIfShouldCancelMenu(player, payload.getOpcode());
 					method.invoke(processor, payload, player); //processor.process(payload, player);
 				}
 			} catch(Exception e) {
@@ -169,6 +170,21 @@ public class PayloadProcessorManager {
 			return true;
 		}
 		return false;
+	}
+
+	private static void checkIfShouldCancelMenu(Player player, OpcodeIn opcode) {
+		// most player actions other than choosing a dialogue choice must cancel the menu handler and set them non-busy
+		if (!OpcodeIn.QUESTION_DIALOG_ANSWER.equals(opcode)
+			&& !OpcodeIn.HEARTBEAT.equals(opcode)
+			&& !OpcodeIn.KNOWN_PLAYERS.equals(opcode)
+			&& !OpcodeIn.CHAT_MESSAGE.equals(opcode)
+			&& !OpcodeIn.SOCIAL_SEND_PRIVATE_MESSAGE.equals(opcode)
+			&& !OpcodeIn.COMBAT_STYLE_CHANGED.equals(opcode)
+			&& !OpcodeIn.GAME_SETTINGS_CHANGED.equals(opcode)
+			&& !OpcodeIn.PRIVACY_SETTINGS_CHANGED.equals(opcode)) {
+
+			player.cancelMenuHandler();
+		}
 	}
 
 	private static PayloadProcessor<? extends AbstractStruct<OpcodeIn>, OpcodeIn> get(OpcodeIn opcode) {

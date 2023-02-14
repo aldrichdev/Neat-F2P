@@ -308,10 +308,16 @@ public class GraphicsController {
 	}
 
 	public Sprite spriteSelect(ItemDef item) {
-		if (!Config.S_WANT_CUSTOM_SPRITES)
+		if (!Config.S_WANT_CUSTOM_SPRITES) {
+			if (item.spriteID + mudclient.spriteItem >= sprites.length || null == sprites[item.spriteID + mudclient.spriteItem])
+				return Sprite.getUnknownSprite(48, 32);
 			return sprites[item.spriteID + mudclient.spriteItem];
+		}
 
 		String[] location = item.getSpriteLocation().split(":");
+		if (location.length < 2 || spriteTree.get(location[0]).get(location[1]).getFrames().length < 1) {
+			return Sprite.getUnknownSprite(48, 32);
+		}
 		return spriteTree.get(location[0]).get(location[1]).getFrames()[0].getSprite();
 	}
 
@@ -331,7 +337,12 @@ public class GraphicsController {
 			return sprites[animation.getNumber() + offset];
 		}
 
-		return spriteTree.get(animation.category).get(animation.name).getFrames()[offset].getSprite();
+		try {
+			Sprite theSprite = spriteTree.get(animation.category).get(animation.name).getFrames()[offset].getSprite();
+			return theSprite == null ? Sprite.getUnknownSprite(18, 18) : theSprite;
+		} catch (NullPointerException ignored) {
+			return Sprite.getUnknownSprite(18, 18);
+		}
 	}
 
 	public Sprite spriteSelect(SpriteDef sprite) {

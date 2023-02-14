@@ -54,15 +54,18 @@ public class Settings {
 		Properties props = new Properties();
 
 		try {
-			File configFile = new File(Defaults._DEFAULT_CONFIG_DIR + "/launcherSettings.conf");
-			if (!configFile.isDirectory()) {
-				if (!configFile.exists()) {
-					saveSettings();
-					return;
-				}
-			}
+			File configFile = new File(Main.configFileLocation + "/launcherSettings.conf");
+      if (configFile.isDirectory()) {
+        Logger.Error("launcherSettings.conf is a directory, not a file!");
+        return;
+      }
+      if (!configFile.exists()) {
+        Logger.Info("Creating settings for first launch at " + Main.configFileLocation + "/launcherSettings.conf");
+        saveSettings();
+        return;
+      }
 
-			FileInputStream in = new FileInputStream(Defaults._DEFAULT_CONFIG_DIR + "/launcherSettings.conf");
+			FileInputStream in = new FileInputStream(Main.configFileLocation + "/launcherSettings.conf");
 			props.load(in);
 			in.close();
 			showBotButtons = getPropBoolean(props, showBotButtonsKey, showBotButtons);
@@ -120,7 +123,12 @@ public class Settings {
 			props.setProperty(preferredClientUraniumKey, preferredClientUranium);
 			props.setProperty(preferredClientColeslawKey, preferredClientColeslaw);
 
-			FileOutputStream out = new FileOutputStream(Defaults._DEFAULT_CONFIG_DIR + "/launcherSettings.conf");
+      File cacheDir = new File(Main.configFileLocation);
+      if (!cacheDir.exists()) {
+        cacheDir.mkdirs();
+      }
+
+			FileOutputStream out = new FileOutputStream(Main.configFileLocation + "/launcherSettings.conf");
 			props.store(out, "---open runescape classic launcher config---");
 			out.close();
 		} catch (IOException e) {

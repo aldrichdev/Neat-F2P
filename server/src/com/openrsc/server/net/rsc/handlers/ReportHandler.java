@@ -7,6 +7,7 @@ import com.openrsc.server.model.snapshot.Snapshot;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.ReportStruct;
+import com.openrsc.server.plugins.triggers.CommandTrigger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,8 +60,12 @@ public final class ReportHandler implements PayloadProcessor<ReportStruct, Opcod
 		}
 
 		player.message("Thank-you, your abuse report has been received.");
-		LOGGER.info(player.getUsername() + " reported " + playerName + " for \"" + Constants.reportReasons.getOrDefault((int)reason, "Unknown Reason") + "\"");
-		player.getWorld().getServer().getGameLogger().addQuery(new GameReport(player, playerName, reason, suggestsOrMutes != 0, player.isMod()));
+		String reportMessage = player.getUsername() + " reported " + playerName + " for \"" + Constants.reportReasons.getOrDefault((int)reason, "Unknown Reason") + "\"";
+		LOGGER.info(reportMessage);
+
+		GameReport gameReport = new GameReport(player, playerName, reason, suggestsOrMutes != 0, player.isMod());
+		player.getWorld().getServer().getGameLogger().addQuery(gameReport);
+		player.getWorld().getServer().getDiscordService().reportSendToDiscord(gameReport, player.getWorld().getServer().getName());
 		player.setLastReport();
 
 		if (suggestsOrMutes != 0 && player.isMod()) {
@@ -77,7 +82,10 @@ public final class ReportHandler implements PayloadProcessor<ReportStruct, Opcod
 			args = s.substring(firstSpace + 1).trim().split(" ");
 		}
 
-		player.getWorld().getServer().getPluginHandler().handlePlugin(player, "Command",
-			new Object[]{player, cmd.toLowerCase(), args});
+		player.getWorld().getServer().getPluginHandler().handlePlugin(
+				CommandTrigger.class,
+				player,
+				new Object[]{player, cmd.toLowerCase(), args}
+		);
 	}
 }

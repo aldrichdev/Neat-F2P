@@ -7,6 +7,7 @@ import com.openrsc.server.model.world.World;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.UUID;
 import java.util.concurrent.Callable;
 
 public abstract class GameTickEvent implements Callable<Integer> {
@@ -22,19 +23,17 @@ public abstract class GameTickEvent implements Callable<Integer> {
 	private long ticksBeforeRun = -1;
 	private String descriptor;
 	private long lastEventDuration = 0;
-	private boolean notUniqueEvent = false;
+	private final UUID uuid;
+	private final DuplicationStrategy duplicationStrategy;
 
-	public GameTickEvent(final World world, final Mob owner, final long ticks, final String descriptor, final boolean notUniqueEvent) {
+	public GameTickEvent(final World world, final Mob owner, final long ticks, final String descriptor, DuplicationStrategy duplicationStrategy) {
 		this.world = world;
 		this.owner = owner;
-		this.notUniqueEvent = notUniqueEvent;
 		this.setDescriptor(descriptor);
 		this.setDelayTicks(ticks);
 		this.resetCountdown();
-	}
-
-	public GameTickEvent(final World world, final Mob owner, final long ticks, final String descriptor) {
-		this(world, owner, ticks, descriptor, true);
+		this.uuid = UUID.randomUUID();
+		this.duplicationStrategy = duplicationStrategy;
 	}
 
 	public abstract void run();
@@ -68,7 +67,6 @@ public abstract class GameTickEvent implements Callable<Integer> {
 	}
 
 	public void stop() {
-		//if(!(this instanceof PluginTask)) LOGGER.info("Stopping : " + getDescriptor() + " : " + getOwner());
 		running = false;
 	}
 
@@ -144,5 +142,11 @@ public abstract class GameTickEvent implements Callable<Integer> {
 		return world;
 	}
 
-	public boolean isNotUniqueEvent() { return notUniqueEvent; }
+	public DuplicationStrategy getDuplicationStrategy() {
+		return duplicationStrategy;
+	}
+
+	public UUID getUUID() {
+		return uuid;
+	}
 }

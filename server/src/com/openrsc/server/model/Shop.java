@@ -4,6 +4,8 @@ import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.plugins.PriceMismatchException;
+import com.openrsc.server.util.rsc.MathUtil;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -172,15 +174,99 @@ public final class Shop {
 			&& currentStock(item) < (Short.MAX_VALUE - Short.MIN_VALUE);
 	}
 
-	public int getItemBuyPrice(int itemID, int defaultPrice, int totalBought) {
-		int priceMod = buyModifier + getStockBuyOffset(itemID, totalBought);
+	public int getItemBuyPrice(Player player, int itemID, int defaultPrice, int totalBought) throws PriceMismatchException {
+		int worldUsesRetroPrices = player.getWorld().getServer().getConfig().USES_RETRO_STOCK_SENSITIVITY ? 1 : 0;
+		int playerUsesRetroPrices = player.getClientVersion() <= 204 ? 1 : 0;
+		int combinedFlag = (worldUsesRetroPrices << 1) + playerUsesRetroPrices;
+
+		int desiredPrice, effectivePrice;
+		desiredPrice = effectivePrice = 0;
+
+		// obtain desired and effective prices;
+		switch(combinedFlag) {
+			case 3:
+				// world and player use retro price
+				effectivePrice = desiredPrice = calcItemBuyPrice(itemID, defaultPrice, totalBought, true);
+				break;
+			case 0:
+				// world and player use modern price
+				effectivePrice = desiredPrice = calcItemBuyPrice(itemID, defaultPrice, totalBought, false);
+				break;
+			case 2:
+				// world uses retro price, player does not
+				effectivePrice = calcItemBuyPrice(itemID, defaultPrice, totalBought, true);
+				desiredPrice = calcItemBuyPrice(itemID, defaultPrice, totalBought, false);
+				break;
+			case 1:
+				// world uses modern price, player does not
+				effectivePrice = calcItemBuyPrice(itemID, defaultPrice, totalBought, false);
+				desiredPrice = calcItemBuyPrice(itemID, defaultPrice, totalBought, true);
+				break;
+		}
+		if (effectivePrice != desiredPrice) {
+			throw new PriceMismatchException(desiredPrice, effectivePrice, "A difference in shop prices encountered");
+		}
+
+		return effectivePrice;
+	}
+
+	public int calcItemBuyPrice(int itemID, int defaultPrice, int totalBought, boolean retroCalc) {
+		int buyOffset;
+		if (retroCalc) {
+			buyOffset = getRetroStockOffset(itemID);
+		} else {
+			buyOffset = getStockBuyOffset(itemID, totalBought);
+		}
+		int priceMod = buyModifier + buyOffset;
 		if (priceMod < 10)
 			priceMod = 10;
 		return (priceMod * defaultPrice) / 100;
 	}
 
-	public int getItemSellPrice(int itemID, int defaultPrice, int totalRemoved) {
-		int priceMod = sellModifier + getStockOffset(itemID, totalRemoved);
+	public int getItemSellPrice(Player player, int itemID, int defaultPrice, int totalRemoved) throws PriceMismatchException {
+		int worldUsesRetroPrices = player.getWorld().getServer().getConfig().USES_RETRO_STOCK_SENSITIVITY ? 1 : 0;
+		int playerUsesRetroPrices = player.getClientVersion() <= 204 ? 1 : 0;
+		int combinedFlag = (worldUsesRetroPrices << 1) + playerUsesRetroPrices;
+
+		int desiredPrice, effectivePrice;
+		desiredPrice = effectivePrice = 0;
+
+		// obtain desired and effective prices;
+		switch(combinedFlag) {
+			case 3:
+				// world and player use retro price
+				effectivePrice = desiredPrice = calcItemSellPrice(itemID, defaultPrice, totalRemoved, true);
+				break;
+			case 0:
+				// world and player use modern price
+				effectivePrice = desiredPrice = calcItemSellPrice(itemID, defaultPrice, totalRemoved, false);
+				break;
+			case 2:
+				// world uses retro price, player does not
+				effectivePrice = calcItemSellPrice(itemID, defaultPrice, totalRemoved, true);
+				desiredPrice = calcItemSellPrice(itemID, defaultPrice, totalRemoved, false);
+				break;
+			case 1:
+				// world uses modern price, player does not
+				effectivePrice = calcItemSellPrice(itemID, defaultPrice, totalRemoved, false);
+				desiredPrice = calcItemSellPrice(itemID, defaultPrice, totalRemoved, true);
+				break;
+		}
+		if (effectivePrice != desiredPrice) {
+			throw new PriceMismatchException(desiredPrice, effectivePrice, "A difference in shop prices encountered");
+		}
+
+		return effectivePrice;
+	}
+
+	public int calcItemSellPrice(int itemID, int defaultPrice, int totalRemoved, boolean retroCalc) {
+		int sellOffset;
+		if (retroCalc) {
+			sellOffset = getRetroStockOffset(itemID);
+		} else {
+			sellOffset = getStockOffset(itemID, totalRemoved);
+		}
+		int priceMod = sellModifier + sellOffset;
 		if (priceMod < 10)
 			priceMod = 10;
 		return (priceMod * defaultPrice) / 100;
@@ -268,6 +354,12 @@ public final class Shop {
 		else if (offset > 100)
 			offset = 100;
 		return offset;
+	}
+
+	public int getRetroStockOffset(int itemID) {
+		int amount = getItemCount(itemID);
+		int baseAmount = getStock(itemID);
+		return MathUtil.boundedNumber(baseAmount - amount, -127, 127);
 	}
 
 

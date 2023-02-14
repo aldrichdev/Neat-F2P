@@ -1,8 +1,6 @@
 package com.openrsc.server.net.rsc.handlers;
 
-import com.openrsc.server.constants.IronmanMode;
-import com.openrsc.server.constants.ItemId;
-import com.openrsc.server.constants.Skill;
+import com.openrsc.server.constants.*;
 import com.openrsc.server.constants.custom.*;
 import com.openrsc.server.content.clan.Clan;
 import com.openrsc.server.content.clan.ClanInvite;
@@ -21,12 +19,15 @@ import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.OptionsStruct;
 import com.openrsc.server.util.rsc.DataConversions;
-
-import static com.openrsc.server.plugins.Functions.ifnearvisnpc;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, OpcodeIn> {
 
-
+	/**
+	 * The asynchronous logger.
+	 */
+	private static final Logger LOGGER = LogManager.getLogger();
 	private static String[] badWords = {
 		"fuck", "ass", "bitch", "admin", "mod", "dev", "developer", "nigger", "niger",
 		"whore", "pussy", "porn", "penis", "chink", "faggot", "cunt", "clit", "cock"};
@@ -37,51 +38,59 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			player.message("You can't do that whilst you are fighting");
 			return;
 		}
+
 		final InterfaceOptions option = InterfaceOptions.getById(payload.index);
+
 		switch (option) {
 			case SWAP_CERT:
+				if (!player.getConfig().WANT_CERT_DEPOSIT) return;
 				player.setAttribute("swap_cert", payload.value == 1);
 				break;
 			case SWAP_NOTE:
+				if (!player.getConfig().WANT_BANK_NOTES) return;
 				player.setAttribute("swap_note", payload.value == 1);
 				break;
 			case BANK_SWAP:
+				if (!player.getConfig().WANT_CUSTOM_BANKS) return;
 				handleBankSwap(player, payload);
 				break;
 			case BANK_INSERT:
+				if (!player.getConfig().WANT_CUSTOM_BANKS) return;
 				handleBankInsert(player, payload);
 				break;
 			case INVENTORY_INSERT:
+				if (!player.getConfig().WANT_CUSTOM_BANKS) return;
 				handleInventoryInsert(player, payload);
 				break;
 			case INVENTORY_SWAP:
+				if (!player.getConfig().WANT_CUSTOM_BANKS) return;
 				handleInventorySwap(player, payload);
 				break;
 			case CANCEL_BATCH:
-				// Cancel Batch
-				if (player.getConfig().BATCH_PROGRESSION) {
-					player.interruptPlugins();
-				}
+				if (!player.getConfig().BATCH_PROGRESSION) return;
+				player.interruptPlugins();
 				break;
 			case IRONMAN_MODE:
+				if (!player.getConfig().SPAWN_IRON_MAN_NPCS) return;
 				handleIronmanMode(player, payload);
 				break;
 			case BANK_PIN:
+				if (!player.getConfig().WANT_BANK_PINS) return;
 				handleBankPinEntry(player, payload);
 				break;
 			case AUCTION:
 				if (!player.getConfig().SPAWN_AUCTION_NPCS) return;
 				handleAuction(player, payload);
 				break;
-			case CLAN: // Clan Actions
+			case CLAN:
 				if (!player.getConfig().WANT_CLANS) return;
 				handleClan(player, payload);
 				break;
-			case PARTY: // Party
+			case PARTY:
 				if (!player.getConfig().WANT_PARTIES) return;
 				handleParty(player, payload);
 				break;
-			case POINTS: //OpenPK Points
+			case POINTS:
 				if (!player.getConfig().WANT_OPENPK_POINTS) return;
 				handlePoints(player, payload);
 				break;
@@ -123,119 +132,113 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 		ActionSender.sendInventory(player);
 	}
 
-	private void handleIronmanMode(Player player, OptionsStruct payload) {
-		int secondary = payload.value;
-		if (secondary == 0) {
-			int mode = payload.value2;
+	private void handleIronmanMode(final Player player, final OptionsStruct payload) {
+		final int value = payload.value;
+
+		if (value == 0) { // Change mode/status
+			final int mode = payload.value2;
+
 			if (mode < 0 || mode > 3) {
-				player.setSuspiciousPlayer(true, "mode < 0 or mode > 3");
+				player.setSuspiciousPlayer(true, "trying to set invalid ironman mode: " + mode);
 				return;
 			}
-			if (mode > -1) {
-				if (mode == IronmanMode.Ironman.id()) {
-					if (!player.getLocation().onTutorialIsland() && (player.getIronMan() <= IronmanMode.None.id() || player.getIronMan() > IronmanMode.Transfer.id())) {
+
+			final int currentMode = player.getIronMan();
+
+			if (mode == currentMode) return;
+
+			if (player.getLocation().onTutorialIsland()) {
+				player.setIronMan(mode);
+				ActionSender.sendIronManMode(player);
+				return;
+			}
+
+			switch (mode) {
+				case 0: // None
+				case 1: // Regular
+					if (mode == 1 && currentMode <= IronmanMode.None.id() || currentMode > IronmanMode.Transfer.id()) {
 						player.message("You cannot become an Iron Man after leaving Tutorial Island.");
 						return;
 					}
-					if (player.getIronMan() == IronmanMode.Ironman.id()) {
+
+					if (player.getIronManRestriction() != 0) {
+						player.message("Your Iron Man status is permanent and cannot be changed.");
 						return;
 					}
-					if (!player.getLocation().onTutorialIsland()
-						&& (player.getIronMan() == IronmanMode.Ultimate.id() || player.getIronMan() == IronmanMode.Hardcore.id())) {
-						if (player.getIronManRestriction() == 0) {
-							if (player.getCache().hasKey("bank_pin")) {
-								Npc npc = ifnearvisnpc(player, 11, 799, 800, 801);
-								if (npc != null) {
-									ActionSender.sendHideIronManInterface(player);
-									player.setAttribute("ironman_delete", true);
-									player.setAttribute("ironman_mode", mode);
-									npc.initializeTalkScript(player);
-								} else {
-									player.message("The Iron Men are currently busy");
-								}
-							}
-						} else {
-							player.message("Your account is set to permanent - you cannot remove your status");
-						}
+
+					Npc ironManNpc = null;
+
+					for (final Npc npc : player.getViewArea().getNpcsInView()) {
+						final int id = npc.getID();
+						if (id < NpcId.IRONMAN.id() || id > NpcId.HARDCORE_IRONMAN.id() || npc.isBusy()) continue;
+						ironManNpc = npc;
+						break;
+					}
+
+					ActionSender.sendHideIronManInterface(player);
+
+					if (ironManNpc == null) {
+						player.message("The Iron Men are currently busy. Please try again.");
 						return;
 					}
-					player.setIronMan(IronmanMode.Ironman.id());
-				} else if (mode == IronmanMode.Ultimate.id()) {
-					if (!player.getLocation().onTutorialIsland() && player.getIronMan() != IronmanMode.Ultimate.id()) {
-						player.message("You cannot become an Ultimate Iron Man after leaving Tutorial Island.");
-						return;
-					}
-					if (player.getIronMan() == IronmanMode.Ultimate.id()) {
-						return;
-					}
-					player.setIronMan(IronmanMode.Ultimate.id());
-				} else if (mode == IronmanMode.Hardcore.id()) {
-					if (!player.getLocation().onTutorialIsland() && player.getIronMan() != IronmanMode.Hardcore.id()) {
-						player.message("You cannot become a Hardcore Iron Man after leaving Tutorial Island.");
-						return;
-					}
-					if (player.getIronMan() == IronmanMode.Hardcore.id()) {
-						return;
-					}
-					player.setIronMan(IronmanMode.Hardcore.id());
-				} else {
-					if (player.getIronMan() == IronmanMode.None.id()) {
-						return;
-					}
-					if (!player.getLocation().onTutorialIsland()
-						&& (player.getIronMan() == IronmanMode.Ironman.id() || player.getIronMan() == IronmanMode.Ultimate.id()
-						|| player.getIronMan() == IronmanMode.Hardcore.id())) {
-						if (player.getIronManRestriction() == 0) {
-							if (player.getCache().hasKey("bank_pin")) {
-								Npc npc = ifnearvisnpc(player, 11, 799, 800, 801);
-								if (npc != null) {
-									ActionSender.sendHideIronManInterface(player);
-									player.setAttribute("ironman_delete", true);
-									player.setAttribute("ironman_mode", mode);
-									npc.initializeTalkScript(player);
-								} else {
-									player.message("The Iron Men are currently busy");
-								}
-							}
-						} else {
-							player.message("Your account is set to permanent - you cannot remove your status");
-						}
-						return;
-					}
-					player.setIronMan(IronmanMode.None.id());
-				}
-				ActionSender.sendIronManMode(player);
+
+					player.setAttribute("ironman_delete", true);
+					player.setAttribute("ironman_mode", mode);
+
+					ironManNpc.initializeTalkScript(player);
+					break;
+				case 2: // Ultimate
+					player.message("You cannot become an Ultimate Iron Man after leaving Tutorial Island.");
+					break;
+				case 3: // Hardcore
+					player.message("You cannot become a Hardcore Iron Man after leaving Tutorial Island.");
+					break;
 			}
-		} else if (secondary == 1) {
-			int setting = payload.value2;
+		} else if (value == 1) { // Change deactivation setting
+			final int setting = payload.value2;
+
 			if (setting < 0 || setting > 1) {
-				player.setSuspiciousPlayer(true, "setting < 0 or setting > 1");
+				player.setSuspiciousPlayer(true, "trying to set invalid ironman deactivation setting: " + setting);
 				return;
 			}
+
 			if (!player.getLocation().onTutorialIsland()) {
-				player.message("You cannot change this setting now that you have completed the Tutorial.");
+				player.message("You cannot change this setting after leaving Tutorial Island.");
 				return;
 			}
-			if (setting > -1) {
-				if (player.getIronMan() == IronmanMode.None.id()) {
+
+			if (player.getIronMan() == IronmanMode.None.id()) {
+				player.message("Select an Iron Man mode before changing this setting.");
+				return;
+			}
+
+			if (setting == 0) { // bank pin
+				if (player.getCache().hasKey("bank_pin")) {
+					player.setIronManRestriction(0);
+					ActionSender.sendIronManMode(player);
 					return;
 				}
-				if (setting == 0) {
-					if (!player.getCache().hasKey("bank_pin")) {
-						Npc npc = ifnearvisnpc(player, 11, 799, 800, 801);
-						if (npc != null) {
-							ActionSender.sendHideIronManInterface(player);
-							player.setAttribute("ironman_pin", true);
-							npc.initializeTalkScript(player);
-						} else {
-							player.message("The Iron Men are currently busy");
-						}
-					} else {
-						player.setIronManRestriction(0);
-					}
-				} else {
-					player.setIronManRestriction(1);
+
+				Npc ironManNpc = null;
+
+				for (final Npc npc : player.getViewArea().getNpcsInView()) {
+					final int id = npc.getID();
+					if (id < NpcId.IRONMAN.id() || id > NpcId.HARDCORE_IRONMAN.id() || npc.isBusy()) continue;
+					ironManNpc = npc;
+					break;
 				}
+
+				ActionSender.sendHideIronManInterface(player);
+
+				if (ironManNpc == null) {
+					player.message("The Iron Men are currently busy. Please try again.");
+					return;
+				}
+
+				player.setAttribute("ironman_pin", true);
+				ironManNpc.initializeTalkScript(player);
+			} else { // permanent
+				player.setIronManRestriction(1);
 				ActionSender.sendIronManMode(player);
 			}
 		}
@@ -757,7 +760,7 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			case INCREASE_DEFENSE:
 				int amount = payload.amount;
 				int amountx = amount * 4;
-				if (!checkIncreaseLevelReqs(player, amount)) {
+				if (!checkIncreaseLevelReqs(player, amountx, Skill.DEFENSE.id())) {
 					return;
 				}
 				player.getSkills().addExperience(Skill.DEFENSE.id(), amountx);
@@ -768,7 +771,7 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			case INCREASE_ATTACK:
 				int amount0 = payload.amount;
 				int amountx0 = amount0 * 4;
-				if (!checkIncreaseLevelReqs(player, amount0)) {
+				if (!checkIncreaseLevelReqs(player, amountx0, Skill.ATTACK.id())) {
 					return;
 				}
 				player.getSkills().addExperience(Skill.ATTACK.id(), amountx0);
@@ -779,7 +782,7 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			case INCREASE_STRENGTH:
 				int amount2 = payload.amount;
 				int amountx2 = amount2 * 4;
-				if (!checkIncreaseLevelReqs(player, amount2)) {
+				if (!checkIncreaseLevelReqs(player, amountx2, Skill.STRENGTH.id())) {
 					return;
 				}
 				player.getSkills().addExperience(Skill.STRENGTH.id(), amountx2);
@@ -790,7 +793,7 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			case INCREASE_RANGED:
 				int amount3 = payload.amount;
 				int amountx3 = amount3 * 4;
-				if (!checkIncreaseLevelReqs(player, amount3)) {
+				if (!checkIncreaseLevelReqs(player, amountx3, Skill.RANGED.id())) {
 					return;
 				}
 				player.getSkills().addExperience(Skill.RANGED.id(), amountx3);
@@ -800,7 +803,7 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			case INCREASE_PRAYER:
 				int amount4 = payload.amount;
 				int amountx4 = amount4 * 4;
-				if (!checkIncreaseLevelReqs(player, amount4)) {
+				if (!checkIncreaseLevelReqs(player, amountx4, Skill.PRAYER.id())) {
 					return;
 				}
 				player.getSkills().addExperience(Skill.PRAYER.id(), amountx4);
@@ -810,7 +813,7 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			case INCREASE_MAGIC:
 				int amount5 = payload.amount;
 				int amountx5 = amount5 * 4;
-				if (!checkIncreaseLevelReqs(player, amount5)) {
+				if (!checkIncreaseLevelReqs(player, amountx5, Skill.MAGIC.id())) {
 					return;
 				}
 				player.getSkills().addExperience(Skill.MAGIC.id(), amountx5);
@@ -890,8 +893,13 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 					player.message("You cannot do that whilst fighting");
 					return;
 				}
-				if(player.getOpenPkPoints() < amount28 * player.getConfig().OPENPK_POINTS_TO_GP_RATIO){
-					player.message("You do not have enough points");
+				if ((((long) amount28) * player.getConfig().OPENPK_POINTS_TO_GP_RATIO) > Integer.MAX_VALUE) {
+					amount28 = Integer.MAX_VALUE / player.getConfig().OPENPK_POINTS_TO_GP_RATIO;
+					player.message("You can't convert that many points at once!");
+					player.message("Your converted points has been adjusted to " + amount28);
+				}
+				if(player.getOpenPkPoints() < ((long) amount28) * player.getConfig().OPENPK_POINTS_TO_GP_RATIO){
+					player.message("You do not have enough points!");
 					return;
 				}
 				Item item = new Item(ItemId.COINS.id(), amount28);
@@ -904,13 +912,13 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 					player.getConfig().GAME_TICK * 145);
 					player.message("You don't have room to hold the gp. It falls to the ground!");
 				}
-				player.subtractOpenPkPoints(amount28 * player.getConfig().OPENPK_POINTS_TO_GP_RATIO);
+				player.subtractOpenPkPoints(((long) amount28) * player.getConfig().OPENPK_POINTS_TO_GP_RATIO);
 				ActionSender.sendPoints(player);
 			break;
 		}
 	}
 
-	private final boolean checkReduceLevelReqs(Player player, int exp, int stat) {
+	private final boolean checkReduceLevelReqs(Player player, int points, int stat) {
 		if(player.getLocation().inWilderness()){
 			player.message("You cannot do that in the wilderness");
 			return false;
@@ -927,13 +935,17 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			player.message("You must be out of combat for 10 seconds before changing stats");
 			return false;
 		}
-		if(player.getSkills().getExperience(stat) < exp){
+		if(player.getSkills().getExperience(stat) < points){
 			player.message("You do not have that much exp in that stat");
+			return false;
+		}
+		if(points > Skills.originalCurveExperienceArray[player.getConfig().PLAYER_LEVEL_LIMIT - 2]) {
+			player.message("You cannot decrease your exp that much");
 			return false;
 		}
 		return true;
 	}
-	private final boolean checkIncreaseLevelReqs(Player player, int points) {
+	private final boolean checkIncreaseLevelReqs(Player player, int points, int stat) {
 		if(player.getLocation().inWilderness()){
 			player.message("You cannot do that in the wilderness");
 			return false;
@@ -950,8 +962,20 @@ public class InterfaceOptionHandler implements PayloadProcessor<OptionsStruct, O
 			player.message("You must be out of combat for 10 seconds before changing stats");
 			return false;
 		}
-		if(player.getOpenPkPoints() < points){
+		if(player.getOpenPkPoints() < (points / 4)){
 			player.message("You do not have enough points");
+			return false;
+		}
+		if((points > Skills.originalCurveExperienceArray[player.getConfig().PLAYER_LEVEL_LIMIT - 2]) || (player.getSkills().getExperience(stat) + points > Skills.originalCurveExperienceArray[player.getConfig().PLAYER_LEVEL_LIMIT - 2])) {
+			player.message("You cannot increase your exp that much");
+			return false;
+		}
+		//Additional check for exp beyond the maximum exp for a stat, may not be necessary but nice to have.
+		if(player.getSkills().getExperience(stat) >= Skills.originalCurveExperienceArray[player.getConfig().PLAYER_LEVEL_LIMIT - 2]) {
+			if (player.getSkills().getExperience(stat) > Skills.originalCurveExperienceArray[player.getConfig().PLAYER_LEVEL_LIMIT - 2]) {
+				LOGGER.warn("Player " + player.getUsername() + " has exp higher than the exp cap for stat " + stat + " , this shouldn't be possible...");
+			}
+			player.message("You have reached the maximum exp for that stat");
 			return false;
 		}
 		return true;

@@ -2,6 +2,7 @@ package launcher.Utils;
 
 import launcher.Gameupdater.Downloader;
 import launcher.Gameupdater.Updater;
+import launcher.Main;
 import launcher.Settings;
 import launcher.elements.ClientSettingsCard;
 import launcher.popup.PopupFrame;
@@ -11,8 +12,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 
+import javax.swing.JOptionPane;
+
 public class ClientLauncher {
 	public static void launchClientForServer(String serverName) {
+    if (Downloader.currently_updating) {
+      JOptionPane.showMessageDialog(null, "Currently updating the client, please wait!");
+      return;
+    }
 		switch (serverName) {
 			case "preservation": {
 				String ip = "game.openrsc.com";
@@ -164,6 +171,7 @@ public class ClientLauncher {
 				switch (client) {
 					case Settings.MUD38:
 					case ClientSettingsCard.MUD38:
+					default:
 						try {
 							Updater.updateWinRune();
 						} catch (IOException e) {
@@ -171,9 +179,14 @@ public class ClientLauncher {
 						}
 						launchWinRune(ip, port, "2001");
 						break;
-					// TODO: implement rsctimes client
 					case Settings.RSCTIMES:
 					case ClientSettingsCard.RSCTIMES:
+						try {
+							Updater.updateRSCTimes();
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+						break;
 					case Settings.RSCPLUS:
 					case ClientSettingsCard.RSCPLUS:
 						try {
@@ -184,9 +197,12 @@ public class ClientLauncher {
 						break;
 					case Settings.OPENRSC:
 					case ClientSettingsCard.OPENRSC:
-					default:
 						setOpenRSCClientEndpoint(ip, port);
 						launchOpenRSCClient();
+						break;
+					case Settings.WEBCLIENT:
+					case ClientSettingsCard.WEBCLIENT:
+						Utils.openWebpage("http://game.openrsc.com/play/2001scape/members");
 						break;
 				}
 				return;
@@ -205,64 +221,76 @@ public class ClientLauncher {
 		// Sets the IP and port
 		FileOutputStream fileout;
 		try {
-			fileout = new FileOutputStream("Cache" + File.separator + "ip.txt");
+			fileout = new FileOutputStream(Main.configFileLocation + File.separator + "ip.txt");
 			OutputStreamWriter outputWriter = new OutputStreamWriter(fileout);
 			outputWriter.write(ip);
 			outputWriter.close();
-		} catch (Exception ignored) {
+		} catch (Exception e) {
+      Logger.Error("Error setting ip.txt: " + e.getMessage());
 		}
 		try {
-			fileout = new FileOutputStream("Cache" + File.separator + "port.txt");
+			fileout = new FileOutputStream(Main.configFileLocation + File.separator + "port.txt");
 			OutputStreamWriter outputWriter = new OutputStreamWriter(fileout);
 			outputWriter.write(port);
 			outputWriter.close();
-		} catch (Exception ignored) {
+		} catch (Exception e) {
+      Logger.Error("Error setting port.txt: " + e.getMessage());
 		}
 	}
 
 	private static void launchOpenRSCClient() {
-		if (Downloader.currently_updating) {
-			Logger.Info("Currently updating the client, please wait!"); // TODO: popup an error
-			return;
-		}
-
 		// Deletes the client.properties file that may persist unwanted settings between different games
-		File f = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "client.properties");
+		File f = new File(Main.configFileLocation + File.separator + "client.properties");
 		f.delete();
 
 		// Update the sprite pack config file
-		File configFile = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "config.txt");
+		File configFile = new File(Main.configFileLocation + File.separator + "config.txt");
 		configFile.delete();
 
-		f = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator
+		File openRscClientJar = new File(Main.configFileLocation + File.separator
 			+ Defaults._CLIENT_FILENAME + ".jar");
-		Utils.execCmd(new String[] {"java", "-jar", f.getAbsolutePath()}, false);
+		Utils.execCmd(new String[]{"java", "-jar", openRscClientJar.getAbsolutePath()}, openRscClientJar.getParentFile());
 	}
 
 	public static void launchRSCPlus() {
-		File rscplusJar = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "extras" + File.separator + "rscplus" + File.separator + "rscplus.jar");
-		Utils.execCmd(new String[] {"java", "-jar", rscplusJar.getAbsolutePath()}, rscplusJar.getParentFile());
+		File rscplusJar = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "rscplus" + File.separator + "rscplus.jar");
+		Utils.execCmd(new String[]{"java", "-jar", rscplusJar.getAbsolutePath()}, rscplusJar.getParentFile());
+	}
+
+	public static void launchRSCTimes() {
+		File rsctimesJar = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "rsctimes" + File.separator + "rsctimes.jar");
+		Utils.execCmd(new String[]{"java", "-jar", rsctimesJar.getAbsolutePath()}, rsctimesJar.getParentFile());
 	}
 
 	public static void launchFleaCircus() {
-		File fleaCircusDir = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "extras" + File.separator + "fleacircus");
-		Utils.execCmd(new String[] {"java", "-cp", fleaCircusDir.getAbsolutePath(), "fleas"}, fleaCircusDir);
+		File fleaCircusDir = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "fleacircus");
+		Utils.execCmd(new String[]{"java", "-cp", fleaCircusDir.getAbsolutePath(), "fleas"}, fleaCircusDir);
 	}
 
 	public static void launchAPOS() {
-		File aposbotJar = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "extras" + File.separator + "apos" + File.separator + "APOS-master" + File.separator + "bot.jar");
-		Utils.execCmd(new String[] {"java", "-jar", aposbotJar.getAbsolutePath()}, aposbotJar.getParentFile());
+		File aposbotJar = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "apos" + File.separator + "APOS-master" + File.separator + "bot.jar");
+		File aposDir = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "apos" + File.separator + "APOS-master");
+
+		// Compile all java script files within the Scripts folder
+		try {
+			Utils.execCmd(new String[]{"javac", "-cp", "bot.jar;./lib/rsclassic.jar;", "./Scripts/*.java"}, aposDir);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		// Execute APOS
+		Utils.execCmd(new String[]{"java", "-jar", aposbotJar.getAbsolutePath()}, aposbotJar.getParentFile());
 	}
 
 	public static void launchWinRune(String ip, String port, String version) {
 		final String rsaKey = "7112866275597968156550007489163685737528267584779959617759901583041864787078477876689003422509099353805015177703670715380710894892460637136582066351659813";
-		File winruneJar = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "extras" + File.separator + "winrune" + File.separator + "WinRune-master" + File.separator + "rune.jar");
-		Utils.execCmd(new String[] {"java", "-jar", winruneJar.getAbsolutePath(), "members=true", "address=" + ip, "port=" + port, "version=" + version, "rsaExponent=65537", "rsaModulus=" + rsaKey}, winruneJar.getParentFile());
+		File winruneJar = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "winrune" + File.separator + "WinRune-master" + File.separator + "rune.jar");
+		Utils.execCmd(new String[]{"java", "-jar", winruneJar.getAbsolutePath(), "members=true", "address=" + ip, "port=" + port, "version=" + version, "rsaExponent=65537", "rsaModulus=" + rsaKey}, winruneJar.getParentFile());
 	}
 
 	public static void launchIdleRSC() {
-		File idlerscJar = new File(Defaults._DEFAULT_CONFIG_DIR + File.separator + "extras" + File.separator + "idlersc" + File.separator + "IdleRSC-master" + File.separator + "IdleRSC.jar");
-		Utils.execCmd(new String[] {"java", "-jar", idlerscJar.getAbsolutePath()}, idlerscJar.getParentFile());
+		File idlerscJar = new File(Main.configFileLocation + File.separator + "extras" + File.separator + "idlersc" + File.separator + "IdleRSC-master" + File.separator + "IdleRSC.jar");
+		Utils.execCmd(new String[]{"java", "-jar", idlerscJar.getAbsolutePath()}, idlerscJar.getParentFile());
 	}
 
 	private static void exit() {

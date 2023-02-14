@@ -3,6 +3,7 @@ package com.openrsc.server.plugins.authentic.npcs.varrock;
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.constants.Quests;
+import com.openrsc.server.constants.Skill;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
@@ -100,14 +101,24 @@ public final class Baraek implements
 		} else if (chosenOption == 1) {
 			say(player, n, "Can you sell me some furs?");
 			npcsay(player, n, "Yeah sure they're 20 gold coins a piece");
+			boolean canHaggle = true;
+			if (player.getConfig().INFLUENCE_INSTEAD_QP && player.getSkills().getLevel(Skill.INFLUENCE.id()) < 5) {
+				canHaggle = false;
+			}
+			ArrayList<String> furOptions = new ArrayList<>();
+			furOptions.add("Yeah, okay here you go");
+			furOptions.add("20 gold coins thats an outrage");
+			String[] finalFurOptions = new String[furOptions.size()];
 			int opts = multi(player, n, false, //do not send over
-				"Yeah, okay here you go",
-				"20 gold coins thats an outrage");
+				furOptions.toArray(finalFurOptions));
+
 			if (opts == 0) {
 				if (!ifheld(player, ItemId.COINS.id(), 20)) {
 					say(player, n, "Oh dear I don't seem to have enough money");
-					npcsay(player, n, "Well, okay I'll go down to 18 coins");
-					bargained = true;
+					if (canHaggle) {
+						npcsay(player, n, "Well, okay I'll go down to 18 coins");
+						bargained = true;
+					}
 				} else {
 					say(player, n, "Yeah okay here you go");
 					player.getCarriedItems().remove(new Item(ItemId.COINS.id(), 20));
@@ -116,8 +127,14 @@ public final class Baraek implements
 				}
 			} else if (opts == 1) {
 				say(player, n, "20 gold coins that's an outrage");
-				npcsay(player, n, "Well, okay I'll go down to 18");
-				bargained = true;
+				if (!canHaggle) {
+					npcsay(player, n, "Well I can't go any cheaper than that mate",
+						"I have a family to feed");
+					say(player, n, "Ah well never mind");
+				} else {
+					npcsay(player, n, "Well, okay I'll go down to 18");
+					bargained = true;
+				}
 			}
 		} else if (chosenOption == 2) {
 			say(player, n, "Hello I am in search of a quest");

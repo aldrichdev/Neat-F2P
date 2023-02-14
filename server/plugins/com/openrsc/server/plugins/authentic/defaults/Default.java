@@ -1,6 +1,7 @@
 package com.openrsc.server.plugins.authentic.defaults;
 
 import com.openrsc.server.constants.AppearanceId;
+import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.constants.Spells;
 import com.openrsc.server.database.impl.mysql.queries.logging.GenericLog;
 import com.openrsc.server.external.ItemDefinition;
@@ -10,10 +11,13 @@ import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.GroundItem;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.model.entity.update.ChatMessage;
 import com.openrsc.server.model.struct.EquipRequest;
 import com.openrsc.server.model.struct.UnequipRequest;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.DefaultHandler;
+import com.openrsc.server.plugins.shared.AttackPlayer;
+import com.openrsc.server.plugins.shared.DropObject;
 import com.openrsc.server.plugins.triggers.*;
 import com.openrsc.server.util.rsc.DataConversions;
 
@@ -33,7 +37,7 @@ public class Default implements DefaultHandler,
 	AttackNpcTrigger, PlayerDeathTrigger, KillNpcTrigger, PlayerLoginTrigger,
 	PlayerLogoutTrigger, SpellInvTrigger, SpellPlayerTrigger, SpellNpcTrigger,
 	SpellLocTrigger, EscapeNpcTrigger, PlayerKilledPlayerTrigger, PlayerRangePlayerTrigger,
-	PlayerRangeNpcTrigger, StartupTrigger, TalkNpcTrigger, OpBoundTrigger {
+	PlayerRangeNpcTrigger, StartupTrigger, TalkNpcTrigger, OpBoundTrigger, WineFermentTrigger {
 
 	public static final DoorAction doors = new DoorAction();
 	private static final Ladders ladders = new Ladders();
@@ -130,6 +134,16 @@ public class Default implements DefaultHandler,
 	}
 
 	@Override
+	public void onWineFerment(Player player) {
+		// No default actions
+	}
+
+	@Override
+	public boolean blockWineFerment(Player player) {
+		return false;
+	}
+
+	@Override
 	public void onCommand(Player player, String cmd, String[] args) {
 		// No default actions
 	}
@@ -145,94 +159,7 @@ public class Default implements DefaultHandler,
 
 		// Get the amount to drop from our temporary item construct.
 		int amountToDrop = item.getAmount();
-		batchDrop(player, item, fromInventory, amountToDrop, amountToDrop, invIndex);
-	}
-
-	private void batchDrop(Player player, Item item, Boolean fromInventory, int amountToDrop, int totalToDrop, int invIndex) {
-
-		Item searchItem;
-		boolean found = false;
-		if (fromInventory) {
-			if (invIndex >= 0 && invIndex < player.getCarriedItems().getInventory().size()) {
-				// search inventory using specified index
-				searchItem = player.getCarriedItems().getInventory().get(invIndex);
-				if (searchItem.equals(item)) {
-					item = searchItem;
-					found = true;
-				}
-			}
-			if (!found) {
-				// Grab the last item by the ID we are trying to drop when batching.
-				item = player.getCarriedItems().getInventory().get(
-					player.getCarriedItems().getInventory().getLastIndexById(item.getCatalogId(), Optional.of(item.getNoted()))
-				);
-			}
-		}
-		else {
-			item = player.getCarriedItems().getEquipment().get(
-				player.getCarriedItems().getEquipment().searchEquipmentForItem(item.getCatalogId())
-			);
-		}
-
-		if (item == null) {
-			player.message("You don't have the entered amount to drop");
-			return;
-		}
-
-		int removingThisIteration = 1;
-		if (fromInventory) {
-			// Stacks or notes need to check their amount compared to the amount to drop.
-			if (item.getAmount() > 1) {
-				removingThisIteration = Math.min(amountToDrop, item.getAmount());
-			}
-			if (item.getItemId() != -1) {
-				player.getCarriedItems().remove(new Item(item.getCatalogId(), removingThisIteration, item.getNoted(), item.getItemId()));
-			} else {
-				player.getCarriedItems().remove(new Item(item.getCatalogId(), removingThisIteration, item.getNoted()));
-			}
-			amountToDrop -= removingThisIteration;
-		} else {
-			int slot = player.getCarriedItems().getEquipment().searchEquipmentForItem(item.getCatalogId());
-			if (slot == -1) return;
-
-			// Always remove all when from equipment.
-			removingThisIteration = item.getAmount();
-			player.getCarriedItems().getEquipment().remove(item, removingThisIteration);
-			ActionSender.sendEquipmentStats(player);
-
-			final ItemDefinition itemDef = item.getDef(player.getWorld());
-			final AppearanceId appearance = AppearanceId.getById(itemDef.getAppearanceId());
-			if (itemDef.getWieldPosition() < 12 ||
-				(itemDef.getWieldPosition() == AppearanceId.SLOT_MORPHING_RING && appearance.id() != AppearanceId.NOTHING.id())) {
-				player.updateWornItems(itemDef.getWieldPosition(),
-					player.getSettings().getAppearance().getSprite(itemDef.getWieldPosition()));
-			}
-			amountToDrop = 0;
-		}
-
-		GroundItem groundItem = new GroundItem(player.getWorld(), item.getCatalogId(), player.getX(), player.getY(), removingThisIteration, player, item.getNoted());
-		ActionSender.sendSound(player, "dropobject");
-
-		if (player.getWorld().getPlayer(DataConversions.usernameToHash(player.getUsername())) == null) {
-			return;
-		}
-
-		player.getWorld().registerItem(groundItem, config().GAME_TICK * 300);
-		player.getWorld().getServer().getGameLogger().addQuery(new GenericLog(player.getWorld(), player.getUsername() + " dropped " + item.getDef(player.getWorld()).getName() + " x"
-			+ DataConversions.numberFormat(groundItem.getAmount()) + " at " + player.getLocation().toString()));
-
-		// Display the Dropping x/y message only if we want batching,
-		// we're dropping more than one item, and the item isn't a stack.
-		if (config().BATCH_PROGRESSION && totalToDrop > 1 && removingThisIteration == 1) {
-			player.message("Dropping " + (totalToDrop - amountToDrop) + "/" + totalToDrop
-				+ " " + player.getWorld().getServer().getEntityHandler().getItemDef(item.getCatalogId()).getName());
-		}
-
-		// Repeat
-		if (!ifinterrupted() && amountToDrop > 0) {
-			delay();
-			batchDrop(player, item, fromInventory, amountToDrop, totalToDrop, -1);
-		}
+		DropObject.batchDrop(player, item, fromInventory, amountToDrop, amountToDrop, invIndex);
 	}
 
 	@Override
@@ -292,6 +219,7 @@ public class Default implements DefaultHandler,
 
 	@Override
 	public void onTakeObj(Player player, GroundItem i) {
+		player.setLastTileClicked(null);
 		player.groundItemTake(i);
 	}
 
@@ -305,6 +233,10 @@ public class Default implements DefaultHandler,
 		if (affectedMob.getLocation().inBounds(220, 107, 224, 111)) { // mage arena block real rsc.
 			player.message("Here kolodion protects all from your attack");
 			player.face(affectedMob); // TODO: not necessary to do this if the walk handler would do it for us.
+			return;
+		}
+
+		if (AttackPlayer.attackPrevented(player, affectedMob)) {
 			return;
 		}
 
@@ -323,6 +255,7 @@ public class Default implements DefaultHandler,
 
 	@Override
 	public void onAttackNpc(Player player, Npc affectedmob) {
+		player.setLastTileClicked(null);
 		player.startCombat(affectedmob);
 		if (config().WANT_PARTIES) {
 			if (player.getParty() != null) {
@@ -338,7 +271,6 @@ public class Default implements DefaultHandler,
 
 	@Override
 	public void onPlayerDeath(Player player) {
-		// TODO: This plugin is not handled anywhere
 		// No default actions
 	}
 
@@ -429,7 +361,6 @@ public class Default implements DefaultHandler,
 
 	@Override
 	public void onEscapeNpc(Player player, Npc n) {
-		// TODO: This plugin is not handled anywhere
 		// No default actions
 	}
 
@@ -487,5 +418,4 @@ public class Default implements DefaultHandler,
 	public boolean blockWearObj(Player player, Integer invIndex, EquipRequest request) {
 		return false;
 	}
-
 }

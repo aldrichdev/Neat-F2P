@@ -22,10 +22,11 @@ import static com.openrsc.server.plugins.Functions.*;
 public class ObjectCooking implements UseLocTrigger {
 	@Override
 	public void onUseLoc(Player owner, GameObject object, Item item) {
-		Npc cook = ifnearvisnpc(owner, NpcId.COOK.id(), 20);
-		if (cook != null && owner.getQuestStage(Quests.COOKS_ASSISTANT) != -1
-			&& object.getID() == 119) {
-			npcsay(owner, cook, "Hey! Who said you could use that?");
+		if (object.getID() == 119 && owner.getQuestStage(Quests.COOKS_ASSISTANT) > -1) {
+			Npc cook = ifnearvisnpc(owner, NpcId.COOK.id(), 20);
+			if (cook != null) {
+				npcsay(owner, cook, "Hey! Who said you could use that?");
+			}
 		} else
 			handleCooking(item, owner, object);
 	}
@@ -282,7 +283,7 @@ public class ObjectCooking implements UseLocTrigger {
 		itemName = itemName.startsWith("raw ") ? itemName.substring(4) :
 			itemName.contains("pie") ? "pie" :
 				itemName.startsWith("uncooked ") ? itemName.substring(9) : itemName;
-		boolean isGenMeat = isGeneralMeat(item);
+		boolean isGenMeat = Formulae.isGeneralMeat(item);
 		if (isGenMeat)
 			itemName = "meat";
 		String message = "You cook the " + itemName + " on the " +
@@ -317,14 +318,10 @@ public class ObjectCooking implements UseLocTrigger {
 			ItemId.UNCOOKED_MEAT_PIE.id(), // Meat Pie
 			ItemId.UNCOOKED_REDBERRY_PIE.id(), // Redberry Pie
 			ItemId.UNCOOKED_PUMPKIN_PIE.id(), // Pumpkin Pie (custom)
+			ItemId.UNCOOKED_WHITE_PUMPKIN_PIE.id(), // White Pumpkin Pie (custom)
 			ItemId.UNCOOKED_PIZZA.id(), // Pizza
 			ItemId.UNCOOKED_CAKE.id(), // Cake
 			ItemId.UNCOOKED_PITTA_BREAD.id(), // Pitta Bread
 		}, item.getCatalogId());
-	}
-
-	private boolean isGeneralMeat(Item item) {
-		return DataConversions.inArray(new int[]{ItemId.COOKEDMEAT.id(), ItemId.RAW_CHICKEN.id(),
-				ItemId.RAW_BEAR_MEAT.id(), ItemId.RAW_RAT_MEAT.id(), ItemId.RAW_BEEF.id()}, item.getCatalogId());
 	}
 }

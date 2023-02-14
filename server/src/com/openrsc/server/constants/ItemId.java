@@ -191,7 +191,7 @@ public enum ItemId {
 	POISON(177),
 	POISONED_FISH_FOOD(178),
 	SPINACH_ROLL(179),
-	BAD_WINE(180),
+	BAD_OR_UNFERMENTED_WINE(180),
 	ASHES(181),
 	WHITE_APRON(182),
 	RED_CAPE(183),
@@ -1540,13 +1540,41 @@ public enum ItemId {
 	UNCOOKED_WHITE_PUMPKIN_PIE(1492),
 	WHITE_PUMPKIN_PIE(1493),
 	HALF_A_WHITE_PUMPKIN_PIE(1494),
-	EAK_THE_MOUSE(1495);
+	EAK_THE_MOUSE(1495),
+
+	// Christmas 2021
+	YOYO(1496),
+
+	// Easter 2022 (Peeling an Onion)
+	OGRE_EARS(1497),
+	LEATHER_VEST(1498),
+	MAKEOVER_WAIVER(1499),
+	YELLOWGREEN_CLAY(1500),
+	OGRE_RECIPES(1501),
+
+	CROWN_MOULD(1502),
+	GOLD_CROWN(1503),
+	SAPPHIRE_CROWN(1504),
+	EMERALD_CROWN(1505),
+	RUBY_CROWN(1506),
+	DIAMOND_CROWN(1507),
+	DRAGONSTONE_CROWN(1508),
+	CROWN_OF_DEW(1509),
+	CROWN_OF_MIMICRY(1510),
+	CROWN_OF_THE_ARTISAN(1511),
+	CROWN_OF_THE_ITEMS(1512),
+	CROWN_OF_THE_HERBALIST(1513),
+	CROWN_OF_THE_OCCULT(1514),
+
+	PINK_HALLOWEEN_MASK(1515),
+	CAPE_OF_INCLUSION(1516),
+	BLACK_HALLOWEEN_MASK(1517);
 
 
 	private int itemId;
 
 	public static final int maxAuthentic = 1289;
-	public static final int maxCustom = 1495;
+	public static final int maxCustom = 1501;
 
 	private static final Map<Integer, ItemId> byId = new HashMap<Integer, ItemId>();
 	private static final Map<String, ItemId> byName = new HashMap<String, ItemId>();

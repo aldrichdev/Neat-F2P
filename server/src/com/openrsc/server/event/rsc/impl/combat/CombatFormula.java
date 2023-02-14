@@ -112,7 +112,7 @@ public class CombatFormula {
 	}
 
 	/**
-	 * Calculates an accuracy check
+	 * Calculates an accuracy check (For non-melee)
 	 *
 	 * @param accuracy            The accuracy term
 	 * @param defence             The defence term
@@ -128,6 +128,23 @@ public class CombatFormula {
 	}
 
 	/**
+	 * Calculates an accuracy check (For melee)
+	 *
+	 * @param accuracy            The accuracy term
+	 * @param defence             The defence term
+	 * @param isVictimPlayer      True if the victim is a player, false if not
+	 * @return True if the attack is a hit, false if the attack is a miss
+	 */
+	private static boolean calculateAccuracy(final double accuracy, final double defence, final boolean isVictimPlayer) {
+		final int odds = (int)Math.min(212.0D, 255.0D * accuracy / (defence * (isVictimPlayer ? 2.6 : 3.2)));
+		final int roll = DataConversions.random(0, 255);
+
+		//LOGGER.info(source + " has " + odds + "/256 to hit " + victim + ", rolled " + roll);
+
+		return roll <= odds;
+	}
+
+	/**
 	 * Calculates an accuracy check
 	 *
 	 * @param source             The attacking mob.
@@ -135,7 +152,7 @@ public class CombatFormula {
 	 * @return True if the attack is a hit, false if the attack is a miss
 	 */
 	private static boolean calculateMeleeAccuracy(final Mob source, final Mob victim) {
-		return calculateAccuracy(getMeleeAccuracy(source), getMeleeDefence(victim));
+		return calculateAccuracy(getMeleeAccuracy(source), getMeleeDefence(victim), victim.isPlayer());
 	}
 
 	/**
@@ -161,7 +178,10 @@ public class CombatFormula {
 		boolean isHit = calculateMeleeAccuracy(source, victim);
 		boolean wasHit = isHit;
 		int damage = calculateMeleeDamage(source);
-		if (source instanceof Player) {
+		if (source instanceof Player && victim instanceof Player) {
+			// TODO: hopefully temp until this file contains more accurate pvp
+			return PVPCombatFormula.calcFightHit(source, victim);
+		} else if (source instanceof Player) {
 			while(SkillCapes.shouldActivate((Player)source, ATTACK_CAPE, isHit)){
 				isHit = calculateMeleeAccuracy(source, victim);
 			}

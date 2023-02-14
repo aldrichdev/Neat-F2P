@@ -2,6 +2,7 @@ package com.openrsc.server.service;
 
 import com.openrsc.server.ServerConfiguration;
 import com.openrsc.server.constants.AppearanceId;
+import com.openrsc.server.constants.Quests;
 import com.openrsc.server.database.GameDatabase;
 import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.database.struct.*;
@@ -16,6 +17,7 @@ import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.PlayerSettings;
 import com.openrsc.server.model.world.World;
+import com.openrsc.server.util.languages.PreferredLanguage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,6 +63,10 @@ public class PlayerService implements IPlayerService {
                 loadPlayerNpcKills(loaded);
             });
 
+			loadPlayerLanguage(loaded);
+			updateUnlockedPlayerSkins(loaded);
+			loaded.getSettings().setPrivacySetting(PlayerSettings.PRIVACY_HIDE_ONLINE_STATUS, (byte)loaded.getHideOnline());
+
             return loaded;
         } catch (final Exception ex) {
             LOGGER.error(
@@ -76,9 +82,9 @@ public class PlayerService implements IPlayerService {
         try {
             if (!database.playerExists(player.getDatabaseID())) {
                 LOGGER.error("ERROR SAVING : PLAYER DOES NOT EXIST : {}", player.getUsername());
-                return false;
+                return player.checkAndIncrementSaveAttempts();
             }
-            return database.atomically(() -> {
+            boolean realSuccess = database.atomically(() -> {
                 savePlayerBankPresets(player);
                 savePlayerInventory(player);
                 savePlayerEquipment(player);
@@ -92,12 +98,19 @@ public class PlayerService implements IPlayerService {
                 savePlayerSkills(player);
                 savePlayerSocial(player);
             });
+            if (realSuccess) {
+                if (null != player.getUsernameChangePending()) {
+			        player.getUsernameChangePending().doChangeUsername();
+                }
+                player.resetSaveAttempts();
+			}
+            return realSuccess;
         } catch (final Exception ex) {
             LOGGER.error(
                     MessageFormat.format("Unable to save player to database: {}", player.getUsername()),
                     ex
             );
-            return false;
+			return player.checkAndIncrementSaveAttempts();
         }
     }
 
@@ -149,6 +162,7 @@ public class PlayerService implements IPlayerService {
         player.setDatabaseID(playerData.playerId);
         player.setGroupID(playerData.groupId);
         player.setUsername(playerData.username);
+        player.setFormerName(playerData.former_name);
         player.setTotalLevel(playerData.totalLevel);
         /*if (player.isUsingCustomClient()) {
             player.setCombatStyle((byte) playerData.combatStyle);
@@ -161,6 +175,7 @@ public class PlayerService implements IPlayerService {
         player.setLastLogin(playerData.loginDate);
         player.setLastIP(playerData.loginIp);
         player.setInitialLocation(new Point(playerData.xLocation, playerData.yLocation));
+        player.setNextRegionLoad();
 
         player.setFatigue(playerData.fatigue);
         player.setKills(playerData.kills);
@@ -190,7 +205,7 @@ public class PlayerService implements IPlayerService {
                 playerData.headSprite,
                 playerData.bodySprite
         );
-        if (!pa.isValid()) {
+        if (!pa.isValid(player)) {
             pa = new PlayerAppearance(
                     0, 0, 0, 0, 1, 2
             );
@@ -410,6 +425,8 @@ public class PlayerService implements IPlayerService {
     @Override
     public void savePlayerCache(final Player player) throws GameDatabaseException {
         player.getCache().store("last_spell_cast", player.getCastTimer());
+		if (player.desertHeatCounter > 0)
+			player.getCache().store("desert_heat_counter", player.desertHeatCounter);
         database.querySavePlayerCache(player);
     }
 
@@ -440,4 +457,51 @@ public class PlayerService implements IPlayerService {
     private void savePlayerCastTime(final Player player) {
         player.getCache().store("last_spell_cast", player.getCastTimer());
     }
+
+	private void loadPlayerLanguage(final Player player) {
+		try {
+			player.setPreferredLanguage(PreferredLanguage.getByLocaleName(player.getCache().getString("preferredLanguage")));
+		} catch (NoSuchElementException ex) {
+			player.setPreferredLanguage(PreferredLanguage.NONE_SET);
+		}
+	}
+	public static void updateUnlockedPlayerSkins(final Player player) {
+		boolean[] unlockedPlayerSkinColours = new boolean[]{
+			// original player skin colours
+			// 0xECDED0, 0xCCB366, 0xB38C40, 0x997326, 0x906020, 4
+			true, true, true, true, true,
+
+			// authentic npc skin colours (with previously used colours removed)
+			// 0x000000, 0x000004, 0x0066FF, 0x009000, 0x3CB371, 9
+			false, false, false, false, false,
+			// 0x55BFEE, 0x55CFFF, 0x604020, 0x663300, 0x6F5737, 14
+			false, false, false, false, false,
+			// 0x705010, 0x804000, 0x996633, 0x999999, 0xAC9E90, 19
+			false, false, false, false, false,
+			// 0xDCC399, 0xDCCEA0, 0xDCFFD0, 0xDD3040, 0xEADED2, 24
+			false, false, false, false, false,
+			// 0xECEED0, 0xECFED0, 0xECFFD0, 0xFCEEE0, 0xFF3333, 29
+			false, false, false, false, false,
+			// 0xFF9F55, 0xFFDED2, 0xFFFEF0, 0xFFFFFF, // 33
+			false, false, false, false,
+
+			false, // 0x00A0A0, // teal 34
+			false, // 0xFFFF00, // yellow 35
+			false, // 0xFF69B4, // hot pink 36
+			false, // 0x0180A2, // rsc zombie 37
+			false, // 0x86668e, // evequill purple 38
+			false, // 0x663399, // rebecca purple 39
+			false, // 0xB5FF1D, // easter ogre 40
+			false, // 0xA0C0C0, // silver man 41
+			false, // 0x608080, // coal woman 42
+		};
+		if (player.getQuestStage(Quests.PEELING_THE_ONION) == -1) {
+			unlockedPlayerSkinColours[35] = true; // Yellow
+			unlockedPlayerSkinColours[37] = true; // RSC Zombie
+			unlockedPlayerSkinColours[38] = true; // Evequill purple
+			unlockedPlayerSkinColours[40] = true; // Kresh green
+		}
+
+		player.setUnlockedSkinColours(unlockedPlayerSkinColours);
+	}
 }

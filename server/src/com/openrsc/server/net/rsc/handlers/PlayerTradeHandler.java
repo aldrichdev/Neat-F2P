@@ -2,6 +2,8 @@ package com.openrsc.server.net.rsc.handlers;
 
 import com.openrsc.server.constants.IronmanMode;
 import com.openrsc.server.database.impl.mysql.queries.logging.TradeLog;
+import com.openrsc.server.event.DelayedEvent;
+import com.openrsc.server.external.ItemDefinition;
 import com.openrsc.server.model.PathValidation;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.player.Player;
@@ -217,6 +219,7 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 				break;
 			case PLAYER_ADDED_ITEMS_TO_TRADE_OFFER:
 				affectedPlayer = player.getTrade().getTradeRecipient();
+
 				if (affectedPlayer == null || busy(affectedPlayer) || !player.getTrade().isTradeActive()
 					|| !affectedPlayer.getTrade().isTradeActive()
 					|| (player.getTrade().isTradeAccepted() && affectedPlayer.getTrade().isTradeAccepted())
@@ -231,45 +234,49 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 					player.getTrade().setTradeAccepted(false);
 					ActionSender.sendOwnTradeAcceptUpdate(player);
 				}
+
 				if (affectedPlayer.getTrade().isTradeAccepted()) {
 					affectedPlayer.getTrade().setTradeAccepted(false);
 					ActionSender.sendOwnTradeAcceptUpdate(affectedPlayer);
 				}
+
 				player.getTrade().setTradeConfirmAccepted(false);
 				affectedPlayer.getTrade().setTradeConfirmAccepted(false);
 
 				player.getTrade().resetOffer();
-				int count = payload.tradeCount;
-				for (int slot = 0; slot < count; slot++) {
-					Item tItem;
-					tItem = new Item(payload.tradeCatalogIDs[slot], payload.tradeAmounts[slot], payload.tradeNoted[slot]);
 
-					if (tItem.getAmount() < 1) {
-						player.setSuspiciousPlayer(true, "item less than 0");
+				final int itemCount = Math.min(payload.tradeCount, 12);
+
+				for (int i = 0; i < itemCount; i++) {
+					final Item item = new Item(payload.tradeCatalogIDs[i], payload.tradeAmounts[i], payload.tradeNoted[i]);
+
+					if (item.getAmount() < 1) {
+						player.setSuspiciousPlayer(true,
+							String.format("trading invalid amount of itemId: %d", item.getCatalogId()));
 						player.setRequiresOfferUpdate(true);
 						continue;
 					}
-					if (tItem.getNoted() && !player.getConfig().WANT_BANK_NOTES) {
+					if (item.getNoted() && !player.getConfig().WANT_BANK_NOTES) {
 						player.message("Notes can no longer be traded with other players.");
 						player.message("You may either deposit it in the bank or sell to a shop instead.");
 						player.setRequiresOfferUpdate(true);
 						continue;
 					}
-					if (tItem.getDef(player.getWorld()).isUntradable() && !player.isAdmin()) {
+					if (item.getDef(player.getWorld()).isUntradable() && !player.getWorld().getServer().getConfig().CAN_OFFER_UNTRADEABLES) {
 						player.message("This object cannot be traded with other players");
 						player.setRequiresOfferUpdate(true);
 						continue;
 					}
-					if (tItem.getCatalogId() > affectedPlayer.getClientLimitations().maxItemId) {
+					if (item.getCatalogId() > affectedPlayer.getClientLimitations().maxItemId) {
 						player.message("The other player is unable to receive the offered object");
 						player.setRequiresOfferUpdate(true);
 						continue;
 					}
-					if (tItem.getDef(player.getWorld()).isMembersOnly() && !player.getConfig().MEMBER_WORLD) {
+					if (item.getDef(player.getWorld()).isMembersOnly() && !player.getConfig().MEMBER_WORLD) {
 						player.setRequiresOfferUpdate(true);
 						continue;
 					}
-					if (CertUtil.isCert(tItem.getCatalogId()) && (player.getCertOptOut() || affectedPlayer.getCertOptOut())) {
+					if (CertUtil.isCert(item.getCatalogId()) && (player.getCertOptOut() || affectedPlayer.getCertOptOut())) {
 						if (player.getCertOptOut()) {
 							player.message("You have opted out of trading certs with other players");
 						}
@@ -280,12 +287,16 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 						continue;
 					}
 
-					if (tItem.getAmount() > player.getCarriedItems().getInventory().countId(tItem.getCatalogId(), Optional.of(tItem.getNoted()))) {
-						player.setSuspiciousPlayer(true, "trade item amount greater than inventory countid");
+					final int invCount = player.getCarriedItems().getInventory().countId(item.getCatalogId(), Optional.of(item.getNoted()));
+					final int tradeCount = player.getTrade().getTradeOffer().countId(item.getCatalogId());
+
+					if (item.getAmount() > (invCount - tradeCount)) {
+						player.setSuspiciousPlayer(true, String.format("trading insufficient amount of itemId: %d", item.getCatalogId()));
 						player.getTrade().resetAll();
 						return;
 					}
-					player.getTrade().addToOffer(tItem);
+
+					player.getTrade().addToOffer(item);
 				}
 
 				affectedPlayer.setRequiresOfferUpdate(true);
@@ -326,6 +337,7 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 	private void performTrade(Player player, Player affectedPlayer) {
 		List<Item> myOffer = player.getTrade().getTradeOffer().getItems();
 		List<Item> theirOffer = affectedPlayer.getTrade().getTradeOffer().getItems();
+		boolean updateOwnAppearance = false, updateOtherAppearance = false;
 
 		synchronized(myOffer) {
 			synchronized(theirOffer) {
@@ -362,8 +374,10 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 						player.getTrade().resetAll();
 						return;
 					}
+					ItemDefinition inventoryDef = affectedItem.getDef(player.getWorld());
 					if (affectedItem.isWielded() && !player.getConfig().WANT_EQUIPMENT_TAB) {
 						player.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(player, affectedItem, UnequipRequest.RequestType.CHECK_IF_EQUIPMENT_TAB, false));
+						updateOwnAppearance = true;
 					}
 
 					// Create item to be traded.
@@ -373,7 +387,8 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 					affectedItem = new Item(affectedItem.getCatalogId(), amount, affectedItem.getNoted(), affectedItem.getItemId());
 
 					// Remove item to be traded quantity from inventory.
-					player.getCarriedItems().getInventory().remove(affectedItem, true);
+					// bypass item id position in case its stackable or noteable to end up with clean stacks
+					player.getCarriedItems().getInventory().remove(affectedItem, true, inventoryDef.isStackable() || affectedItem.getNoted());
 				}
 
 				for (Item item : theirOffer) {
@@ -383,8 +398,10 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 						player.getTrade().resetAll();
 						return;
 					}
+					ItemDefinition inventoryDef = affectedItem.getDef(player.getWorld());
 					if (affectedItem.isWielded() && !player.getConfig().WANT_EQUIPMENT_TAB) {
 						affectedPlayer.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(affectedPlayer, affectedItem, UnequipRequest.RequestType.CHECK_IF_EQUIPMENT_TAB, false));
+						updateOtherAppearance = true;
 					}
 
 					int amount = Math.min(affectedItem.getAmount(), item.getAmount());
@@ -393,7 +410,32 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 					affectedItem = new Item(affectedItem.getCatalogId(), amount, affectedItem.getNoted(), affectedItem.getItemId());
 
 					// Remove item to be traded quantity from inventory.
-					affectedPlayer.getCarriedItems().getInventory().remove(affectedItem, true);
+					// bypass item id position in case its stackable or noteable to end up with clean stacks
+					affectedPlayer.getCarriedItems().getInventory().remove(affectedItem, true, inventoryDef.isStackable() || affectedItem.getNoted());
+				}
+
+				// set as next tick to ensure appearance update occurs
+				if (updateOwnAppearance) {
+					player.getWorld().getServer().getGameEventHandler().add(
+						new DelayedEvent(player.getWorld(), player, player.getConfig().GAME_TICK, "Update Appearance") {
+							@Override
+							public void run() {
+								getOwner().getUpdateFlags().setAppearanceChanged(true);
+								stop();
+							}
+						}
+					);
+				}
+				if (updateOtherAppearance) {
+					affectedPlayer.getWorld().getServer().getGameEventHandler().add(
+						new DelayedEvent(affectedPlayer.getWorld(), affectedPlayer, affectedPlayer.getConfig().GAME_TICK, "Update Appearance") {
+							@Override
+							public void run() {
+								getOwner().getUpdateFlags().setAppearanceChanged(true);
+								stop();
+							}
+						}
+					);
 				}
 
 				for (Item item : myOffer) {

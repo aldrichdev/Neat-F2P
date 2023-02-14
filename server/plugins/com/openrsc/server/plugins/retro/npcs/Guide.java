@@ -9,7 +9,7 @@ import static com.openrsc.server.plugins.Functions.*;
 
 public class Guide implements TalkNpcTrigger {
 	private void GuideDialogue(Player player, Npc npc, int cID) {
-		if (npc.getID() == NpcId.GUIDE_ORIGINAL.id() || npc.getID() == NpcId.GUIDE_ORIGINAL2.id()) {
+		if (npc.getID() == NpcId.GUIDE.id() || npc.getID() == NpcId.GUIDE_FEMALE.id()) {
 			switch(cID) {
 				case GUIDE.WHERE_START:
 					npcsay(player, npc, "You are at Lumbridge castle.",
@@ -394,7 +394,7 @@ public class Guide implements TalkNpcTrigger {
 		int option = multi(player, npc, false, // do not send over
 			"I just got here, where should I start?",
 			"I just want to fight, how can I be a good warrior?",
-			"I keep getting killed, its annoying me. What should I do?",
+			"I keep getting killed. It's annoying me. What should I do?",
 			"I am happy to just try things on my own, thanks");
 
 		if (option == 0) {
@@ -404,7 +404,9 @@ public class Guide implements TalkNpcTrigger {
 			say(player, npc, "How do I become a better warrior?");
 			GuideDialogue(player, npc, GUIDE.GOOD_WARRIOR);
 		} else if (option == 2) {
-			say(player, npc, "I keep getting killed, its annoying me. What should I do?");
+			// https://web.archive.org/web/20010805112653/http://runescapeplace.homestead.com:80/files/0101rune.jpg
+			// this line of dialogue got slightly revised grammar
+			say(player, npc, "I keep getting killed. It's annoying me. What should I do?");
 			GuideDialogue(player, npc, GUIDE.GETTING_KILLED);
 		} else if (option == 3) {
 			say(player, npc, "I am happy to just try things on my own, thanks");
@@ -415,7 +417,7 @@ public class Guide implements TalkNpcTrigger {
 
 	@Override
 	public boolean blockTalkNpc(Player player, Npc npc) {
-		return npc.getID() == NpcId.GUIDE_ORIGINAL.id() || npc.getID() == NpcId.GUIDE_ORIGINAL2.id();
+		return npc.getID() == NpcId.GUIDE.id() || npc.getID() == NpcId.GUIDE_FEMALE.id();
 	}
 
 	class GUIDE {

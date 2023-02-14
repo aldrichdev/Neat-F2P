@@ -12,6 +12,7 @@ import com.openrsc.server.database.patches.PatchApplier;
 import com.openrsc.server.event.custom.DailyShutdownEvent;
 import com.openrsc.server.event.custom.HourlyResetEvent;
 import com.openrsc.server.event.rsc.FinitePeriodicEvent;
+import com.openrsc.server.event.rsc.handler.GameEventHandler;
 import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.event.rsc.impl.combat.scripts.CombatScriptLoader;
 import com.openrsc.server.external.EntityHandler;
@@ -21,14 +22,13 @@ import com.openrsc.server.model.world.World;
 import com.openrsc.server.net.*;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.net.rsc.Crypto;
-import com.openrsc.server.plugins.PluginHandler;
+import com.openrsc.server.plugins.handler.PluginHandler;
+import com.openrsc.server.plugins.triggers.StartupTrigger;
 import com.openrsc.server.service.IPlayerService;
 import com.openrsc.server.service.PcapLoggerService;
 import com.openrsc.server.service.PlayerService;
-import com.openrsc.server.util.LogUtil;
-import com.openrsc.server.util.NamedThreadFactory;
-import com.openrsc.server.util.ServerAwareThreadFactory;
-import com.openrsc.server.util.SystemUtil;
+import com.openrsc.server.util.*;
+import com.openrsc.server.util.languages.I18NService;
 import com.openrsc.server.util.rsc.CaptchaGenerator;
 import com.openrsc.server.util.rsc.MessageType;
 import com.openrsc.server.util.rsc.StringUtil;
@@ -76,6 +76,7 @@ public class Server implements Runnable {
 	private final Constants constants;
 	private final RSCPacketFilter packetFilter;
 	private final IPlayerService playerService;
+	private final I18NService i18nService;
 
 	private final World world;
 	private final String name;
@@ -247,7 +248,8 @@ public class Server implements Runnable {
 		final boolean wantDiscordBot = getConfig().WANT_DISCORD_BOT;
 		final boolean wantDiscordAuctionUpdates = getConfig().WANT_DISCORD_AUCTION_UPDATES;
 		final boolean wantDiscordMonitoringUpdates = getConfig().WANT_DISCORD_MONITORING_UPDATES;
-		discordService = wantDiscordBot || wantDiscordAuctionUpdates || wantDiscordMonitoringUpdates ? new DiscordService(this) : null;
+		final boolean wantDiscordReportAbuseUpdates = getConfig().WANT_DISCORD_REPORT_ABUSE_UPDATES;
+		discordService = wantDiscordBot || wantDiscordAuctionUpdates || wantDiscordMonitoringUpdates || wantDiscordReportAbuseUpdates ? new DiscordService(this) : null;
 		loginExecutor = new LoginExecutor(this);
 		world = new World(this);
 		gameEventHandler = new GameEventHandler(this);
@@ -257,6 +259,7 @@ public class Server implements Runnable {
 		entityHandler = new EntityHandler(this);
 		achievementSystem = new AchievementSystem(this);
 		playerService = new PlayerService(world, config, database);
+		i18nService = new I18NService(this);
 
 		maxItemId = 0;
 	}
@@ -312,9 +315,19 @@ public class Server implements Runnable {
 					SystemUtil.exit(1);
 				}
 
-				LOGGER.info("Loading Prerendered Sleepword Images...");
-                CaptchaGenerator.loadPrerenderedCaptchas();
-                LOGGER.info("Loaded " + CaptchaGenerator.prerenderedSleepwordsSize + " Prerendered Sleepword Images");
+				PidShuffler.init();
+
+				if (getConfig().LOAD_PRERENDERED_SLEEPWORDS) {
+					LOGGER.info("Loading Prerendered Sleepword Images...");
+					CaptchaGenerator.loadPrerenderedCaptchas();
+					LOGGER.info("Loaded " + CaptchaGenerator.prerenderedSleepwordsSize + " Prerendered Sleepword Images");
+				}
+
+				if (getConfig().LOAD_SPECIAL_PRERENDERED_SLEEPWORDS) {
+					LOGGER.info("Loading Special Prerendered Sleepword Images...");
+					CaptchaGenerator.loadSpecialPrerenderedCaptchas();
+					LOGGER.info("Loaded " + CaptchaGenerator.prerenderedSleepwordsSpecialSize + " Special Prerendered Sleepword Images");
+				}
 
 				LOGGER.info("Loading Game Definitions...");
 				getEntityHandler().load();
@@ -328,10 +341,6 @@ public class Server implements Runnable {
 				getGameEventHandler().load();
 				LOGGER.info("Game Event Handler Completed");
 
-				LOGGER.info("Loading Plugins...");
-				getPluginHandler().load();
-				LOGGER.info("Plugins Completed");
-
 				LOGGER.info("Loading Combat Scripts...");
 				getCombatScriptLoader().load();
 				LOGGER.info("Combat Scripts Completed");
@@ -339,6 +348,10 @@ public class Server implements Runnable {
 				LOGGER.info("Loading World...");
 				getWorld().load();
 				LOGGER.info("World Completed");
+
+				LOGGER.info("Loading Plugins...");
+				getPluginHandler().load();
+				LOGGER.info("Plugins Completed");
 
 				/*LOGGER.info("Loading Achievements...");
 				getAchievementSystem().load();
@@ -399,7 +412,7 @@ public class Server implements Runnable {
 				bootstrap.childOption(ChannelOption.SO_RCVBUF, 10000);
 				bootstrap.childOption(ChannelOption.SO_SNDBUF, 10000);
 				try {
-					getPluginHandler().handlePlugin(getWorld(), "Startup", new Object[]{});
+					getPluginHandler().handlePlugin(StartupTrigger.class);
 					serverChannel = bootstrap.bind(new InetSocketAddress(getConfig().SERVER_PORT)).sync();
 					LOGGER.info("Game world is now online on port {}!", box(getConfig().SERVER_PORT));
                     LOGGER.info("RSA exponent: " + Crypto.getPublicExponent());
@@ -517,15 +530,34 @@ public class Server implements Runnable {
 							resetBenchmarkDurations();
 							incrementLastEventsDuration(getGameEventHandler().processNonPlayerEvents());
 							incrementLastWorldUpdateDuration(getGameUpdater().updateWorld());
-							for (final Player player : getWorld().getPlayers()) {
-								player.processTick();
+							if (config.SHUFFLE_PID_ORDER) {
+								for (int curPid : PidShuffler.pidProcessingOrder) {
+									Player player = getWorld().getPlayer(curPid);
+									if (player != null) {
+										player.processTick();
+									}
+								}
+								if (getCurrentTick() % config.SHUFFLE_PID_ORDER_INTERVAL == 0) {
+									PidShuffler.shuffle();
+								}
+							} else {
+								for (final Player player : getWorld().getPlayers()) {
+									player.processTick();
+								}
 							}
+
+							incrementLastExecuteWalkToActionsDuration(getGameUpdater().executePidlessCatching());
 							incrementLastProcessMessageQueuesDuration(getWorld().processGlobalMessageQueue());
 							incrementLastProcessNpcsDuration(getGameUpdater().processNpcs());
 							for (final Player player : getWorld().getPlayers()) {
+								player.processLogout();
+							}
+							for (final Player player : getWorld().getPlayers()) {
 								player.sendUpdates();
 							}
+
 							incrementLastDoCleanupDuration(getGameUpdater().doCleanup());
+							getGameEventHandler().cleanupEvents();
 						} catch (final Throwable t) {
 							LOGGER.catching(t);
 						}
@@ -567,8 +599,8 @@ public class Server implements Runnable {
 	private void dailyShutdownEvent() {
 		try {
 			if (getConfig().WANT_AUTO_SERVER_SHUTDOWN) {
-				HashMap<String, GameTickEvent> events = getWorld().getServer().getGameEventHandler().getEvents();
-				for (GameTickEvent event : events.values()) {
+				List<GameTickEvent> events = getWorld().getServer().getGameEventHandler().getEvents();
+				for (GameTickEvent event : events) {
 					if (!(event instanceof DailyShutdownEvent)) continue;
 
 					// There is already a daily shutdown running!;
@@ -589,8 +621,8 @@ public class Server implements Runnable {
 
 	private void resetEvent() {
 		if (getConfig().WANT_RESET_EVENT) {
-			HashMap<String, GameTickEvent> events = getWorld().getServer().getGameEventHandler().getEvents();
-			for (GameTickEvent event : events.values()) {
+			List<GameTickEvent> events = getWorld().getServer().getGameEventHandler().getEvents();
+			for (GameTickEvent event : events) {
 				if (!(event instanceof HourlyResetEvent)) continue;
 
 				// There is already an hourly reset running!;
@@ -640,7 +672,7 @@ public class Server implements Runnable {
 
 		LOGGER.warn(message);
 		if (getWorld().getServer().getDiscordService() != null) {
-			getWorld().getServer().getDiscordService().monitoringSendServerBehind(message, showEventData);
+			getWorld().getServer().getDiscordService().monitoringSendServerBehind("**=== " + getWorld().getServer().getName() + "===**\n" + message, showEventData);
 		}
 	}
 
@@ -748,6 +780,10 @@ public class Server implements Runnable {
 		return packetFilter.recalculateLoggedInCounts();
 	}
 
+	public final int getPlayersCount(String hostAddress) {
+		return packetFilter.getPlayersCount(hostAddress);
+	}
+
 	public final long getLastIncomingPacketsDuration() {
 		return lastIncomingPacketsDuration;
 	}
@@ -848,6 +884,10 @@ public class Server implements Runnable {
 
 	public AchievementSystem getAchievementSystem() {
 		return achievementSystem;
+	}
+
+	public I18NService getI18nService() {
+		return i18nService;
 	}
 
 	public boolean isRestarting() {

@@ -2,6 +2,7 @@ package com.openrsc.server.event.rsc.impl.projectile;
 
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.content.DropTable;
+import com.openrsc.server.event.rsc.DuplicationStrategy;
 import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.model.PathValidation;
 import com.openrsc.server.model.container.Item;
@@ -12,6 +13,8 @@ import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.Prayers;
 import com.openrsc.server.model.world.World;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.plugins.triggers.PlayerRangeNpcTrigger;
+import com.openrsc.server.plugins.triggers.PlayerRangePlayerTrigger;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
 
@@ -20,10 +23,9 @@ public class ThrowingEvent extends GameTickEvent {
 	private boolean deliveredFirstProjectile;
 	private Mob target;
 
-	public ThrowingEvent(World world, Player owner, Mob victim) {
-		super(world, owner, 1, "Throwing Event", false);
+	public ThrowingEvent(final World world, final Player owner, final long ticksDelay, final Mob victim) {
+		super(world, owner, ticksDelay, "Throwing Event", DuplicationStrategy.ONE_PER_MOB);
 		this.target = victim;
-		this.deliveredFirstProjectile = false;
 	}
 
 	public boolean equals(Object o) {
@@ -36,6 +38,15 @@ public class ThrowingEvent extends GameTickEvent {
 
 	public Mob getTarget() {
 		return target;
+	}
+
+	public void reTarget(final Mob mob) {
+		target = mob;
+		setDelayTicks(2);
+	}
+
+	public void restart() {
+		running = true;
 	}
 
 	private GroundItem getFloorItem(int id) {
@@ -96,16 +107,24 @@ public class ThrowingEvent extends GameTickEvent {
 		}
 
 		if (target.isNpc()) {
-			if (target.getWorld().getServer().getPluginHandler().handlePlugin(getPlayerOwner(), "PlayerRangeNpc", new Object[]{getOwner(), target})) {
-				throw new ProjectileException(ProjectileFailureReason.HANDLED_BY_PLUGIN);
+			if (target.getWorld().getServer().getPluginHandler().handlePlugin(PlayerRangeNpcTrigger.class, getPlayerOwner(), new Object[]{getOwner(), target})) {
+				player.resetRange();
+				return;
 			}
-		} else if(target.isPlayer()) {
-			if (target.getWorld().getServer().getPluginHandler().handlePlugin(player, "PlayerRangePlayer", new Object[]{getOwner(), target})) {
-				throw new ProjectileException(ProjectileFailureReason.HANDLED_BY_PLUGIN);
+		} else {
+			if (target.getWorld().getServer().getPluginHandler().handlePlugin(PlayerRangePlayerTrigger.class, player, new Object[]{getOwner(), target})) {
+				player.resetRange();
+				return;
 			}
 		}
 
-		RangeUtils.checkOutOfAmmo(player, throwingID);
+		if (throwingID == -1) {
+			ActionSender.sendSound(player, "outofammo");
+			player.message(ProjectileFailureReason.OUT_OF_AMMO.getText());
+			player.resetRange();
+			return;
+		}
+
 		Item rangeType;
 		int slot;
 		if (getWorld().getServer().getConfig().WANT_EQUIPMENT_TAB) {
@@ -142,7 +161,7 @@ public class ThrowingEvent extends GameTickEvent {
 		int damage = RangeUtils.doRangedDamage(player, throwingID, throwingID, target);
 
 		RangeUtils.applyDragonFireBreath(player, target, deliveredFirstProjectile);
-		if(target.isPlayer() && damage > 0) {
+		if((target.isPlayer() || getWorld().getServer().getConfig().RANGED_GIVES_XP_HIT) && damage > 0) {
 			player.incExp(Skill.RANGED.id(), Formulae.rangedHitExperience(target, damage), true);
 		}
 

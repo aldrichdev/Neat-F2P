@@ -19,24 +19,28 @@ import java.util.stream.IntStream;
 @SuppressWarnings("ConstantConditions")
 public class EntityList<T extends Entity> extends AbstractCollection<T> {
 
-    private static final int DEFAULT_CAPACITY = 2000;
-    private final Queue<Integer> priorityIdPool;
-    private final ConcurrentHashMap<Integer, Object> occupiedIndices;
+    public static final int DEFAULT_CAPACITY = 2000;
+    private Queue<Integer> priorityIdPool;
+    private ConcurrentHashMap<Integer, Object> occupiedIndices;
     private final int capacity;
-    private final Object[] entities;
+    private Object[] entities;
 
     public EntityList() {
         this(DEFAULT_CAPACITY);
     }
 
     public EntityList(final int capacity) {
-        this.priorityIdPool = IntStream.range(0, capacity)
-                .boxed()
-                .collect(Collectors.toCollection(() -> new PriorityQueue<>(capacity)));
-        this.occupiedIndices = new ConcurrentHashMap<>();
-        this.entities = new Object[capacity];
-        this.capacity = capacity;
+		this.capacity = capacity;
+		initialize();
     }
+
+	private void initialize() {
+		this.priorityIdPool = IntStream.range(0, capacity)
+			.boxed()
+			.collect(Collectors.toCollection(() -> new PriorityQueue<>(capacity)));
+		this.occupiedIndices = new ConcurrentHashMap<>();
+		this.entities = new Object[capacity];
+	}
 
     public synchronized boolean add(final T entity) {
         if (size() >= capacity) {
@@ -103,15 +107,7 @@ public class EntityList<T extends Entity> extends AbstractCollection<T> {
     }
 
 	public void clear() {
-		Iterator<T> it = Arrays.stream(entities)
-			.filter(Objects::nonNull)
-			.map(entity -> (T) entity)
-			.collect(Collectors.toList())
-			.iterator();
-		while (it.hasNext()) {
-			it.next();
-			it.remove();
-		}
+		initialize();
 	}
 
     @SuppressWarnings("unchecked")
@@ -119,8 +115,10 @@ public class EntityList<T extends Entity> extends AbstractCollection<T> {
         if(index >= 0) {
             T entity = (T) entities[index];
             if (entity != null) {
-                entity.setIndex(-1);
-            }
+				// regression check, the below code was added back
+				// to see if removing it was the cause of login 4 for uranium
+				entity.setIndex(-1);
+			}
             entities[index] = null;
             occupiedIndices.remove(index);
             priorityIdPool.offer(index);

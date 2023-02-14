@@ -1,7 +1,6 @@
 package orsc;
 
 import com.openrsc.client.model.Sprite;
-import orsc.enumerations.MessageTab;
 import orsc.graphics.two.Fonts;
 import orsc.multiclient.ClientPort;
 import orsc.util.GenUtil;
@@ -14,8 +13,8 @@ import java.awt.event.*;
 import java.awt.image.*;
 import java.io.ByteArrayInputStream;
 
-import static orsc.Config.*;
-import static orsc.osConfig.*;
+import static orsc.Config.S_ZOOM_VIEW_TOGGLE;
+import static orsc.osConfig.C_LAST_ZOOM;
 
 public class ORSCApplet extends Applet implements MouseListener, MouseMotionListener, KeyListener, MouseWheelListener, ComponentListener,
 	ImageObserver, ImageProducer, ClientPort {
@@ -161,7 +160,7 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 			if (hitInputFilter && mudclient.inputTextCurrent.length() < 20)
 				mudclient.inputTextCurrent = mudclient.inputTextCurrent + keyChar;
 
-			if (hitInputFilter && mudclient.chatMessageInput.length() < 80)
+			if (hitInputFilter && mudclient.chatMessageInput.length() < 80 && !mudclient.getIsSleeping())
 				mudclient.chatMessageInput = mudclient.chatMessageInput + keyChar;
 
 			// Backspace
@@ -234,32 +233,53 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 			if (mudclient.mouseLastProcessedX != 0 && mudclient.mouseLastProcessedY != 0) {
 				int distanceX = (mudclient.mouseX - mudclient.mouseLastProcessedX)/2;
 				int distanceY = (mudclient.mouseY - mudclient.mouseLastProcessedY)/2;
+				boolean touchedMessagePanelArea = mudclient.getGameHeight() - Math.max(mudclient.mouseY, mudclient.mouseLastProcessedY) <= 66;
 
-				if (mudclient.showUiTab == 0) {
-					if (!mudclient.isInFirstPersonView() && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff()) && !var1.isControlDown()) {
-						if (osConfig.C_SWIPE_TO_ZOOM) {
-							int newZoom = C_LAST_ZOOM + distanceY;
-							// Keep C_LAST_ZOOM aka the zoom increments on the range of [0, 255]
-							if (newZoom >= 0 && newZoom <= 255) {
-								C_LAST_ZOOM = newZoom;
-							}
+				boolean scrollableMessagePanel = mudclient.hasScroll(mudclient.messageTabSelected) && touchedMessagePanelArea;
+				boolean mayBeScrollable = mudclient.showUiTab != 0;
+				boolean zoomable = (!scrollableMessagePanel && !mayBeScrollable) || osConfig.C_SWIPE_TO_SCROLL_MODE == 0;
+
+				if (!mudclient.isInFirstPersonView() && zoomable && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff()) && !var1.isControlDown()) {
+					if (osConfig.C_SWIPE_TO_ZOOM_MODE != 0) {
+						int dir = osConfig.C_SWIPE_TO_ZOOM_MODE == 2 ? -1 : 1;
+						int newZoom = C_LAST_ZOOM + dir * distanceY;
+						// Keep C_LAST_ZOOM aka the zoom increments on the range of [0, 255]
+						if (newZoom >= 0 && newZoom <= 255) {
+							C_LAST_ZOOM = newZoom;
 						}
-					} else if (mudclient.isInFirstPersonView() && mudclient.cameraAllowPitchModification) {
-						mudclient.cameraPitch = (mudclient.cameraPitch + (-distanceY * 2)) & 1023;
-
-						// Limit on the half circled where everything is right side up
-						if (mudclient.cameraPitch > 256 && mudclient.cameraPitch <= 512)
-							mudclient.cameraPitch = 256;
-
-						if (mudclient.cameraPitch < 768 && mudclient.cameraPitch > 512)
-							mudclient.cameraPitch = 768;
 					}
-					if (osConfig.C_SWIPE_TO_ROTATE) {
+				} else if (mudclient.isInFirstPersonView() && mudclient.cameraAllowPitchModification) {
+					mudclient.cameraPitch = (mudclient.cameraPitch + (-distanceY * 2)) & 1023;
+
+					// Limit on the half circled where everything is right side up
+					if (mudclient.cameraPitch > 256 && mudclient.cameraPitch <= 512)
+						mudclient.cameraPitch = 256;
+
+					if (mudclient.cameraPitch < 768 && mudclient.cameraPitch > 512)
+						mudclient.cameraPitch = 768;
+				}
+				if (osConfig.C_SWIPE_TO_ROTATE_MODE != 0) {
+					// camera set to auto does not like manual like rotation
+					if (!mudclient.getOptionCameraModeAuto()) {
+						int dir = osConfig.C_SWIPE_TO_ROTATE_MODE == 2 ? -1 : 1;
 						float clientDist = distanceX / (getWidth() / (float) mudclient.getGameWidth());
-						mudclient.cameraRotation = (255 & mudclient.cameraRotation + (int) (clientDist));
+						mudclient.cameraRotation = (255 & mudclient.cameraRotation + (int) (dir * clientDist));
+					} else {
+						// swipe to left gives negative distanceX, to left negative
+						int dir = osConfig.C_SWIPE_TO_ROTATE_MODE == 2 ? -1 : 1;
+						boolean toLeft = dir * distanceX < 0;
+						if (toLeft) {
+							mudclient.keyLeft = true;
+						} else {
+							mudclient.keyRight = true;
+						}
 					}
-				} else {
-					mudclient.runScroll(distanceY);
+				}
+				if (!zoomable) {
+					if (osConfig.C_SWIPE_TO_SCROLL_MODE != 0) {
+						int dir = osConfig.C_SWIPE_TO_SCROLL_MODE == 2 ? -1 : 1;
+						mudclient.runScroll(dir * distanceY);
+					}
 				}
 
 				// To make the mouse move:
@@ -355,17 +375,22 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 	@Override
 	public final synchronized void mouseWheelMoved(MouseWheelEvent e) {
 		updateControlShiftState(e);
-		mudclient.runScroll(e.getWheelRotation());
+
+		boolean touchedMessagePanelArea = getHeight() - e.getY() <= 75;
+
+		boolean scrollableMessagePanel = mudclient.hasScroll(mudclient.messageTabSelected) && touchedMessagePanelArea;
+		boolean mayBeScrollable = mudclient.showUiTab != 0;
+		boolean zoomable = !scrollableMessagePanel && !mayBeScrollable;
+
 
 		// Disables zoom while visible
-		if (Config.S_SPAWN_AUCTION_NPCS && mudclient.auctionHouse.isVisible() || mudclient.onlineList.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.skillGuideInterface.isVisible()
+		boolean inScrollable = (Config.S_SPAWN_AUCTION_NPCS && mudclient.auctionHouse.isVisible() || mudclient.onlineList.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.skillGuideInterface.isVisible()
 			|| Config.S_WANT_QUEST_MENUS && mudclient.questGuideInterface.isVisible() || mudclient.clan.getClanInterface().isVisible() || mudclient.experienceConfigInterface.isVisible()
 			|| mudclient.ironmanInterface.isVisible() || mudclient.achievementInterface.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.doSkillInterface.isVisible()
-			|| Config.S_ITEMS_ON_DEATH_MENU && mudclient.lostOnDeathInterface.isVisible() || mudclient.territorySignupInterface.isVisible() || mudclient.messageTabSelected != MessageTab.ALL
-			|| mudclient.isShowDialogBank())
-			return;
+			|| Config.S_ITEMS_ON_DEATH_MENU && mudclient.lostOnDeathInterface.isVisible() || mudclient.territorySignupInterface.isVisible()
+			|| mudclient.isShowDialogBank());
 
-		if (mudclient.showUiTab == 0 && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff())) {
+		if (!inScrollable && zoomable && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff())) {
 			e.consume();
 			final int zoomIncrement = 10;
 			int zoomAmount = e.getWheelRotation() * zoomIncrement;
@@ -374,6 +399,11 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 			if (newZoom >= 0 && newZoom <= 255) {
 				C_LAST_ZOOM = newZoom;
 			}
+		}
+
+		if (inScrollable || !zoomable) {
+			e.consume();
+			mudclient.runScroll(e.getWheelRotation());
 		}
 	}
 

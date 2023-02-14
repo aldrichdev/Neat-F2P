@@ -29,7 +29,9 @@ import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -100,6 +102,7 @@ import java.util.stream.Collectors;
 public class Functions {
 
 	private static final int DEFAULT_TICK = 640;
+	public static int ZERO_RESERVED = Integer.MAX_VALUE;
 
 	/**
 	 * The asynchronous logger.
@@ -203,6 +206,47 @@ public class Functions {
 	}
 
 	/**
+	 * Displays server message(s) with type
+	 * This is a i18n translation helper in OpenRSC, and not part of original RuneScript
+	 *
+	 * @param messageKeys
+	 */
+	public static void mez(final String... messageKeys) {
+		final ScriptContext scriptContext = PluginTask.getContextPluginTask().getScriptContext();
+		if (scriptContext == null) return;
+		final Player player = scriptContext.getContextPlayer();
+		if (player == null) return;
+		for (final String messageKey : messageKeys) {
+			if (!messageKey.equalsIgnoreCase("null")) {
+				String message = player.getMez(messageKey);
+				String infoContained = message.substring(1, 2);
+				String messageContent = "Cabbage";
+				String colorString = null;
+				switch (infoContained) {
+					case ";": // no special info contained
+						messageContent = message.substring(2);
+						break;
+					case "@": // color included
+						messageContent = message.substring(2, message.length() - 5);
+						colorString = message.substring(message.length() - 5);
+						break;
+				}
+				MessageType messageType = MessageType.GAME;
+				try {
+					messageType = MessageType.lookup(Integer.parseInt(message.substring(0, 1)));
+				} catch (NumberFormatException ex) {
+					LOGGER.error("Bad message type in mez: \"" + message + "\";; player language locale: " + player.getPreferredLanguage().getLocaleName());
+				}
+				if (null == messageType) {
+					messageType = MessageType.GAME;
+				}
+
+				ActionSender.sendMessage(player, null, messageType, messageContent, 0, colorString);
+			}
+		}
+	}
+
+	/**
 	 * Player message(s), each message has 2.2s delay between.
 	 *
 	 * @param player
@@ -220,23 +264,50 @@ public class Functions {
 			player.face(npc);
 		}
 		for (final String message : messages) {
-			if (!message.equalsIgnoreCase("null")) {
-				if (npc != null) {
-					if (npc.isRemoved()) {
-						player.setBusy(false);
-						return;
-					}
-				}
-				if (npc != null) {
-					npc.resetPath();
-				}
-				if (!player.inCombat()) {
-					player.resetPath();
-				}
-				player.getUpdateFlags().setChatMessage(new ChatMessage(player, message, (npc == null ? player : npc)));
-			}
+			if (deliverMessage(player, npc, message)) return;
 			delay(normalizeTicks(calcDelay(message), player.getConfig().GAME_TICK));
 		}
+	}
+
+	/**
+	 * Player message(s), no delay
+	 *
+	 * @param player
+	 * @param npc
+	 * @param messages
+	 */
+	public static void qsay(final Player player, Npc npc, final String... messages) {
+		final ScriptContext scriptContext = PluginTask.getContextPluginTask().getScriptContext();
+		if (scriptContext == null) return;
+		npc = npc != null ? npc : scriptContext.getInteractingNpc();
+		if(npc != null) {
+			npc.face(player);
+		}
+		if (npc != null && !player.inCombat()) {
+			player.face(npc);
+		}
+		for (final String message : messages) {
+			if (deliverMessage(player, npc, message)) return;
+		}
+	}
+
+	static boolean deliverMessage(Player player, Npc npc, String message) {
+		if (!message.equalsIgnoreCase("null")) {
+			if (npc != null) {
+				if (npc.isRemoved()) {
+					player.setBusy(false);
+					return true;
+				}
+			}
+			if (npc != null) {
+				npc.resetPath();
+			}
+			if (!player.inCombat()) {
+				player.resetPath();
+			}
+			player.getUpdateFlags().setChatMessage(new ChatMessage(player, message, (npc == null ? player : npc)));
+		}
+		return false;
 	}
 
 	public static void say(final Player player, final String message) {
@@ -254,6 +325,7 @@ public class Functions {
 
 	public static int multi(final Player player, final Npc npc, final boolean sendToClient, final String... options) {
 		LOGGER.info("enter multi, " + PluginTask.getContextPluginTask().getDescriptor() + " tick " + PluginTask.getContextPluginTask().getWorld().getServer().getCurrentTick());
+
 		final long start = System.currentTimeMillis();
 		if (npc != null) {
 			if (npc.isRemoved()) {
@@ -261,6 +333,10 @@ public class Functions {
 				return -1;
 			}
 			else {
+				npc.setPlayerBeingTalkedTo(player);
+				npc.setMultiTimeout(start);
+				//We'll clear this on each new multi. Other players need to talk to the NPC again if they want to steal it!
+				npc.setPlayerWantsNpc(false);
 				npc.face(player);
 			}
 		}
@@ -269,13 +345,19 @@ public class Functions {
 		ActionSender.sendMenu(player, options);
 
 		while (!player.checkUnderAttack()) {
+			//If we get to this point and the multi timeout is higher than our start or is -1, someone has changed it! We should kill the multi if it hasn't been killed by other means.
+			if (npc != null && (npc.getMultiTimeout() == -1 || npc.getMultiTimeout() > start)) {
+				player.resetMenuHandler();
+				return -1;
+			}
+
 			if (player.getOption() != -1) {
 				if (npc != null && options[player.getOption()] != null) {
 					if (sendToClient)
 						say(player, npc, options[player.getOption()]);
 				}
 				return player.getOption();
-			} else if (System.currentTimeMillis() - start > 500L * player.getConfig().GAME_TICK || player.getMenuHandler() == null) {
+			} else if (multiMenuNeedsCancel(start, player, npc)) {
 				player.resetMenuHandler();
 				return -1;
 			}
@@ -285,6 +367,17 @@ public class Functions {
 		player.releaseUnderAttack();
 		return -1;
 	}
+
+	protected static boolean multiMenuNeedsCancel(long start, Player player, Npc npc) {
+		final long currentTime = System.currentTimeMillis();
+		final int tick = player.getConfig().GAME_TICK;
+		final boolean hasBeenFiveMinutes = currentTime - start > normalizeTicks(500, tick) * (long)tick;
+
+		return (hasBeenFiveMinutes ||
+			(npc != null && npc.getPlayerWantsNpc() && System.currentTimeMillis() - start >= 20000L) ||
+			player.getMenuHandler() == null);
+	}
+
 
 	public static void advancestat(Player player, int skillId, int baseXp, int expPerLvl) {
 		player.incExp(skillId, player.getSkills().getMaxStat(skillId) * expPerLvl + baseXp, true);
@@ -423,7 +516,7 @@ public class Functions {
 
 	public static void changeloc(GameObject obj, int delay, int replaceID) {
 		// Object to replace old
-		final GameObject replaceObj = new GameObject(obj.getWorld(), obj.getLocation(), replaceID, obj.getDirection(), obj.getType());
+		final GameObject replaceObj = new GameObject(obj.getWorld(), obj.getLocation(), replaceID, obj.getID(), obj.getDirection(), obj.getType());
 		addloc(replaceObj);
 		addloc(obj.getWorld(), obj.getLoc(), delay);
 	}
@@ -816,6 +909,100 @@ public class Functions {
 		return player.getAttribute("bankpin", false);
 	}
 
+	public static boolean bankpinoptout(final Player player, final Npc n, final boolean concerned) {
+		say(player, n, "Can you please never mention bank pins to me again?");
+		if (!player.getCache().hasKey("bank_pin")) {
+			// Player does not have an existing bank pin
+			if (!concerned) {
+				npcsay(player, n, "Gladly.");
+				player.getCache().store("bankpin_optout", 792);
+				if (player.getBankPinOptOut()) {
+					npcsay(player, n, "I won't even mention that bank pins are a concept I know about.",
+						"If some of your items go missing,",
+						"please note that we do not insure your items against loss.",
+						"If you change your mind about bank pins in the future, use a key on me.");
+					say(player, n, "Any key in particular?");
+					npcsay(player, n, "No, just any key will work.",
+						"And I'll set you back up with the latest in inauthentic bank security.");
+				} else {
+					npcsay(player, n, "yo it failed try again...");
+				}
+				return player.getBankPinOptOut();
+			}
+			npcsay(player, n, "Err, are you sure?");
+			if (player.isUsingCustomClient()) {
+				npcsay(player, n, "With that inauthentic custom client you're using, they're not even that annoying!");
+				if (player.isUsingAndroidClient()) {
+					say(player, n, "yea, but I don't really have a choice to use a more authentic client right now on Android...");
+					npcsay(player, n, "Fair enough. Maybe in the future that'll change.");
+					// TODO: port mudclient177 to android
+				} else {
+					say(player, n, "this is just the client I like please don't make fun of me");
+					npcsay(player, n, "okay, it's just, have you seen the new launcher?");
+					npcsay(player, n, "there are so many better options now!");
+					npcsay(player, n, "WinRune, RSC+, web client...");
+					npcsay(player, n, "If a more authentic experience is what you're going for,");
+					npcsay(player, n, "you should really consider using one of those instead.");
+					delay(3);
+					say(player, n, "okay maybe. but, the bank pin?");
+					npcsay(player, n, "Right");
+				}
+				npcsay(player, n, "So you're sure you want me to stop even mentioning that enhanced security option?");
+			} else {
+				// player is using an authentic client
+				npcsay(player, n, "You want me to stop even mentioning that enhanced security option?");
+			}
+			int reallyOptOut = multi(player, n, "Yes, it's inauthentic.",
+				"Yes, I don't think there's really any risk of being hacked.",
+				"Yes, I already have a really secure password.",
+				"No, actually, I shouldn't disable it...");
+			switch (reallyOptOut) {
+				case 0:
+				case 1:
+				case 2:
+					npcsay(player, n, "Understandable.");
+					player.getCache().store("bankpin_optout", reallyOptOut);
+					if (player.getBankPinOptOut()) {
+						if (reallyOptOut == 1) {
+							npcsay(player, n, "but, it could happen you know");
+							npcsay(player, n, "Even in a tight-knit small community like this one.",
+								"Regardless,");
+						} else if (reallyOptOut == 2) {
+							npcsay(player, n, "I mean, maybe you do",
+								"but even with a long password,",
+								"you could still be keylogged or hacked some other way.",
+								"Regardless,");
+						}
+						npcsay(player, n, "I won't even mention that bank pins are a concept I know about then.",
+							"If some of your items go missing,",
+							"please note that we do not insure your items against loss.",
+							"If you change your mind about bank pins in the future, use a key on me.");
+						say(player, n, "Any key in particular?");
+						npcsay(player, n, "No, just any key will work.",
+							"And I'll set you back up with the latest in inauthentic bank security.");
+						return player.getBankPinOptOut();
+					} else {
+						// ????
+						npcsay(player, n, "Yep, really and totally completely understandable.",
+							"However, uhm, please try again ok?",
+							"I've err,... dropped my hearing aide or something...");
+					}
+					return player.getBankPinOptOut();
+				case 3:
+					npcsay(player, n, "I knew you had good common sense!");
+					npcsay(player, n, "We're very glad at the Bank of Runescape to offer this enhanced security feature to you.");
+					return player.getBankPinOptOut();
+				default:
+					return player.getBankPinOptOut();
+			}
+
+		} else {
+			// player has a bank pin
+			npcsay(player, n, "Err, maybe, but you'll need to remove your existing bank pin first.");
+			return player.getBankPinOptOut();
+		}
+	}
+
 	public static boolean ifinterrupted() {
 		final ScriptContext scriptContext = PluginTask.getContextPluginTask().getScriptContext();
 		if (scriptContext == null) return true;
@@ -842,6 +1029,7 @@ public class Functions {
 		Batch batch = new Batch(player);
 		batch.initialize(totalBatch);
 		batch.start();
+		player.setBatch(batch);
 		scriptContext.setBatch(batch);
 	}
 
@@ -855,6 +1043,7 @@ public class Functions {
 	}
 
 	public static void stopbatch() {
+		Optional.ofNullable(sniffBatchFromCurrentThread()).ifPresent(batch -> batch.getPlayer().setBatch(null));
 		Optional.ofNullable(sniffBatchFromCurrentThread()).ifPresent(Batch::stop);
 	}
 
@@ -941,8 +1130,9 @@ public class Functions {
 
 		@SuppressWarnings("unchecked")
 		T result = (T) base.getClass().newInstance();
-		Object[] fields = Arrays.stream(base.getClass().getDeclaredFields()).filter(f -> !f.getName().equals("serialVersionUID")).collect(Collectors.toList()).toArray();
+		List<Field> fields = getAllFields(base.getClass()).stream().filter(f -> !f.getName().equals("serialVersionUID")).collect(Collectors.toList());
 		boolean accessibleChange = false;
+		Object fieldOfDiff, fieldOfBase;
 		for (Object fieldObj : fields) {
 			Field field = (Field) fieldObj;
 			if (!field.isAccessible()) {
@@ -950,10 +1140,12 @@ public class Functions {
 				accessibleChange = true;
 			}
 			boolean isPrimitive = field.getType().isPrimitive();
-			field.set(result, !isPrimitive ? (field.get(diff) != null ? field.get(diff) : field.get(base)) : (
-				!field.get(diff).toString().equals("0") && !field.get(diff).toString().equals("0.0")
-					&& !field.get(diff).toString().equals("false") && !field.get(diff).toString().equals("")
-					? field.get(diff) : field.get(base)
+			fieldOfDiff = field.get(diff);
+			fieldOfBase = field.get(base);
+			field.set(result, !isPrimitive ? (fieldOfDiff != null ? fieldOfDiff : fieldOfBase) : (
+				!fieldOfDiff.toString().equals("0") && !fieldOfDiff.toString().equals("0.0")
+					&& !fieldOfDiff.toString().equals("false") && !fieldOfDiff.toString().equals("")
+					? (fieldOfDiff.toString().equals(Long.toString(ZERO_RESERVED)) ? 0 : fieldOfDiff) : fieldOfBase
 				));
 			if (accessibleChange) {
 				accessibleChange = false;
@@ -961,6 +1153,14 @@ public class Functions {
 			}
 		}
 		return result;
+	}
+
+	public static List<Field> getAllFields(Class<?> type) {
+		List<Field> fields = new ArrayList<Field>();
+		for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+			fields.addAll(Arrays.asList(c.getDeclaredFields()));
+		}
+		return fields;
 	}
 
 	public static boolean inArray(Object o, Object... oArray) {

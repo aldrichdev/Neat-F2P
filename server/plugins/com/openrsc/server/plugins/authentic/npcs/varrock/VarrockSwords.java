@@ -24,7 +24,7 @@ public final class VarrockSwords extends AbstractShop {
 
 	@Override
 	public boolean blockTalkNpc(final Player player, final Npc n) {
-		return (n.getID() == NpcId.SHOPKEEPER_VARROCK_SWORD.id() || n.getID() == NpcId.SHOP_ASSISTANT_VARROCK_SWORD.id());
+		return !player.getConfig().WANT_OPENPK_POINTS && (n.getID() == NpcId.SHOPKEEPER_VARROCK_SWORD.id() || n.getID() == NpcId.SHOP_ASSISTANT_VARROCK_SWORD.id());
 	}
 
 	@Override

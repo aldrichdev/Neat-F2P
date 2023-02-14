@@ -8,10 +8,15 @@ import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.SleepStruct;
 import com.openrsc.server.util.rsc.CaptchaGenerator;
+import com.openrsc.server.util.rsc.PrerenderedSleepword;
 
 public final class SleepHandler implements PayloadProcessor<SleepStruct, OpcodeIn> {
 
 	public void process(SleepStruct payload, Player player) throws Exception {
+		if (!player.isSleeping()) {
+			return;
+		}
+		
 		String sleepWord;
 		if (player.isUsing233CompatibleClient()) {
 			int sleepDelay = payload.sleepDelay; // TODO: use this somehow
@@ -30,28 +35,43 @@ public final class SleepHandler implements PayloadProcessor<SleepStruct, OpcodeI
 					}
 				});
 		} else {
-			if (!player.isSleeping()) {
-				return;
-			}
 			String correctWord;
 			boolean knowCorrectWord = true;
-			if (CaptchaGenerator.usingPrerenderedSleepwords) {
-			    knowCorrectWord = CaptchaGenerator.prerenderedSleepwords.get(player.getPrerenderedSleepwordIndex()).knowTheCorrectWord;
+			PrerenderedSleepword curSleepword = null;
+			if (null != player.queuedSleepword) {
+				curSleepword = player.queuedSleepword;
+			} else {
+				if (CaptchaGenerator.usingPrerenderedSleepwords) {
+					curSleepword = CaptchaGenerator.prerenderedSleepwords.get(player.getPrerenderedSleepwordIndex());
+				} else {
+					// server failed to load prerendered sleepwords.
+					// word is "asleep", but we won't check that.
+					knowCorrectWord = false;
+				}
+			}
+
+			if (knowCorrectWord && (CaptchaGenerator.usingPrerenderedSleepwords || (null != player.queuedSleepword && CaptchaGenerator.usingPrerenderedSleepwordsSpecial))) {
+			    knowCorrectWord = curSleepword.knowTheCorrectWord;
 			    if (knowCorrectWord) {
-			        correctWord = CaptchaGenerator.prerenderedSleepwords.get(player.getPrerenderedSleepwordIndex()).correctWord;
+			        correctWord = curSleepword.correctWord;
                 } else {
                     correctWord = "-null-";
-                    // CaptchaGenerator.prerenderedSleepwords.get(player.getPrerenderedSleepwordIndex()).userGuesses.add(sleepWord);
                     player.getWorld().getServer().getGameLogger().addQuery(new GenericLog(player.getWorld(), player.getUsername() + " guessed !_" + sleepWord + "_! for filename:: " + CaptchaGenerator.prerenderedSleepwords.get(player.getPrerenderedSleepwordIndex()).filename));
                 }
             } else {
 			    correctWord = player.getSleepword();
             }
 			if (sleepWord.equalsIgnoreCase(correctWord) || !knowCorrectWord) {
+				if (null != player.queuedSleepword) {
+					try {
+						player.queuedSleepwordSender.message("@whi@" + player.getUsername() + " correctly guessed @cya@" + sleepWord + "@whi@ for sleepword @cya@" + curSleepword.filename);
+					} catch (Exception ex) {} // moderator likely logged out
+					player.queuedSleepword = null;
+				}
 				ActionSender.sendWakeUp(player, true, false);
 				player.resetSleepTries();
 				// Advance the fatigue expert part of tutorial island
-				if(player.getCache().hasKey("tutorial") && player.getCache().getInt("tutorial") == 85)
+				if (player.getCache().hasKey("tutorial") && player.getCache().getInt("tutorial") == 85)
 					player.getCache().set("tutorial", 86);
 
 				//Handle exp toggle for servers without fatigue
@@ -59,10 +79,23 @@ public final class SleepHandler implements PayloadProcessor<SleepStruct, OpcodeI
 					handleExpToggle(player);
 				}
 			} else {
+				if (null != player.queuedSleepword) {
+					try {
+						player.queuedSleepwordSender.message("@whi@" + player.getUsername() + " incorrectly guessed @cya@" + sleepWord + "@whi@ for sleepword @cya@" + curSleepword.filename);
+					} catch (Exception ex) {} // moderator likely logged out
+					if (player.getIncorrectSleepTimes() > 2) {
+						player.queuedSleepword = null;
+						ActionSender.sendWakeUp(player, true, false);
+						player.resetSleepTries();
+						return;
+					}
+				}
 				ActionSender.sendIncorrectSleepword(player);
 				player.incrementSleepTries();
 				if (player.getIncorrectSleepTimes() > 5) {
-					player.getWorld().sendModAnnouncement(player.getUsername() + " has failed sleeping captcha " + player.getIncorrectSleepTimes() + " times!");
+					if (player.getConfig().WARN_EXCESSIVE_CAPTCHA_FAILURE) {
+						player.getWorld().sendModAnnouncement(player.getUsername() + " has failed sleeping captcha " + player.getIncorrectSleepTimes() + " times!");
+					}
 					player.getWorld().getServer().getGameLogger().addQuery(new GenericLog(player.getWorld(), player.getUsername() + " has failed sleeping captcha " + player.getIncorrectSleepTimes() + " times!"));
 				}
 

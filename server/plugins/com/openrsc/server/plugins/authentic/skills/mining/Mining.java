@@ -2,12 +2,15 @@ package com.openrsc.server.plugins.authentic.skills.mining;
 
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Quests;
+import com.openrsc.server.constants.SceneryId;
 import com.openrsc.server.constants.Skill;
+import com.openrsc.server.content.EnchantedCrowns;
 import com.openrsc.server.content.SkillCapes;
 import com.openrsc.server.external.GameObjectDef;
 import com.openrsc.server.external.ObjectMiningDef;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
+import com.openrsc.server.model.entity.GroundItem;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.plugins.triggers.OpLocTrigger;
 import com.openrsc.server.plugins.triggers.UseLocTrigger;
@@ -165,6 +168,14 @@ public final class Mining implements OpLocTrigger, UseLocTrigger {
 			} else {
 				if (def == null || def.getRespawnTime() < 1) {
 					player.playerServerMessage(MessageType.QUEST, "You fail to find anything interesting");
+				}
+				// Before the fatigue system (13 November 2002) it was possible to fail prospecting
+				// which could happen based on "some chance" when the player had the level to mine the rock
+				// and always failed when the player did not meet the level to mine the rock
+				// here we set it as config option
+				else if (player.getConfig().CAN_PROSPECT_FAIL
+					&& (DataConversions.random(0, 3) != 1 || reqlvl > mineLvl)) {
+					player.playerServerMessage(MessageType.QUEST, "You fail to find any ore in the rock");
 				} else {
 					player.playerServerMessage(MessageType.QUEST, "This rock contains " + new Item(def.getOreId()).getDef(player.getWorld()).getName());
 				}
@@ -180,6 +191,9 @@ public final class Mining implements OpLocTrigger, UseLocTrigger {
 			return;
 		}
 		if (player.click == 0 && (def == null || (def.getRespawnTime() < 1 && rock.getID() != 496) || (def.getOreId() == 315 && player.getQuestStage(Quests.FAMILY_CREST) < 6))) {
+			player.playSound("mine");
+			int pickBubbleId = player.getClientLimitations().supportsTypedPickaxes ? ItemId.IRON_PICKAXE.id() : ItemId.BRONZE_PICKAXE.id();
+			thinkbubble(new Item(pickBubbleId)); // authentic to only show the original pickaxe sprite
 			player.playerServerMessage(MessageType.QUEST, "You swing your pick at the rock...");
 			delay(3);
 			player.playerServerMessage(MessageType.QUEST, "There is currently no ore available in this rock");
@@ -238,14 +252,35 @@ public final class Mining implements OpLocTrigger, UseLocTrigger {
 					// In both cases if there is no ore in the rock, there will be no retry
 					if (SkillCapes.shouldActivate(player, ItemId.MINING_CAPE)) {
 						thinkbubble(new Item(ItemId.MINING_CAPE.id(), 1));
-						give(player, ore.getCatalogId(), 1);
 						player.playerServerMessage(MessageType.QUEST, "You manage to obtain two " + ore.getDef(player.getWorld()).getName().toLowerCase());
+						if (ore.getCatalogId() == ItemId.CLAY.id()
+							&& EnchantedCrowns.shouldActivate(player, ItemId.CROWN_OF_DEW)) {
+							player.playerServerMessage(MessageType.QUEST, "Your crown shines and the clay softens");
+							give(player, ItemId.SOFT_CLAY.id(), 1);
+							EnchantedCrowns.useCharge(player, ItemId.CROWN_OF_DEW);
+						} else {
+							give(player, ore.getCatalogId(), 1);
+						}
 						player.incExp(Skill.MINING.id(), def.getExp() * 2, true);
 						give(player, ore.getCatalogId(), 1);
 					} else {
-						player.getCarriedItems().getInventory().add(ore);
+						if (ore.getCatalogId() == ItemId.CLAY.id()
+							&& EnchantedCrowns.shouldActivate(player, ItemId.CROWN_OF_DEW)) {
+							player.playerServerMessage(MessageType.QUEST, "Your crown shines and the clay softens");
+							player.getCarriedItems().getInventory().add(new Item(ItemId.SOFT_CLAY.id(), 1));
+							EnchantedCrowns.useCharge(player, ItemId.CROWN_OF_DEW);
+						} else {
+							player.getCarriedItems().getInventory().add(ore);
+						}
 						player.playerServerMessage(MessageType.QUEST, "You manage to obtain some " + ore.getDef(player.getWorld()).getName().toLowerCase());
 						player.incExp(Skill.MINING.id(), def.getExp(), true);
+
+						if (EnchantedCrowns.shouldActivate(player, ItemId.CROWN_OF_THE_ITEMS)) {
+							player.playerServerMessage(MessageType.QUEST, "Your crown shines and an extra item appears on the ground");
+							player.getWorld().registerItem(
+								new GroundItem(player.getWorld(), ore.getCatalogId(), player.getX(), player.getY(), 1, player), player.getConfig().GAME_TICK * 50);
+							EnchantedCrowns.useCharge(player, ItemId.CROWN_OF_THE_ITEMS);
+						}
 					}
 				} else {
 					player.playerServerMessage(MessageType.QUEST, "You only succeed in scratching the rock");
@@ -255,8 +290,7 @@ public final class Mining implements OpLocTrigger, UseLocTrigger {
 				}
 				if (!config().MINING_ROCKS_EXTENDED || DataConversions.random(1, 100) <= def.getDepletion()) {
 					if (def.getRespawnTime() > 0) {
-						GameObject newObject = new GameObject(player.getWorld(), rock.getLocation(), 98, rock.getDirection(), rock.getType());
-						changeloc(rock, def.getRespawnTime() * 1000, newObject.getID());
+						changeloc(rock, def.getRespawnTime() * 1000, SceneryId.ROCK_GENERIC.id());
 					}
 					return;
 				}

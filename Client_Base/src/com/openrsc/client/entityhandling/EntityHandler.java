@@ -634,7 +634,7 @@ public class EntityHandler {
 		sprites = new int[]{137, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Ghost", "Ooh spooky", "", 23, 30, 25, 23, true, sprites, 0, 0, 0, 0, 201, 243, 9, 9, 5, i++));
 		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 9, -1};
-		npcs.add(new NPCDef("Aubury", "I think he might be a shop keeper", (Config.S_WANT_RUNECRAFT ? "Teleport" : Config.S_RIGHT_CLICK_TRADE ? "Trade" : ""), (Config.S_RIGHT_CLICK_TRADE && Config.S_WANT_RUNECRAFT ? "Trade" : null), 0, 0, 3, 0, false, sprites, 1, 8409120, 8409120, 15523536, 120, 220, 6, 6, 5, i++));
+		npcs.add(new NPCDef("Aubury", "I think he might be a shop keeper", (Config.S_RIGHT_CLICK_TRADE ? "Trade" : ""), 0, 0, 3, 0, false, sprites, 1, 8409120, 8409120, 15523536, 120, 220, 6, 6, 5, i++));
 		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 9, -1};
 		npcs.add(new NPCDef("Shopkeeper", "I wonder what he's got for sale", shopOption, 0, 0, 3, 0, false, sprites, 16777215, 8409120, 8409120, 15523536, 120, 220, 6, 6, 5, i++));
 		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 10, -1};
@@ -2263,7 +2263,12 @@ public class EntityHandler {
 		npcs.add(new NPCDef("Death", "He sure could do with gaining some weight", "", 15, 15, 12, 12, false, sprites, 1, 2, 3, 16777215, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Loan Officer", "He can lend me some money", "", 11, 8, 7, 11, false, sprites, 15921906, 2, 3, 7296823, 145, 220, 6, 6, 5, i++));
-
+		// head, shirt, pants, shield, weapon, hat, body, legs, gloves, boots, amulet, cape
+		sprites = new int[]{6, 1, 2, -1, -1, 208, 395, 396, 46, -1, -1, -1};
+		npcs.add(new NPCDef("Santa", "He sure could do with gaining some weight", "", 123, 123, 123, 123, false, sprites, 16777215, 0xFF0000, 0xFF0000, 15523536, 160, 220, 6, 6, 5, i++));
+		// head, shirt, pants, shield, weapon, hat, body, legs, gloves, boots, amulet, cape
+		sprites = new int[]{7, 1, 2, -1, -1, 500, 501, -1, -1, -1, -1, -1};
+		npcs.add(new NPCDef("Kresh", "He's kind of like an onion", "", 123, 123, 123, 123, false, sprites, 0, 0xFFFFFF, 0x802415, 0xb5ff1d, 160, 220, 6, 6, 5, i++));
 
 		if (Config.S_WANT_CUSTOM_SPRITES) {
 			// Ranael
@@ -3742,9 +3747,9 @@ public class EntityHandler {
 		items.add(new ItemDef("Tree cookie", "A tasty holiday cookie", "eat", 2, -1, "items:522", false, false, 0, 0, false, false, true, 1338));
 		items.add(new ItemDef("Santa's Gloves", "These keep Santa's hands warm", "", 6, -1, "items:523", false, true, 256, 0, false, false, true, 1339));
 		items.add(new ItemDef("Santa's Mittens", "Santa's favorite mittens", "", 6, -1, "items:524", false, true, 256, 0, false, false, true, 1340));
-		items.add(new ItemDef("Santa's suit", "A suit full of joy", "", 8, -1, "items:466", false, true, 64, 1052688, false, false, true, 1341));
-		items.add(new ItemDef("Santa's suit", "A suit full of joy", "", 8, -1, "items:465", false, true, 128, 1052688, false, false, true, 1342));
-		items.add(new ItemDef("Santa's hat", "It's a santa claus' hat", "", 160, -1, "items:467", false, true, 32, 0, false, false, true, 1343));
+		items.add(new ItemDef("Santa's suit", "A suit full of joy", "", 8, -1, "items:466", false, true, 64, 1052688, false, false, true, 1341)); // this is the top
+		items.add(new ItemDef("Santa's suit", "A suit full of joy", "", 8, -1, "items:465", false, true, 128, 1052688, false, false, true, 1342)); // these are the legs
+		items.add(new ItemDef("Santa's hat", "It's a santa claus' hat", "", 160, -1, "items:467", false, true, 32, 0, false, false, true, 1343)); // green version
 		items.add(new ItemDef("Antlers with red-nose", "Im Rudolph the reindeer!!!", "", 3, -1, "items:468", false, true, 32, 0, false, false, true, 1344));
 		items.add(new ItemDef("Beverage glass", "A glass left after a tasty drink", "", 1, -1, "items:525", false, false, 0, 0, false, false, true, 1345));
 
@@ -3926,10 +3931,40 @@ public class EntityHandler {
 		items.add(new ItemDef("Uncooked pumpkin pie", "I need to cook this first", "", 1, 112, "items:uncookedpumpkinpie", false, false, 0, 16633518, false, false, true, 1489));
 		items.add(new ItemDef("Pumpkin pie", "A festive autumn pie. It's rare to have a pie this nice.", "eat", 30, 112, "items:pumpkinpie", false, false, 0, 11168819, false, false, true, 1490));
 		items.add(new ItemDef("Half a pumpkin pie", "A festive autumn pie. It's rare to have a pie this nice.", "eat", 10, 113, "items:halfpumpkinpie", false, false, 0, 11168819, false, false, true, 1491));
-		items.add(new ItemDef("Uncooked white pumpkin pie", "I need to cook this first", "", 1, 112, "items:112", false, false, 0, 16633518, false, false, true, 1492));
-		items.add(new ItemDef("White pumpkin pie", "A festive autumn pie. It's weird that it's white.", "eat", 30, 112, "items:112", false, false, 0, 11168819, false, false, true, 1493));
-		items.add(new ItemDef("Half a white pumpkin pie", "A festive autumn pie. It's weird that it's white.", "eat", 10, 113, "items:113", false, false, 0, 11168819, false, false, true, 1494));
+		items.add(new ItemDef("Uncooked white pumpkin pie", "I need to cook this first", "", 1, 112, "items:uncookedwhitepumpkinpie", false, false, 0, 16633518, false, false, true, 1492));
+		items.add(new ItemDef("White pumpkin pie", "A festive autumn pie. It's weird that it's white.", "eat", 30, 112, "items:whitepumpkinpie", false, false, 0, 11168819, false, false, true, 1493));
+		items.add(new ItemDef("Half a white pumpkin pie", "A festive autumn pie. It's weird that it's white.", "eat", 10, 113, "items:halfwhitepumpkinpie", false, false, 0, 11168819, false, false, true, 1494));
 		items.add(new ItemDef("Eak the Mouse", "A cute mouse", "Talk", 1, 112, "items:eakthemouse", false, false, 0, 16633518, false, true, false, 1495));
+
+		// Christmas 2021
+		items.add(new ItemDef("Yoyo", "This technology shouldn't be possible!", "Play", 100, -1, "items:yoyo", false, true, 16, 0xFFFFFF,false, true, false, 1496));
+
+		// Easter 2022 (Peeling the Onion)
+		items.add(new ItemDef("Ogre Ears", "The ogres in Gu'Tannoth don't have ears like this...", "", 100, -1, "items:ogreears", false, true, 32, 0xFFFFFF, false, true, false, 1497));
+		items.add(new ItemDef("Leather vest", "It's kind of fashionable?", "", 15, -1, "items:leathervest", false, true, 64, 0xFFFFFF, false, false, true, 1498));
+		items.add(new ItemDef("Makeover Waiver", "yada yada yada...", "Read", 15, -1, "items:427", false, false, 0, 0xFFFFFF, false, true, false, 1499));
+		items.add(new ItemDef("Soft Yellowgreen Clay", "I hope this colour doesn't get on my clothes", "Shape", 2, 105, "items:yellowgreenclay", false, false, 0, 0xFFFFFF, false, true, false, 1500));
+		items.add(new ItemDef("Ogre recipes", "Just like grandma used to make", "read", 1, 234, "items:234", false, false, 0, 0, false, true, false, 1501));
+
+		// Crowns
+		items.add(new ItemDef("Crown mould", "Used to make gold crowns", "", 5, 594, "items:594", false, false, 0, 0, false, false, true, 1502));
+		items.add(new ItemDef("Gold Crown", "I wonder what an enchantment would do on this valuable", "", 550, 545, "items:545", false, true, 32, 16763980, false, false, true, 1503));
+		items.add(new ItemDef("Sapphire Crown", "I wonder what an enchantment would do on this valuable", "", 1200, 545, "items:545", false, true, 32, 19711, false, false, true, 1504));
+		items.add(new ItemDef("Emerald Crown", "I wonder what an enchantment would do on this valuable", "", 1575, 545, "items:545", false, true, 32, 3394611, false, false, true, 1505));
+		items.add(new ItemDef("Ruby Crown", "I wonder what an enchantment would do on this valuable", "", 2325, 545, "items:545", false, true, 32, 16724736, false, false, true, 1506));
+		items.add(new ItemDef("Diamond Crown", "I wonder what an enchantment would do on this valuable", "", 3825, 545, "items:545", false, true, 32, 0, false, false, true, 1507));
+		items.add(new ItemDef("Dragonstone Crown", "I wonder what an enchantment would do on this valuable", "", 19125, 545, "items:545", false, true, 32, 12255487, true, false, true, 1508));
+		items.add(new ItemDef("Crown of dew", "It gives me a humidifier sense", "Check,Break,Configure", 1200, 545, "items:545", false, true, 32, 19711, false, false, true, 1509));
+		items.add(new ItemDef("Crown of mimicry", "It helps me avoid monsters when skilling", "Check,Break", 1575, 545, "items:545", false, true, 32, 3394611, false, false, true, 1510));
+		items.add(new ItemDef("Crown of the artisan", "It assists my skilling experience", "Check,Break", 2325, 545, "items:545", false, true, 32, 16724736, false, false, true, 1511));
+		items.add(new ItemDef("Crown of the items", "It brings forth an item on the ground when skilling", "Check,Break", 3825, 545, "items:545", false, true, 32, 0, false, false, true, 1512));
+		items.add(new ItemDef("Crown of the herbalist", "It gives me a sense to be one with herbs", "Check,Break,Configure", 19125, 545, "items:545", false, true, 32, 12255487, true, false, true, 1513));
+		items.add(new ItemDef("Crown of the occult", "It gives me a sense to be one with bones", "Check,Break,Configure", 19125, 545, "items:545", false, true, 32, 12255487, true, false, true, 1514));
+
+		// Halloween 2022
+		items.add(new ItemDef("halloween mask", "aaaarrrghhh ... i'm a monster", "", 15, 284, "items:284", false, true, 32, 16711935, false, false, true, 1515));
+		items.add(new ItemDef("Cape of Inclusion", "A colourful cape made from many different pieces of cloth.", "", 3, -1, "items:pridecape", false, true, 2048, 0xFFFFFF, false, false, true, 1516));
+		items.add(new ItemDef("halloween mask", "aaaarrrghhh ... i'm a monster", "", 15, 284, "items:284", false, true, 32, 4, false, false, true, 1517));
 
 		// Add muddy herb sprite
 		items.get(165).spriteLocation = "items:588";
@@ -4553,7 +4588,49 @@ public class EntityHandler {
 			animations.add(new AnimationDef("scimitar", "equipment", 65535, 0, true, false, 0)); // 482 Rune Scimitar
 
 			// Halloween 2021
-			animations.add(new AnimationDef("deathmask", "equipment", 0, 0, true, false, 0)); // 483
+			animations.add(new AnimationDef("deathmask", "equipment", 0, 0, true, false, 0)); // 483 death mask
+
+			// Christmas 2021
+			animations.add(new AnimationDef("yoyo", "equipment", 0, 0, true, false, 0)); // 484 yoyo in hand
+			animations.add(new AnimationDef("yoyo_anim_1", "equipment", 0, 0, true, false, 0)); // 485 yoyo up-down 1
+			animations.add(new AnimationDef("yoyo_anim_2", "equipment", 0, 0, true, false, 0)); // 486 yoyo up-down 2
+			animations.add(new AnimationDef("yoyo_anim_3", "equipment", 0, 0, true, false, 0)); // 487 yoyo up-down 3
+			animations.add(new AnimationDef("yoyo_anim_4", "equipment", 0, 0, true, false, 0)); // 488 yoyo up-down 4
+			animations.add(new AnimationDef("yoyo_anim_crazy_1", "equipment", 0, 0, true, false, 0)); // 489 yoyo crazy 1'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_2", "equipment", 0, 0, true, false, 0)); // 490 yoyo crazy 2'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_3", "equipment", 0, 0, true, false, 0)); // 491 yoyo crazy 3'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_4", "equipment", 0, 0, true, false, 0)); // 492 yoyo crazy 4'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_5", "equipment", 0, 0, true, false, 0)); // 493 yoyo crazy 5'oclock
+			// for 6'oclock, just use yoyo_anim_4
+			animations.add(new AnimationDef("yoyo_anim_crazy_7", "equipment", 0, 0, true, false, 0)); // 494 yoyo crazy 7'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_8", "equipment", 0, 0, true, false, 0)); // 495 yoyo crazy 8'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_9", "equipment", 0, 0, true, false, 0)); // 496 yoyo crazy 9'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_10", "equipment", 0, 0, true, false, 0)); // 497 yoyo crazy 10'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_11", "equipment", 0, 0, true, false, 0)); // 498 yoyo crazy 11'oclock
+			animations.add(new AnimationDef("yoyo_anim_crazy_12", "equipment", 0, 0, true, false, 0)); // 499 yoyo crazy 12'oclock
+
+			// Easter 2022 aka Peeling the Onion
+			animations.add(new AnimationDef("ogreears", "equipment", 0xb5ff1d, 0, true, false, 0)); // 500 ogre ears
+			animations.add(new AnimationDef("leathervest", "equipment", 0, 0, true, false, 0)); // 501 leather vest
+
+			//Crowns
+			//Gold
+			animations.add(new AnimationDef("crown", "equipment", 16763980,0, true, false, 0));//502
+			//Sapphire
+			animations.add(new AnimationDef("crown", "equipment", 19711, 0, true, false, 0)); //503
+			//Emerald
+			animations.add(new AnimationDef("crown", "equipment", 3394611,0, true, false, 0)); //504
+			//Ruby
+			animations.add(new AnimationDef("crown", "equipment", 16724736,0, true, false, 0)); //505
+			//Diamond
+			animations.add(new AnimationDef("crown", "equipment", 16184564,0, true, false, 0)); //506
+			//Dragonstone
+			animations.add(new AnimationDef("crown", "equipment", 12255487,0, true, false, 0)); //507
+
+			// Halloween 2022
+			animations.add(new AnimationDef("halloweenmask", "equipment", 16711935, 0, true, false, 0)); // 508
+			animations.add(new AnimationDef("pridecape", "equipment", 0, 0, true, false, 0)); // 509
+			animations.add(new AnimationDef("halloweenmask", "equipment", 4, 0, true, false, 0)); // 510
 		}
 	}
 

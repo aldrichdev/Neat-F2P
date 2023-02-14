@@ -15,6 +15,7 @@ import com.openrsc.server.net.rsc.generators.PayloadGenerator;
 import com.openrsc.server.net.rsc.struct.AbstractStruct;
 import com.openrsc.server.net.rsc.struct.outgoing.*;
 import com.openrsc.server.util.rsc.DataConversions;
+import com.openrsc.server.util.rsc.MathUtil;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -48,7 +49,7 @@ public class Payload140Generator implements PayloadGenerator<OpcodeOut> {
 		put(OpcodeOut.SEND_TRADE_OTHER_ACCEPTED, 235);
 		put(OpcodeOut.SEND_SHOP_OPEN, 234);
 		put(OpcodeOut.SEND_SHOP_CLOSE, 233);
-		put(OpcodeOut.SEND_OPEN_DETAILS, 232); // replaced SEND_REMOVE_WORLD_PLAYER
+		// 232 SEND_OPEN_DETAILS not present yet // replaced SEND_REMOVE_WORLD_PLAYER
 		// 231 SEND_REMOVE_WORLD_NPC gone
 		// 230 RUNESCAPE_UPDATED gone
 		put(OpcodeOut.SEND_TRADE_ACCEPTED, 229);
@@ -428,6 +429,10 @@ public class Payload140Generator implements PayloadGenerator<OpcodeOut> {
 					int inventorySize = is.inventorySize;
 					builder.writeByte((byte) inventorySize);
 					for (int i = 0; i < inventorySize; i++) {
+						if (is.catalogIDs[i] > player.getClientLimitations().maxItemId) {
+							is.catalogIDs[i] = 0;
+						}
+
 						// First bit is if it is wielded or not
 						builder.writeShort((is.wielded[i] << 15) | is.catalogIDs[i]);
 						// amount[i] will only be > 0 if the item is stackable or noted.
@@ -488,7 +493,7 @@ public class Payload140Generator implements PayloadGenerator<OpcodeOut> {
 					for (int i = 0; i < shopSize; i++) {
 						builder.writeShort(s.catalogIDs[i]);
 						builder.writeShort(s.amount[i]);
-						builder.writeByte((s.baseAmount[i] - s.amount[i]) & 0xFF); // cool
+						builder.writeByte(MathUtil.boundedNumber(s.baseAmount[i] - s.amount[i], -127, 127));
 					}
 					break;
 

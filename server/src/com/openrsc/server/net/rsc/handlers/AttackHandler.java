@@ -1,6 +1,8 @@
 package com.openrsc.server.net.rsc.handlers;
 
 import com.openrsc.server.constants.NpcId;
+import com.openrsc.server.event.rsc.GameTickEvent;
+import com.openrsc.server.event.rsc.handler.GameEventHandler;
 import com.openrsc.server.event.rsc.impl.projectile.RangeEvent;
 import com.openrsc.server.event.rsc.impl.projectile.ThrowingEvent;
 import com.openrsc.server.model.action.ActionType;
@@ -11,6 +13,8 @@ import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.TargetMobStruct;
+import com.openrsc.server.plugins.triggers.AttackNpcTrigger;
+import com.openrsc.server.plugins.triggers.AttackPlayerTrigger;
 
 import static com.openrsc.server.plugins.Functions.inArray;
 
@@ -21,6 +25,10 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 		if (player.inCombat()) {
 			player.message("You are already busy fighting");
 			player.resetPath();
+			return;
+		}
+
+		if (player.getDuel().isDueling()) {
 			return;
 		}
 
@@ -55,8 +63,8 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 				}
 				return;
 			}
-		}
-		if (affectedMob.isNpc()) {
+		} else {
+			assert affectedMob instanceof Npc;
 			Npc n = (Npc) affectedMob;
 			if (n.isRespawning()) return;
 			if (n.getX() == 0 && n.getY() == 0)
@@ -78,9 +86,13 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 
 		if (player.getRangeEquip() < 0 && player.getThrowingEquip() < 0) {
 			player.setFollowing(affectedMob, 0, false);
-			player.setWalkToAction(new WalkToMobAction(player, affectedMob, 1, false, ActionType.ATTACK) {
+
+			int radius = 1;
+			if (affectedMob.isPlayer()) {
+				 radius = player.getConfig().CATCHING_DISTANCE;
+			}
+			player.setWalkToAction(new WalkToMobAction(player, affectedMob, radius, false, ActionType.ATTACK) {
 				public void executeInternal() {
-					getPlayer().resetPath();
 					getPlayer().resetFollowing();
 
 					if (mob.inCombat() && getPlayer().getRangeEquip() < 0 && getPlayer().getThrowingEquip() < 0) {
@@ -92,14 +104,9 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 						return;
 					}
 					if (mob.isNpc()) {
-						if (getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(getPlayer(), "AttackNpc", new Object[]{getPlayer(), (Npc) mob}, this)) {
-							return;
-						}
-					}
-					if (mob.isPlayer()) {
-						if (getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(getPlayer(), "AttackPlayer", new Object[]{getPlayer(), mob}, this)) {
-							return;
-						}
+						getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(AttackNpcTrigger.class, getPlayer(), new Object[]{getPlayer(), (Npc) mob}, this);
+					} else {
+						getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(AttackPlayerTrigger.class, getPlayer(), new Object[]{getPlayer(), mob}, this);
 					}
 				}
 			});
@@ -109,12 +116,11 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 			}
 			final Mob target = affectedMob;
 			player.resetPath();
-			player.resetAll();
-			int radius = player.getProjectileRadius(5); // default radius of 5
-			player.setFollowing(affectedMob, 0, false);
+			int radius = player.getProjectileRadius();
+			player.setFollowing(affectedMob, radius, false);
 			player.setWalkToAction(new WalkToMobAction(player, affectedMob, radius, false, ActionType.ATTACK) {
 				public void executeInternal() {
-					if(getPlayer().isBusy() || getPlayer().inCombat()) return;
+					if (getPlayer().isBusy() || getPlayer().inCombat()) return;
 					getPlayer().resetFollowing();
 					if (getMob().isPlayer()) {
 						Player affectedPlayer = (Player) getMob();
@@ -135,9 +141,59 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 					getPlayer().face(getPlayer().getX() + 1, getPlayer().getY() - 1);
 
 					if (getPlayer().getRangeEquip() > 0) {
-						getPlayer().setRangeEvent(new RangeEvent(getPlayer().getWorld(), getPlayer(), target));
+						final GameEventHandler gameEventHandler = getPlayer().getWorld()
+							.getServer()
+							.getGameEventHandler();
+
+						RangeEvent rangeEvent = null;
+
+						for (final GameTickEvent gameTickEvent : gameEventHandler.getPlayerEvents(getPlayer())) {
+							if (gameTickEvent instanceof RangeEvent) {
+								rangeEvent = (RangeEvent) gameTickEvent;
+								break;
+							}
+						}
+
+						if (rangeEvent != null) {
+							if (!rangeEvent.getTarget().equals(getMob())) {
+								rangeEvent.reTarget(getMob());
+							}
+
+							rangeEvent.restart();
+							getPlayer().setRangeEvent(rangeEvent);
+							return;
+						}
+
+						rangeEvent = new RangeEvent(getPlayer().getWorld(), getPlayer(), 1, target);
+						getPlayer().setRangeEvent(rangeEvent);
+						gameEventHandler.add(rangeEvent);
 					} else {
-						getPlayer().setThrowingEvent(new ThrowingEvent(getPlayer().getWorld(), getPlayer(), target));
+						final GameEventHandler gameEventHandler = getPlayer().getWorld()
+							.getServer()
+							.getGameEventHandler();
+
+						ThrowingEvent throwingEvent = null;
+
+						for (final GameTickEvent gameTickEvent : gameEventHandler.getPlayerEvents(getPlayer())) {
+							if (gameTickEvent instanceof ThrowingEvent) {
+								throwingEvent = (ThrowingEvent) gameTickEvent;
+								break;
+							}
+						}
+
+						if (throwingEvent != null) {
+							if (!throwingEvent.getTarget().equals(getMob())) {
+								throwingEvent.reTarget(getMob());
+							}
+
+							throwingEvent.restart();
+							getPlayer().setThrowingEvent(throwingEvent);
+							return;
+						}
+
+						throwingEvent = new ThrowingEvent(getPlayer().getWorld(), getPlayer(), 1, target);
+						getPlayer().setThrowingEvent(throwingEvent);
+						gameEventHandler.add(throwingEvent);
 					}
 				}
 			});

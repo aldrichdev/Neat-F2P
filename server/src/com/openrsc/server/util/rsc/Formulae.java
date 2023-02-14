@@ -4,6 +4,7 @@ import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.external.*;
 import com.openrsc.server.model.Point;
+import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.Mob;
 import com.openrsc.server.model.entity.player.Player;
 
@@ -52,6 +53,25 @@ public final class Formulae {
 
 	public static final int[] fishingToolIDs = {ItemId.OILY_FISHING_ROD.id(), ItemId.LOBSTER_POT.id(), ItemId.HARPOON.id(),
 		ItemId.FLY_FISHING_ROD.id(), ItemId.BIG_NET.id(), ItemId.FISHING_ROD.id(), ItemId.NET.id()};
+
+	public static int[] unidentifiedHerbs = {
+		ItemId.UNIDENTIFIED_GUAM_LEAF.id(),
+		ItemId.UNIDENTIFIED_MARRENTILL.id(),
+		ItemId.UNIDENTIFIED_TARROMIN.id(),
+		ItemId.UNIDENTIFIED_HARRALANDER.id(),
+		ItemId.UNIDENTIFIED_RANARR_WEED.id(),
+		ItemId.UNIDENTIFIED_IRIT_LEAF.id(),
+		ItemId.UNIDENTIFIED_AVANTOE.id(),
+		ItemId.UNIDENTIFIED_KWUARM.id(),
+		ItemId.UNIDENTIFIED_CADANTINE.id(),
+		ItemId.UNIDENTIFIED_DWARF_WEED.id(),
+		ItemId.UNIDENTIFIED_TORSTOL.id(),
+		ItemId.UNIDENTIFIED_SNAKE_WEED.id(),
+		ItemId.UNIDENTIFIED_ARDRIGAL.id(),
+		ItemId.UNIDENTIFIED_SITO_FOIL.id(),
+		ItemId.UNIDENTIFIED_VOLENCIA_MOSS.id(),
+		ItemId.UNIDENTIFIED_ROGUES_PURSE.id()
+	};
 
 	/**
 	 * Cubic P2P boundaries. MinX, MinY - MaxX, MaxY
@@ -150,8 +170,9 @@ public final class Formulae {
 	public static boolean burnFood(Player player, int foodId, int cookingLevel) {
 		//gauntlets of cooking effective on lobsters, swordfish and shark
 		//chef: Wearing them means you will burn your lobsters, swordfish and shark less
-		int bonusLevel = player.getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_COOKING.id()) ?
-			(foodId == ItemId.RAW_SWORDFISH.id() ? 6 :
+		final boolean gauntletBonus = player.getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_COOKING.id())
+			&& player.getCache().getInt("famcrest_gauntlets") == Gauntlets.COOKING.id();
+		int bonusLevel = gauntletBonus ? (foodId == ItemId.RAW_SWORDFISH.id() ? 6 :
 				foodId == ItemId.RAW_LOBSTER.id() || foodId == ItemId.RAW_SHARK.id() ? 11 : 0) : 0;
 		int effectiveLevel = cookingLevel + bonusLevel;
 		int levelReq = player.getWorld().getServer().getEntityHandler().getItemCookingDef(foodId).getReqLevel();
@@ -223,17 +244,23 @@ public final class Formulae {
 	/**
 	 * Calculate experience done on a per hit & damage made
 	 * OG RSC only gave if attacker is on Ranged and Mob was Player
+	 * And on RSC era days would have given small amount per successful hit
 	 * Best found fit through points: Math.round((27 * damage - 3) / 5.0)
 	 * However, RSC+ client show not a constant, doing average of averages
-	 * seems fit 16/3. Since server does not keep track of /3 has to be simulated
+	 * seems fit 16/3 per each 1 damage.
+	 *
+	 * Since server does not keep track of /3 has to be simulated
 	 * by roll.
+	 * Value returned is already set as server experience
 	 */
 	public static int rangedHitExperience(Mob mob, int damageMade) {
 		// ranged vs npc is not per hit but per mob kill, see combatExperience
-		if (mob.isNpc()) {
+		// except retro rsc where it gave some xp per ranged hit
+		if (mob.isNpc() && !mob.getWorld().getServer().getConfig().RANGED_GIVES_XP_HIT) {
 			return 0;
 		} else {
-			int totalXP = 16 * damageMade;
+			int constrainedDmg = Math.min(mob.getSkills().getLevel(Skill.HITS.id()), damageMade);
+			int totalXP = 16 * constrainedDmg;
 			int baseXP = totalXP / 3;
 			int remainder = totalXP % 12;
 			int sendXP;
@@ -242,7 +269,7 @@ public final class Formulae {
 			} else if (remainder <= 6) {
 				sendXP = baseXP + (DataConversions.random(0,2) == 0 ? 1 : 0);
 			} else {
-				sendXP = baseXP + (DataConversions.random(0,2) == 0 ? 2 : 3);
+				sendXP = baseXP + (DataConversions.random(0,2) == 0 ? 0 : 1);
 			}
 			return sendXP;
 		}
@@ -288,14 +315,10 @@ public final class Formulae {
 	 * Decide if we fall off the obstacle or not
 	 */
 	// TODO: This should be moved to the appropriate plugin class.
-	public static boolean failCalculation(Player player, int skill, int reqLevel) {
-		int levelDiff = player.getSkills().getMaxStat(skill) - reqLevel;
-		if (levelDiff < 0) {
-			return false;
-		}
-		if (levelDiff >= 20) {
-			return true;
-		}
+	public static boolean failCalculation(final Player player, final int skill, final int reqLevel) {
+		final int levelDiff = player.getSkills().getLevel(skill) - reqLevel;
+		if (levelDiff < 0) return false;
+		if (levelDiff >= 20) return true;
 		return DataConversions.random(0, levelDiff + 1) != 0;
 	}
 
@@ -568,6 +591,11 @@ public final class Formulae {
 		return true;
 	}
 
+	public static boolean isGeneralMeat(Item item) {
+		return DataConversions.inArray(new int[]{ItemId.COOKEDMEAT.id(), ItemId.RAW_CHICKEN.id(),
+			ItemId.RAW_BEAR_MEAT.id(), ItemId.RAW_RAT_MEAT.id(), ItemId.RAW_BEEF.id()}, item.getCatalogId());
+	}
+
 	/**
 	 * Should the fire light or fail?
 	 */
@@ -580,6 +608,13 @@ public final class Formulae {
 		//from normal logs, level stop failing is 60 since start
 		int levelStopFail = levelReq + 59;
 		return Formulae.calcProductionSuccessfulLegacy(levelReq, firemakingLvl, true, levelStopFail);
+	}
+
+	/**
+	 * Should getting regular logs succeed? (Retro)
+	 * */
+	public static boolean chopLogs(int woodcuttingLvl) {
+		return Formulae.calcProductionSuccessfulLegacy(1, woodcuttingLvl, true, 60);
 	}
 
 	public static int getLevelsToReduceAttackKBD(Player player) {
@@ -688,6 +723,10 @@ public final class Formulae {
 
 	public static int calculateHerbDrop() throws InvalidParameterException {
 		return weightedRandomChoice(herbDropIDs, herbDropWeights, ItemId.UNIDENTIFIED_GUAM_LEAF.id());
+	}
+
+	public static boolean isUnidHerb(Item item) {
+		return DataConversions.inArray(unidentifiedHerbs, item.getCatalogId());
 	}
 
 }

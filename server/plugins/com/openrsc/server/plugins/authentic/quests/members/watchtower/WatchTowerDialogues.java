@@ -263,7 +263,7 @@ public class WatchTowerDialogues implements QuestInterface, TalkNpcTrigger, UseN
 					say(player, n, "Oh great...I've scared it off!");
 				} else if (menu == 1) {
 					say(player, n, "Okay, okay i'm not going to hurt you");
-					npcsay(player, n, "Thank you kind " + (player.isMale() ? "sir" : "madam"),
+					npcsay(player, n, player.getText("WatchTowerSkavidThankYouKindHuman"),
 						"I'll tells you where that things you wants is...",
 						"The mad skavids have it in their cave in the city",
 						"You will have to learn skavid",
@@ -410,7 +410,7 @@ public class WatchTowerDialogues implements QuestInterface, TalkNpcTrigger, UseN
 								npcsay(player, n, "You lie to me morsel!");
 							}
 						} else if (menu == 2) {
-							if (player.getCarriedItems().hasCatalogID(ItemId.POWERING_CRYSTAL1.id(), Optional.empty())) {
+							if (!player.getCarriedItems().hasCatalogID(ItemId.POWERING_CRYSTAL1.id(), Optional.empty())) {
 								npcsay(player, n, "I suppose you want another ?",
 									"I suppose just this once I could give you my copy...");
 								give(player, ItemId.POWERING_CRYSTAL1.id(), 1);

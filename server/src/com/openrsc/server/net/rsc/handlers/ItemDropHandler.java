@@ -17,8 +17,18 @@ public final class ItemDropHandler implements PayloadProcessor<ItemCommandStruct
 			player.resetPath();
 			return;
 		}
+
+		if (player.getDuel().isDueling()) {
+			return;
+		}
+
 		if (player.isBusy()) {
 			player.resetPath();
+			return;
+		}
+
+		if (player.getTrade().isTradeActive() || (player.getDuel().isDuelActive() && !player.inCombat())) {
+			// prevent dropping of items during trade & duels windows
 			return;
 		}
 
@@ -73,9 +83,10 @@ public final class ItemDropHandler implements PayloadProcessor<ItemCommandStruct
 		}
 
 		if (inventorySlot != -1) {
-			if (amount > player.getCarriedItems().getInventory().countId(item.getCatalogId(), Optional.of(item.getNoted()))) {
-				amount = player.getCarriedItems().getInventory().countId(item.getCatalogId(), Optional.of(item.getNoted()));
-			}
+			final int idCount = player.getCarriedItems().getInventory().countId(item.getCatalogId(), Optional.of(item.getNoted()));
+
+			if (amount > idCount)
+				amount = idCount;
 		}
 
 		final boolean fromInventory = inventorySlot != -1;

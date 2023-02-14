@@ -1,9 +1,6 @@
 package com.openrsc.server.plugins.authentic.commands;
 
-import com.openrsc.server.constants.ItemId;
-import com.openrsc.server.constants.Quests;
-import com.openrsc.server.constants.Skill;
-import com.openrsc.server.constants.Skills;
+import com.openrsc.server.constants.*;
 import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.database.impl.mysql.queries.logging.ChatLog;
 import com.openrsc.server.database.impl.mysql.queries.logging.StaffLog;
@@ -13,6 +10,7 @@ import com.openrsc.server.event.custom.HourlyNpcLootEvent;
 import com.openrsc.server.event.custom.HourlyResetEvent;
 import com.openrsc.server.event.custom.NpcLootEvent;
 import com.openrsc.server.event.rsc.GameTickEvent;
+import com.openrsc.server.event.rsc.handler.GameEventHandler;
 import com.openrsc.server.event.rsc.impl.projectile.ProjectileEvent;
 import com.openrsc.server.event.rsc.impl.projectile.RangeEventNpc;
 import com.openrsc.server.external.GameObjectLoc;
@@ -39,6 +37,8 @@ import com.openrsc.server.plugins.triggers.CommandTrigger;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
 import com.openrsc.server.util.rsc.MessageType;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -48,8 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import static com.google.common.collect.Lists.newArrayList;
-import static com.openrsc.server.plugins.Functions.config;
-import static com.openrsc.server.plugins.Functions.npcattack;
+import static com.openrsc.server.plugins.Functions.*;
 
 public final class Admins implements CommandTrigger {
 	private static final Logger LOGGER = LogManager.getLogger(Admins.class);
@@ -101,8 +100,6 @@ public final class Admins implements CommandTrigger {
 			stopHolidayDrop(player);
 		} else if (command.equalsIgnoreCase("cabbagehalloweendrop")) {
 			cabbageHalloweenDrop(player, command, args);
-		} else if (command.equalsIgnoreCase("npckills")) {
-			npcKills(player, args);
 		} else if (command.equalsIgnoreCase("restart")) {
 			serverRestart(player, args);
 		} else if (command.equalsIgnoreCase("gi") || command.equalsIgnoreCase("gitem") || command.equalsIgnoreCase("grounditem")) {
@@ -117,8 +114,14 @@ public final class Admins implements CommandTrigger {
 			clearIpBans(player);
 		} else if (command.equalsIgnoreCase("fixloggedincount")) {
 			recalcLoggedInCounts(player);
+		} else if (command.equalsIgnoreCase("getloggedincount")) {
+			obtainLoggedInCounts(player, args);
 		} else if (command.equalsIgnoreCase("item")) {
 			spawnItemInventory(player, command, args, false);
+		} else if (command.equalsIgnoreCase("ritem")) {
+			removeItemInventory(player, command, args);
+		} else if (command.equalsIgnoreCase("swapitem")) {
+			swapItemInventory(player, command, args);
 		} else if (command.equalsIgnoreCase("certeditem") || command.equals("noteditem")) {
 			spawnItemInventory(player, command, args, true);
 		} else if (command.equalsIgnoreCase("bankitem") || command.equalsIgnoreCase("bitem") || command.equalsIgnoreCase("addbank")) {
@@ -129,7 +132,8 @@ public final class Admins implements CommandTrigger {
 			removeItemBankAll(player, player.getUsername());
 		} else if (command.equalsIgnoreCase("quickauction")) {
 			openAuctionHouse(player, args);
-		} else if (command.equalsIgnoreCase("quickbank")) { // Show the bank screen to yourself
+		} else if (command.equalsIgnoreCase("quickbank")) {
+			// Show the bank screen to yourself
 			// warning: does not check UIM or bank PIN!
 			player.setAccessingBank(true);
 			ActionSender.showBank(player);
@@ -193,31 +197,138 @@ public final class Admins implements CommandTrigger {
 			playerQueryCombatStyle(player, command, args);
 		} else if (command.equalsIgnoreCase("setnpcstats")) {
 			npcSetStats(player, command, args);
-		} else if (command.equalsIgnoreCase("skull")) {
+		} else if (command.equalsIgnoreCase("skull") || command.equalsIgnoreCase("unskull") || command.equalsIgnoreCase("rskull")) {
 			playerSkull(player, command, args);
 		} else if (command.equalsIgnoreCase("npcrangeevent2")) {
 			npcRangedPlayer(player, command, args);
 		} else if (command.equalsIgnoreCase("ip")) {
 			playerQueryIP(player, args);
-		} else if (command.equalsIgnoreCase("appearance") || command.equalsIgnoreCase("changeappearance")) {
-			sendAppearanceScreen(player, args);
+		} else if (command.equalsIgnoreCase("yoptin")) {
+			sendYoptinScreen(player, args);
 		} else if (command.equalsIgnoreCase("spawnnpc")) {
 			spawnNpc(player, command, args);
 		} else if (command.equalsIgnoreCase("winterholidayevent") || command.equalsIgnoreCase("toggleholiday")) {
 			winterHolidayEvent(player, command, args);
+		} else if (command.equalsIgnoreCase("santaclausiscomingtotown")) {
+			spawnSanta(player, command, args);
 		} else if (command.equalsIgnoreCase("resetevent")) {
-			startResetEvent(player, command, args, false);
+			startResetEvent(player, command, args);
 		} else if (command.equalsIgnoreCase("stopresetevent") || command.equalsIgnoreCase("cancelresetevent")) {
 			stopResetEvent(player);
 		} else if (command.equalsIgnoreCase("givemodtools")) {
 			giveModTools(player);
 		} else if (command.equalsIgnoreCase("givetools")) {
 			giveTools(player);
+		} else if (command.equalsIgnoreCase("lemons") || command.equalsIgnoreCase("lemon")) {
+			giveLemons(player, args);
+		} else if (command.equalsIgnoreCase("setmaxplayersperip") || command.equalsIgnoreCase("smppi")) {
+			setMaxPlayersPerIp(player, command, args);
+		} else if (command.equalsIgnoreCase("setmaxconnectionsperip") || command.equalsIgnoreCase("smcpi")) {
+			setMaxConnectionsPerIp(player, command, args);
+		} else if (command.equalsIgnoreCase("setmaxconnectionspersecond") || command.equalsIgnoreCase("smcps")) {
+			setMaxConnectionsPerSecond(player, command, args);
+		} else if (command.equalsIgnoreCase("stockgroup")) {
+			spawnStockGroupInventory(player, command, args, false);
+		} else if (command.equalsIgnoreCase("setpidshuffleinterval")) {
+			setPidShufflingSchedule(player, command, args);
+		} else if (command.equalsIgnoreCase("unhash")) {
+			player.message(DataConversions.hashToUsername(Long.parseLong(args[0])));
+		}  else if (command.equalsIgnoreCase("hash")) {
+			player.message(String.format("%d",DataConversions.usernameToHash(args[0])));
+		} else if (command.equalsIgnoreCase("setglobalcooldown")) {
+			setGlobalCooldown(player, command, args);
+		} else if (command.equalsIgnoreCase("setgloballevelreq")) {
+			setGlobalLevelReq(player, command, args);
+		} else if (command.equalsIgnoreCase("xpstat") || command.equalsIgnoreCase("xpstats") || command.equalsIgnoreCase("setxpstat") || command.equalsIgnoreCase("setxpstats")
+			|| command.equalsIgnoreCase("setxp")) {
+			changeStatXP(player, command, args);
+		} else if (command.equalsIgnoreCase("stat") || command.equalsIgnoreCase("stats") || command.equalsIgnoreCase("setstat") || command.equalsIgnoreCase("setstats")) {
+			changeMaxStat(player, command, args);
+		} else if (command.equalsIgnoreCase("reloadworld") || command.equalsIgnoreCase("reloadland")) {
+			player.getWorld().getWorldLoader().loadWorld();
+			player.message(messagePrefix + "World Reloaded");
 		}
+
 		/*else if (command.equalsIgnoreCase("fakecrystalchest")) {
 			fakeCrystalChest(player, args);
 		} */
 	}
+
+	private void setPidShufflingSchedule(Player player, String command, String[] args) {
+		if (args.length == 1) {
+			try {
+				int before = player.getConfig().SHUFFLE_PID_ORDER_INTERVAL;
+				player.getConfig().SHUFFLE_PID_ORDER_INTERVAL = Integer.parseInt(args[0]);
+				player.message("PID shuffling interval set from " + before + " to " + player.getConfig().SHUFFLE_PID_ORDER_INTERVAL);
+				return;
+			} catch (NumberFormatException ignored) {
+			}
+		}
+		player.message(badSyntaxPrefix + command.toUpperCase() + " [Number of ticks between shuffles]");
+	}
+
+	private void setMaxPlayersPerIp(Player player, String command, String[] args) {
+		int newMaxPlayers = 10;
+		try {
+			newMaxPlayers = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().MAX_PLAYERS_PER_IP = newMaxPlayers;
+		player.message("set player.getConfig().MAX_PLAYERS_PER_IP to " + player.getConfig().MAX_PLAYERS_PER_IP);
+	}
+
+	private void setGlobalCooldown(Player player, String command, String[] args) {
+		int newMaxPlayers = 10;
+		try {
+			newMaxPlayers = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().GLOBAL_MESSAGE_COOLDOWN = newMaxPlayers;
+		player.message("set player.getConfig().GLOBAL_MESSAGE_COOLDOWN to " + player.getConfig().GLOBAL_MESSAGE_COOLDOWN);
+
+	}
+
+	private void setGlobalLevelReq(Player player, String command, String[] args) {
+		int newMaxPlayers = 10;
+		try {
+			newMaxPlayers = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ = newMaxPlayers;
+		player.message("set player.getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ to " + player.getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ);
+
+	}
+
+	private void setMaxConnectionsPerSecond(Player player, String command, String[] args) {
+		int newMaxConnectionsPerSecond = 10;
+		try {
+			newMaxConnectionsPerSecond = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().MAX_CONNECTIONS_PER_SECOND = newMaxConnectionsPerSecond;
+		player.message("set player.getConfig().MAX_CONNECTIONS_PER_SECOND to " + player.getConfig().MAX_CONNECTIONS_PER_SECOND);
+	}
+
+	private void setMaxConnectionsPerIp(Player player, String command, String[] args) {
+		int newMaxConnectionsPerIp = 10;
+		try {
+			newMaxConnectionsPerIp = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().MAX_CONNECTIONS_PER_IP = newMaxConnectionsPerIp;
+		player.message("set player.getConfig().MAX_CONNECTIONS_PER_IP to " + player.getConfig().MAX_CONNECTIONS_PER_IP);
+	}
+
 
 	private void saveAll(Player player) {
 		int count = 0;
@@ -234,8 +345,8 @@ public final class Admins implements CommandTrigger {
 			return;
 		}
 
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		for (GameTickEvent event : events) {
 			if (!(event instanceof HolidayDropEvent)) continue;
 
 			player.message(messagePrefix + "There is already a holiday drop running!");
@@ -324,9 +435,9 @@ public final class Admins implements CommandTrigger {
 			items.add(itemId);
 		}
 
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
 		if (!allowMultiple) {
-			for (GameTickEvent event : events.values()) {
+			for (GameTickEvent event : events) {
 				if (!(event instanceof HolidayDropEvent)) continue;
 
 				player.message(messagePrefix + "There is already a holiday drop running!");
@@ -340,23 +451,14 @@ public final class Admins implements CommandTrigger {
 	}
 
 	private void stopHolidayDrop(Player player) {
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		for (GameTickEvent event : events) {
 			if (!(event instanceof HolidayDropEvent)) continue;
 
 			event.stop();
 			player.message(messagePrefix + "Stopping holiday drop!");
 			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 21, messagePrefix + "Stopped holiday drop"));
 		}
-	}
-
-	private void npcKills(Player player, String[] args) {
-		Player targetPlayer = args.length > 0 ? player.getWorld().getPlayer(DataConversions.usernameToHash(args[0])) : player;
-		if (targetPlayer == null) {
-			player.message(messagePrefix + "Invalid name or player is not online");
-			return;
-		}
-		player.message(targetPlayer.getNpcKills() + "");
 	}
 
 	private void fakeCrystalChest(Player player, String[] args) {
@@ -583,6 +685,13 @@ public final class Admins implements CommandTrigger {
 		  player.message(messagePrefix + "Fixed lingering loggedInCounts for " + fixedIps + " IP address" + (fixedIps != 1 ? "es." : "."));
 	  }
 
+	private void obtainLoggedInCounts(Player player, String[] args) {
+		String ip = args.length >= 1 ? args[0] : "127.0.0.1";
+
+		int counts = player.getWorld().getServer().getPlayersCount(ip);
+		player.message(messagePrefix + "Found " + counts + " players for IP address " + ip);
+	}
+
 	private void serverShutdown(Player player, String[] args) {
 		int seconds = 300;
 
@@ -654,6 +763,26 @@ public final class Admins implements CommandTrigger {
 		}
 	}
 
+	private int getItemId(Player player, String arg) throws Exception {
+		int id;
+		try {
+			id = Integer.parseInt(arg);
+		} catch (NumberFormatException ex) {
+			ItemId item = ItemId.getByName(arg);
+			if (item == ItemId.NOTHING) {
+				throw new Exception("Invalid item id");
+			} else {
+				id = item.id();
+			}
+		}
+
+		if (player.getWorld().getServer().getEntityHandler().getItemDef(id) == null) {
+			throw new Exception("Invalid item id");
+		}
+
+		return id;
+	}
+
 	private void spawnItemInventory(Player player, String command, String[] args, Boolean noted) {
 		if (args.length < 1) {
 			player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount) (player)");
@@ -662,19 +791,9 @@ public final class Admins implements CommandTrigger {
 
 		int id;
 		try {
-			id = Integer.parseInt(args[0]);
-		} catch (NumberFormatException ex) {
-			ItemId item = ItemId.getByName(args[0]);
-			if (item == ItemId.NOTHING) {
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount) (player)");
-				return;
-			} else {
-				id = item.id();
-			}
-		}
-
-		if (player.getWorld().getServer().getEntityHandler().getItemDef(id) == null) {
-			player.message(messagePrefix + "Invalid item id");
+			id = getItemId(player, args[0]);
+		} catch (Exception e) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount) (player)");
 			return;
 		}
 
@@ -716,12 +835,50 @@ public final class Admins implements CommandTrigger {
 
 		if (successAddingItem) {
 			player.message(messagePrefix + "You have spawned " + amount + " " + p.getWorld().getServer().getEntityHandler().getItemDef(id).getName() + " to " + p.getUsername());
-			if (player.getUsernameHash() != p.getUsernameHash()) {
+			if (player.getUsernameHash() != p.getUsernameHash() && !player.isInvisibleTo(p)) {
 				p.message(messagePrefix + "A staff member has given you " + amount + " " + p.getWorld().getServer().getEntityHandler().getItemDef(id).getName());
 			}
 		} else {
 			player.message(messagePrefix + "Something went wrong spawning " + amount + " " + p.getWorld().getServer().getEntityHandler().getItemDef(id).getName() + " to " + p.getUsername());
 		}
+	}
+
+	private void giveLemons(Player player, String[] args) {
+		Player lemonRecipient;
+		if (args.length >= 1) {
+			lemonRecipient = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
+		} else {
+			lemonRecipient = player;
+		}
+
+		if (lemonRecipient == null) {
+			player.message(messagePrefix + "Invalid name or player is not online");
+			return;
+		}
+
+		int[] lemonIds = {ItemId.LEMON.id(), ItemId.LEMON_SLICES.id(), ItemId.DICED_LEMON.id()};
+		char[] lemons = {'L', 'E', 'M', 'O', 'N', 'S', '!'};
+		StringBuilder lemonMessage = new StringBuilder();
+		for (int i = 0; i < 5; i++) {
+			for (char lemonLetter : lemons) {
+				if (random(0, 4) == 0) {
+					lemonMessage.append("@ora@");
+				} else {
+					lemonMessage.append("@yel@");
+				}
+				lemonMessage.append(lemonLetter);
+			}
+			lemonMessage.append(" ");
+		}
+
+		if (player.getConfig().BASED_MAP_DATA >= 51) { // 51 should be the version of maps used 2002-12-12, when Lemons were released
+			int lemonsToGive = lemonRecipient.getCarriedItems().getInventory().getFreeSlots();
+			for (int i = 0; i < lemonsToGive; i++) {
+				lemonRecipient.getCarriedItems().getInventory().add(new Item(lemonIds[random(0, 2)], 1));
+			}
+		}
+		player.playerServerMessage(MessageType.QUEST, lemonMessage.toString());
+		lemonRecipient.playerServerMessage(MessageType.QUEST, lemonMessage.toString());
 	}
 
 	private void spawnItemBank(Player player, String command, String[] args) {
@@ -775,7 +932,7 @@ public final class Admins implements CommandTrigger {
 		p.getBank().add(new Item(id, amount));
 
 		player.message(messagePrefix + "You have spawned to bank " + amount + " " + p.getWorld().getServer().getEntityHandler().getItemDef(id).getName() + " to " + p.getUsername());
-		if (player.getUsernameHash() != p.getUsernameHash()) {
+		if (player.getUsernameHash() != p.getUsernameHash() && !player.isInvisibleTo(p)) {
 			p.message(messagePrefix + "A staff member has added to your bank " + amount + " " + p.getWorld().getServer().getEntityHandler().getItemDef(id).getName());
 		}
 	}
@@ -802,7 +959,7 @@ public final class Admins implements CommandTrigger {
 					targetPlayer.getBank().remove(item, false);
 				}
 			}
-			if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+			if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 				targetPlayer.message(messagePrefix + "Your bank has been wiped by an admin");
 			}
 			success = true;
@@ -972,7 +1129,7 @@ public final class Admins implements CommandTrigger {
 
 		targetPlayer.getUpdateFlags().setDamage(new Damage(targetPlayer, targetPlayer.getSkills().getLevel(Skill.HITS.id()) - targetPlayer.getSkills().getMaxStat(Skill.HITS.id())));
 		targetPlayer.getSkills().normalize(Skill.HITS.id());
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "You have been healed by an admin");
 		}
 		player.message(messagePrefix + "Healed: " + targetPlayer.getUsername());
@@ -989,7 +1146,7 @@ public final class Admins implements CommandTrigger {
 		}
 
 		targetPlayer.getSkills().normalize(Skill.PRAYER.id());
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "Your prayer has been recharged by an admin");
 		}
 		player.message(messagePrefix + "Recharged: " + targetPlayer.getUsername());
@@ -1033,7 +1190,7 @@ public final class Admins implements CommandTrigger {
 		if (targetPlayer.getSkills().getLevel(Skill.HITS.id()) <= 0)
 			targetPlayer.killedBy(player);
 
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "Your hits have been set to " + newHits + " by an admin");
 		}
 		player.message(messagePrefix + "Set " + targetPlayer.getUsername() + "'s hits to " + newHits);
@@ -1074,7 +1231,7 @@ public final class Admins implements CommandTrigger {
 
 		targetPlayer.getSkills().setLevel(Skill.PRAYER.id(), newPrayer);
 
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "Your prayer has been set to " + newPrayer + " by an admin");
 		}
 		player.message(messagePrefix + "Set " + targetPlayer.getUsername() + "'s prayer to " + newPrayer);
@@ -1101,7 +1258,7 @@ public final class Admins implements CommandTrigger {
 		targetPlayer.getUpdateFlags().setDamage(new Damage(targetPlayer, targetPlayer.getSkills().getLevel(Skill.HITS.id())));
 		targetPlayer.getSkills().setLevel(Skill.HITS.id(), 0);
 		targetPlayer.killedBy(player);
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "You have been killed by an admin");
 		}
 		player.message(messagePrefix + "Killed " + targetPlayer.getUsername());
@@ -1138,10 +1295,169 @@ public final class Admins implements CommandTrigger {
 		if (targetPlayer.getSkills().getLevel(Skill.HITS.id()) <= 0)
 			targetPlayer.killedBy(player);
 
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			targetPlayer.message(messagePrefix + "You have been taken " + damage + " damage from an admin");
 		}
 		player.message(messagePrefix + "Damaged " + targetPlayer.getUsername() + " " + damage + " hits");
+	}
+
+	private void removeItemInventory(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + "  [id or ItemId name] (amount) (player)");
+			return;
+		}
+
+		int idToRemove;
+		try {
+			idToRemove = Integer.parseInt(args[0]);
+		} catch (NumberFormatException ex) {
+			ItemId item = ItemId.getByName(args[0]);
+			if (item == ItemId.NOTHING) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount) (player)");
+				return;
+			} else {
+				idToRemove = item.id();
+			}
+		}
+
+		int amountToRemove;
+		try {
+			amountToRemove = Integer.parseInt(args[1]);
+		} catch (NumberFormatException ex) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount) (player)");
+			return;
+		}
+
+		boolean success = false;
+		int removedCount = 0;
+
+		String targetPlayerName = args[2];
+		Player targetPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(targetPlayerName));
+		if (targetPlayer != null) {
+			// player is online
+			synchronized (targetPlayer.getCarriedItems().getInventory()) {
+				List<Item> items = targetPlayer.getCarriedItems().getInventory().getItems();
+				Item curItem;
+				for (int i = items.size() - 1; i >= 0; i--) {
+					curItem = items.get(i);
+					if (curItem.getCatalogId() == idToRemove && removedCount < amountToRemove) {
+						int available = curItem.getAmount();
+						if (available > 1) {
+							int toRemove = Math.min(amountToRemove, available);
+							targetPlayer.getCarriedItems().remove(new Item(curItem.getCatalogId(), toRemove));
+							removedCount += toRemove;
+						} else {
+							targetPlayer.getCarriedItems().remove(curItem);
+							removedCount++;
+						}
+					}
+				}
+			}
+
+			if (targetPlayer.getConfig().WANT_EQUIPMENT_TAB) {
+				synchronized (targetPlayer.getCarriedItems().getEquipment()) {
+					for (int i = 0; i < Equipment.SLOT_COUNT; i++) {
+						Item equipped = targetPlayer.getCarriedItems().getEquipment().get(i);
+						if (equipped == null)
+							continue;
+						if (equipped.getCatalogId() == idToRemove && removedCount < amountToRemove) {
+							int available = equipped.getAmount();
+							if (available > 1) {
+								int toRemove = Math.min(amountToRemove, available);
+								if (amountToRemove >= available) {
+									targetPlayer.getCarriedItems().getEquipment().unequipItem(
+										new UnequipRequest(targetPlayer, equipped, UnequipRequest.RequestType.FROM_EQUIPMENT, false), true
+									);
+								} else {
+									targetPlayer.getCarriedItems().remove(new Item(equipped.getCatalogId(), toRemove));
+									removedCount += toRemove;
+								}
+							} else {
+								targetPlayer.getCarriedItems().getEquipment().unequipItem(
+									new UnequipRequest(targetPlayer, equipped, UnequipRequest.RequestType.FROM_EQUIPMENT, false), true
+								);
+								targetPlayer.getCarriedItems().remove(equipped);
+								removedCount++;
+							}
+						}
+					}
+				}
+			}
+
+			if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
+				targetPlayer.message(messagePrefix + "Your inventory has had items removed by an admin");
+			}
+
+			success = true;
+		} else {
+			// player is offline
+			List<Item> inventory;
+			targetPlayerName = targetPlayerName.replaceAll("\\."," ");
+			try {
+				inventory = player.getWorld().getServer().getPlayerService().retrievePlayerInventory(targetPlayerName);
+			} catch (GameDatabaseException e) {
+				player.message(messagePrefix + "Could not find player; invalid name.");
+				return;
+			}
+
+			// delete items
+			try {
+				int playerId = player.getWorld().getServer().getDatabase().playerIdFromUsername(targetPlayerName);
+				if (playerId == -1) {
+					throw new GameDatabaseException(Admins.class, "Could not find player.");
+				}
+
+				for (Item curItem : inventory) {
+					if (curItem.getCatalogId() == idToRemove && removedCount < amountToRemove) {
+						int available = curItem.getAmount();
+						int toRemove = Math.min(amountToRemove, available);
+						if (available > 1) {
+							if (amountToRemove < available) {
+								player.message(messagePrefix + "Could not remove partial stack of item from offline player.");
+								player.message(messagePrefix + "Try increasing the amount to remove to at least " + available + " if you would like to continue.");
+								return;
+							}
+						}
+						player.getWorld().getServer().getDatabase().inventoryRemove(playerId, curItem);
+						removedCount += toRemove;
+
+						if (removedCount == amountToRemove) break;
+					}
+				}
+			} catch (GameDatabaseException e) {
+				player.message(messagePrefix + "Database Error! Check the logs.");
+				LOGGER.error(e);
+				return;
+			}
+
+			// verify success
+			try {
+				int sizeAfter = player.getWorld().getServer().getPlayerService().retrievePlayerInventory(targetPlayerName).size();
+				if (sizeAfter == inventory.size()) {
+					success = false;
+				} else {
+					player.message(messagePrefix + "Player still has " + sizeAfter + " items in their inventory.");
+				}
+				if (removedCount > 0) {
+					success = true;
+				}
+			} catch (GameDatabaseException e) {
+				player.message(messagePrefix + "Database Error! (Could not verify inventory item removal). Check the logs.");
+				LOGGER.error(e);
+				return;
+			}
+		}
+
+		if (success) {
+			if (removedCount < amountToRemove) {
+				player.message(messagePrefix + "Successfully removed " + removedCount + "/" + amountToRemove + " " + args[0] + " from the inventory of " + targetPlayerName);
+			} else {
+				player.message(messagePrefix + "Successfully removed " + removedCount + " " + args[0] + " from the inventory of " + targetPlayerName);
+			}
+			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, messagePrefix + "Successfully removed items from inventory of "+ targetPlayerName));
+		} else {
+			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, messagePrefix + "Unsuccessfully removed items from inventory of "+ targetPlayerName));
+		}
 	}
 
 	private void removeItemInventoryAll(Player player, String command, String[] args) {
@@ -1164,7 +1480,6 @@ public final class Admins implements CommandTrigger {
 			}
 
 			if (targetPlayer.getConfig().WANT_EQUIPMENT_TAB) {
-				int wearableId;
 				synchronized (targetPlayer.getCarriedItems().getEquipment()) {
 					for (int i = 0; i < Equipment.SLOT_COUNT; i++) {
 						Item equipped = targetPlayer.getCarriedItems().getEquipment().get(i);
@@ -1178,9 +1493,10 @@ public final class Admins implements CommandTrigger {
 				}
 			}
 
-			if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
+			if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 				targetPlayer.message(messagePrefix + "Your inventory has been wiped by an admin");
 			}
+
 			success = true;
 		} else {
 			// player is offline
@@ -1224,10 +1540,118 @@ public final class Admins implements CommandTrigger {
 		}
 
 		if (success) {
-			player.message(messagePrefix + "Wiped inventory of " + targetPlayerName);
+			if (!player.isInvisibleTo(targetPlayer)) {
+				player.message(messagePrefix + "Wiped inventory of " + targetPlayerName);
+			} else {
+				player.message(messagePrefix + "Silently wiped inventory of " + targetPlayerName);
+			}
 			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, messagePrefix + "Successfully wiped the inventory of "+ targetPlayerName));
 		} else {
 			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, messagePrefix + "Unsuccessfully wiped the inventory of "+ targetPlayerName));
+		}
+	}
+
+	private void swapItemInventory(Player player, String command, String[] args) {
+		if (args.length < 3) {
+			player.playerServerMessage(MessageType.QUEST, badSyntaxPrefix + command.toUpperCase() + " [Inventory Slot # OR ItemId name] [Item Id OR ItemID name] [player]");
+			player.playerServerMessage(MessageType.QUEST,  "Inventory Slot # is zero-indexed. Recommended to use ritem or item commands if stackables are removed.");
+			return;
+		}
+
+		int inventorySlot = -1;
+		int idToRemove = -1;
+		try {
+			inventorySlot = Integer.parseInt(args[0]);
+		} catch (NumberFormatException ex) {
+			ItemId item = ItemId.getByName(args[0]);
+			if (item == ItemId.NOTHING) {
+				player.playerServerMessage(MessageType.QUEST, badSyntaxPrefix + command.toUpperCase() + " [Inventory Slot # OR ItemId name] [Item Id OR ItemID name] [player]");
+				player.playerServerMessage(MessageType.QUEST,  "Inventory Slot # is zero-indexed. Recommended to use ::ritem or ::item commands if stackables are removed.");
+				return;
+			} else {
+				idToRemove = item.id();
+			}
+		}
+
+		if (inventorySlot > 29) {
+			player.playerServerMessage(MessageType.QUEST, badSyntaxPrefix + command.toUpperCase() + " [Inventory Slot # OR ItemId name] [Item Id OR ItemID name] [player]");
+			player.playerServerMessage(MessageType.QUEST,  "Inventory Slot # is zero-indexed. Recommended to use ::ritem or ::item commands if stackables are removed.");
+			return;
+		}
+
+		int idToAdd;
+		try {
+			idToAdd = Integer.parseInt(args[1]);
+		} catch (NumberFormatException ex) {
+			ItemId item = ItemId.getByName(args[1]);
+			if (item == ItemId.NOTHING) {
+				player.playerServerMessage(MessageType.QUEST, badSyntaxPrefix + command.toUpperCase() + " [Inventory Slot # OR ItemId name] [Item Id OR ItemID name] [player]");
+				player.playerServerMessage(MessageType.QUEST,  "Inventory Slot # is zero-indexed. Recommended to use ::ritem or ::item commands if stackables are removed.");
+				return;
+			} else {
+				idToAdd = item.id();
+			}
+		}
+
+		boolean success = false;
+		int removedItemId = -1;
+
+		String targetPlayerName = args[2];
+		Player targetPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(targetPlayerName));
+		if (targetPlayer != null) {
+			// player is online
+			synchronized (targetPlayer.getCarriedItems().getInventory()) {
+				List<Item> items = targetPlayer.getCarriedItems().getInventory().getItems();
+				for (int i = 0; i < items.size() && inventorySlot != -1; i++) {
+					if (items.get(i).getCatalogId() == idToRemove) {
+						inventorySlot = i;
+						break;
+					}
+				}
+				if (inventorySlot != -1) {
+					if (inventorySlot > items.size()) {
+						player.playerServerMessage(MessageType.QUEST, "@red@Player is not currently holding that many items.");
+						player.playerServerMessage(MessageType.QUEST, "@red@Please check their ::inventory before blindly replacing items!");
+						return;
+					}
+					if (items.get(inventorySlot).getDef(player.getWorld()).isStackable()) {
+						player.playerServerMessage(MessageType.QUEST, "@ora@This command does not support deleting stackable items.");
+						return;
+					}
+					if (items.get(inventorySlot).isWielded()) {
+						player.playerServerMessage(MessageType.QUEST, "@ora@This command does not support swapping out item that are equipped.");
+						return;
+					}
+					removedItemId = items.get(inventorySlot).getCatalogId();
+					if (removedItemId > 0) {
+						items.get(inventorySlot).setCatalogId(idToAdd);
+						success = true;
+					}
+				} else {
+					player.playerServerMessage(MessageType.QUEST, "Could not find an item on the player to remove.");
+					return;
+				}
+			}
+
+			if (success && targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
+				targetPlayer.message(messagePrefix + "Your items have been modified by an admin");
+			}
+		} else {
+			// player is offline
+			player.playerServerMessage(MessageType.QUEST, messagePrefix + "Could not find player. They may be offline.");
+			player.playerServerMessage(MessageType.QUEST, messagePrefix + "::ritem and ::item commands support players offline, this command does not.");
+			return;
+		}
+
+		if (success) {
+			String removedString = "Item ID @cya@" + removedItemId + "@whi@ (aka @cya@" + new Item(removedItemId).getDef(player.getWorld()).getName() + "@whi@) at inventory slot @cya@" +  inventorySlot;
+			String addedString = "was replaced by Item ID @mag@" + idToAdd + "@whi@ (aka @mag@" + new Item(idToAdd).getDef(player.getWorld()).getName() + "@whi@) for player @mag@" + targetPlayerName;
+			ActionSender.sendInventoryUpdateItem(targetPlayer, inventorySlot);
+			player.playerServerMessage(MessageType.QUEST, messagePrefix + removedString);
+			player.playerServerMessage(MessageType.QUEST, addedString);
+			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, messagePrefix + removedString + " " + addedString));
+		} else {
+			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 22, messagePrefix + "Unsuccessfully swapped an item in the inventory of "+ targetPlayerName));
 		}
 	}
 
@@ -1325,6 +1749,12 @@ public final class Admins implements CommandTrigger {
 	}
 
 	private void spawnNpcWorldwide(Player player, String command, String[] args) {
+		if (!player.getConfig().WANT_CUSTOM_SPRITES) {
+			player.message("no fun allowed...!!");
+			player.message("It's really important to communicate that we aim for authenticity.");
+			player.message("Worldwide NPC events tell newcomers that we are a private server.");
+			return;
+		}
 		if (args.length < 2) {
 			player.message(badSyntaxPrefix + command.toUpperCase() + " [id] [amount] (duration_minutes)");
 			return;
@@ -1515,6 +1945,12 @@ public final class Admins implements CommandTrigger {
 	}
 
 	private void startNpcEvent(Player player, String command, String[] args) {
+		if (!player.getConfig().WANT_CUSTOM_SPRITES) {
+			player.message("no fun allowed...!!");
+			player.message("It's really important to communicate that we aim for authenticity.");
+			player.message("NPC events tell newcomers that we are a private server.");
+			return;
+		}
 		if (args.length < 3) {
 			player.message(badSyntaxPrefix + command.toUpperCase() + " [npc_id] [npc_amount] [item_id] (item_amount) (duration)");
 			return;
@@ -1552,6 +1988,12 @@ public final class Admins implements CommandTrigger {
 	}
 
 	private void startChickenEvent(Player player, String command, String[] args) {
+		if (!player.getConfig().WANT_CUSTOM_SPRITES) {
+			player.message("no fun allowed...!!");
+			player.message("It's really important to communicate that we aim for authenticity.");
+			player.message("The chicken event tells newcomers that we are a private server.");
+			return;
+		}
 		int hours;
 		if (args.length >= 1) {
 			try {
@@ -1600,8 +2042,8 @@ public final class Admins implements CommandTrigger {
 			npcLifeTime = 10;
 		}
 
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		for (GameTickEvent event : events) {
 			if (!(event instanceof HourlyNpcLootEvent)) continue;
 
 			player.message(messagePrefix + "Hourly NPC Loot Event is already running");
@@ -1613,8 +2055,8 @@ public final class Admins implements CommandTrigger {
 	}
 
 	private void stopNpcEvent(Player player) {
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		for (GameTickEvent event : events) {
 			if (!(event instanceof HourlyNpcLootEvent)) continue;
 
 			event.stop();
@@ -1624,8 +2066,8 @@ public final class Admins implements CommandTrigger {
 	}
 
 	private void checkNpcEvent(Player player) {
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		for (GameTickEvent event : events) {
 			if (!(event instanceof HourlyNpcLootEvent)) continue;
 
 			HourlyNpcLootEvent lootEvent = (HourlyNpcLootEvent) event;
@@ -1723,7 +2165,7 @@ public final class Admins implements CommandTrigger {
 		}
 
 		String freezeMessage = newFreezeXp ? "frozen" : "unfrozen";
-		if (player.getUsernameHash() != player.getUsernameHash()) {
+		if (player.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
 			player.message(messagePrefix + "Your experience has been " + freezeMessage + " by an admin");
 		}
 		player.message(messagePrefix + "Experience has been " + freezeMessage + ": " + player.getUsername());
@@ -1990,7 +2432,7 @@ public final class Admins implements CommandTrigger {
 
 	private void playerSkull(Player player, String command, String[] args) {
 		if (args.length < 1) {
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] (boolean)");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [player]");
 			return;
 		}
 
@@ -2006,34 +2448,37 @@ public final class Admins implements CommandTrigger {
 			return;
 		}
 
-		boolean skull;
-		boolean toggle;
-		if (args.length > 1) {
-			try {
-				skull = DataConversions.parseBoolean(args[1]);
-				toggle = false;
-			} catch (NumberFormatException ex) {
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] (boolean)");
-				return;
-			}
-		} else {
-			toggle = true;
-			skull = false;
-		}
+		boolean skull = command.equalsIgnoreCase("skull");
 
-		if ((toggle && targetPlayer.isSkulled()) || (!toggle && !skull)) {
-			targetPlayer.removeSkull();
+		String skullMessage = "";
+		boolean wasSkulled = targetPlayer.isSkulled();
+		if (!skull) {
+			if (wasSkulled) {
+				targetPlayer.removeSkull();
+				skullMessage = "removed";
+			}
 		} else {
 			targetPlayer.addSkull(targetPlayer.getConfig().GAME_TICK * 2000);
 			targetPlayer.getCache().store("skull_remaining", targetPlayer.getConfig().GAME_TICK * 2000); // Saves the skull timer to the database if the player logs out before it expires
 			targetPlayer.getCache().store("last_skull", System.currentTimeMillis()); // Sets the last time a player had a skull
+			if (wasSkulled) {
+				skullMessage = "renewed";
+			} else {
+				skullMessage = "added";
+			}
 		}
 
-		String skullMessage = player.isSkulled() ? "added" : "removed";
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
-			targetPlayer.message(messagePrefix + "PK skull has been " + skullMessage + " by a staff member");
+		if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
+			if (!(!wasSkulled && !skull)) {
+				targetPlayer.message(messagePrefix + "PK skull has been " + skullMessage + " by a staff member");
+			}
 		}
-		player.message(messagePrefix + "PK skull has been " + skullMessage + ": " + targetPlayer.getUsername());
+
+		if (!wasSkulled && !skull) {
+			player.message(messagePrefix + "PK skull was already inactive: " + targetPlayer.getUsername());
+		} else {
+			player.message(messagePrefix + "PK skull has been " + skullMessage + ": " + targetPlayer.getUsername());
+		}
 	}
 
 	private void npcRangedPlayer(Player player, String command, String[] args) {
@@ -2072,7 +2517,7 @@ public final class Admins implements CommandTrigger {
 		player.message(messagePrefix + targetPlayer.getUsername() + " IP address: " + targetPlayer.getCurrentIP());
 	}
 
-	private void sendAppearanceScreen(Player player, String[] args) {
+	private void sendYoptinScreen(Player player, String[] args) {
 		Player targetPlayer = args.length > 0 ?
 			player.getWorld().getPlayer(DataConversions.usernameToHash(args[0])) :
 			player;
@@ -2082,12 +2527,16 @@ public final class Admins implements CommandTrigger {
 			return;
 		}
 
-		player.message(messagePrefix + targetPlayer.getUsername() + " has been sent the change appearance screen");
-		if (targetPlayer.getUsernameHash() != player.getUsernameHash()) {
-			targetPlayer.message(messagePrefix + "A staff member has sent you the change appearance screen");
+		if (targetPlayer.getClientVersion() <= 75 && targetPlayer.getClientVersion() >= 61) {
+			player.message(messagePrefix + targetPlayer.getUsername() + " has been sent the yoptin screen");
+			if (targetPlayer.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(targetPlayer)) {
+				targetPlayer.message(messagePrefix + "A staff member has sent you to the prototype Yoptin signup screen");
+			}
+			ActionSender.sendYoptinScreen(targetPlayer);
+		} else {
+			player.message(messagePrefix + "That player is using client " + targetPlayer.getClientVersion() + ".");
+			player.message(messagePrefix + "This command only works for clients between mudclient 61 and 75 inclusive.");
 		}
-		targetPlayer.setChangingAppearance(true);
-		ActionSender.sendAppearanceScreen(targetPlayer);
 	}
 
 	private void spawnNpc(Player player, String command, String[] args) {
@@ -2151,6 +2600,7 @@ public final class Admins implements CommandTrigger {
 	private void winterHolidayEvent(Player player, String command, String[] args) {
 		if (!config().WANT_CUSTOM_SPRITES) return;
 		GameObjectLoc[] locs = new GameObjectLoc[]{
+			// Lumbridge
 			new GameObjectLoc(1238, new Point(127, 648), 1, 0),
 			new GameObjectLoc(1238, new Point(123, 656), 2, 0),
 			new GameObjectLoc(1238, new Point(126, 656), 2, 0),
@@ -2158,6 +2608,8 @@ public final class Admins implements CommandTrigger {
 			new GameObjectLoc(1238, new Point(123, 660), 2, 0),
 			new GameObjectLoc(1238, new Point(127, 664), 0, 0),
 			new GameObjectLoc(1238, new Point(122, 664), 0, 0),
+
+			// Varrock
 			new GameObjectLoc(1238, new Point(122, 502), 0, 0),
 			new GameObjectLoc(1238, new Point(135, 505), 0, 0),
 			new GameObjectLoc(1238, new Point(133, 512), 0, 0),
@@ -2165,10 +2617,20 @@ public final class Admins implements CommandTrigger {
 			new GameObjectLoc(1238, new Point(126, 482), 0, 0),
 			new GameObjectLoc(1238, new Point(136, 482), 0, 0),
 			new GameObjectLoc(1238, new Point(131, 484), 0, 0),
+
+			// Falador
 			new GameObjectLoc(1238, new Point(317, 541), 0, 0),
 			new GameObjectLoc(1238, new Point(317, 538), 0, 0),
 			new GameObjectLoc(1238, new Point(310, 541), 0, 0),
-			new GameObjectLoc(1238, new Point(310, 538), 0, 0)
+			new GameObjectLoc(1238, new Point(310, 538), 0, 0),
+
+			// Seers
+			new GameObjectLoc(1238, new Point(498, 462), 0, 0),
+			new GameObjectLoc(1238, new Point(493, 462), 0, 0),
+			new GameObjectLoc(1238, new Point(488, 467), 0, 0),
+			new GameObjectLoc(1238, new Point(502, 467), 0, 0),
+			new GameObjectLoc(1238, new Point(497, 441), 0, 0),
+
 		};
 
 		final GameObject existingObject = player.getViewArea().getGameObject(locs[0].getLocation());
@@ -2207,7 +2669,93 @@ public final class Admins implements CommandTrigger {
 		}
 	}
 
-	private void startResetEvent(Player player, String command, String[] args, boolean allowMultiple) {
+	private void spawnSanta(Player player, String command, String[] args) {
+		final Npc lumbridgeSanta = new Npc(player.getWorld(), NpcId.SANTA.id(), 124, 658, 0);
+		lumbridgeSanta.setShouldRespawn(false);
+		player.getWorld().registerNpc(lumbridgeSanta);
+		final Npc varrockSanta = new Npc(player.getWorld(), NpcId.SANTA.id(), 131, 510, 0);
+		lumbridgeSanta.setShouldRespawn(false);
+		player.getWorld().registerNpc(varrockSanta);
+		final Npc faladorSanta = new Npc(player.getWorld(), NpcId.SANTA.id(), 314, 541, 0);
+		lumbridgeSanta.setShouldRespawn(false);
+		player.getWorld().registerNpc(faladorSanta);
+		player.message("Santa Claus has come to town(s)!");
+	}
+
+	private void spawnStockGroupInventory(Player player, String command, String[] args, Boolean noted) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount), [id or ItemId name] (amount), ...");
+			return;
+		}
+
+		// validate and set the list
+		List<Pair<Integer, Integer>> listItems = new ArrayList<>();
+		int id = 0, amount = 1;
+		int nextExpected = 0; // 0 = item, 1 = amount
+		int i = 0;
+		boolean isLastElem = false;
+		String elem;
+		while (i < args.length) {
+			elem = args[i];
+			isLastElem = i == args.length - 1;
+			if (nextExpected == 0) {
+				if (!elem.endsWith(",")) nextExpected = 1;
+				else {
+					elem = elem.substring(0, elem.lastIndexOf(","));
+					amount = 1;
+				}
+
+				try {
+					id = getItemId(player, elem);
+				} catch (Exception e) {
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount), [id or ItemId name] (amount), ...");
+					return;
+				}
+			} else if (nextExpected == 1) {
+				if (!elem.endsWith(",")) {
+					if (!isLastElem) {
+						player.message(badSyntaxPrefix + command.toUpperCase() + " [id or ItemId name] (amount), [id or ItemId name] (amount), ...");
+						return;
+					}
+				} else {
+					elem = elem.substring(0, elem.lastIndexOf(","));
+					nextExpected = 0;
+				}
+
+				try {
+					amount = Integer.parseInt(elem);
+					amount = Math.max(0, amount);
+				} catch(Exception e) {
+					amount = 1;
+				}
+			}
+
+			if (args[i].endsWith(",") || isLastElem) {
+				// add to list
+				listItems.add(new ImmutablePair<>(id, amount));
+			}
+			i++;
+		}
+
+		int radius = 15;
+		for (Player targetPlayer : player.getRegion().getPlayers()) {
+			// only stock those near the staff player
+			if (!targetPlayer.withinRange(player.getLocation(), radius)) continue;
+			if (targetPlayer.equals(player)) continue;
+
+			if (targetPlayer.hasElevatedPriveledges()) {
+				// command only applies to non-staff accounts
+				continue;
+			}
+
+			for (Pair<Integer, Integer> item : listItems) {
+				spawnItemInventory(player, command,
+					new String[]{Integer.toString(item.getKey()), Integer.toString(item.getValue()), targetPlayer.getUsername()}, false);
+			}
+		}
+	}
+
+	private void startResetEvent(Player player, String command, String[] args) {
 		if (args.length < 2) {
 			player.message(badSyntaxPrefix + command.toUpperCase() + " [hours] [minute]");
 			return;
@@ -2233,27 +2781,358 @@ public final class Admins implements CommandTrigger {
 			return;
 		}
 
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
-			if (!(event instanceof HourlyResetEvent)) continue;
-
+		final GameEventHandler eventHandler = getGameEventHandler(player);
+		if(eventHandler.hasEvent(HourlyResetEvent.class)) {
 			player.message(messagePrefix + "There is already an hourly reset running!");
 			return;
 		}
 
-		player.getWorld().getServer().getGameEventHandler().add(new HourlyResetEvent(player.getWorld(), executionCount, minute));
+		eventHandler.add(new HourlyResetEvent(player.getWorld(), executionCount, minute));
 		player.message(messagePrefix + "Starting hourly reset!");
 		player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 21, messagePrefix + "Started reset event"));
 	}
 
 	private void stopResetEvent(Player player) {
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
-		for (GameTickEvent event : events.values()) {
-			if (!(event instanceof HourlyResetEvent)) continue;
+		getGameEventHandler(player)
+				.getEvents(HourlyResetEvent.class)
+				.forEach(event -> {
+					event.stop();
+					player.message(messagePrefix + "Stopping hourly reset!");
+					player.getWorld()
+							.getServer()
+							.getGameLogger()
+							.addQuery(new StaffLog(player, 21, messagePrefix + "Stopped reset event"));
+				});
+	}
 
-			event.stop();
-			player.message(messagePrefix + "Stopping hourly reset!");
-			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 21, messagePrefix + "Stopped reset event"));
+	public GameEventHandler getGameEventHandler(Player player) {
+		return player.getWorld().getServer().getGameEventHandler();
+	}
+
+	private void changeStatXP(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
+			return;
+		}
+
+		String statName;
+		boolean shouldZero = false;
+		int experience;
+		int stat;
+		Player otherPlayer;
+
+		try {
+			if(args.length == 1) {
+				if (Long.parseLong(args[0]) < 0) shouldZero = true;
+				experience = (int)Long.parseLong(args[0]);
+				stat = -1;
+				statName = "";
+			}
+			else {
+				if (Long.parseLong(args[0]) < 0) shouldZero = true;
+				experience = (int)Long.parseLong(args[0]);
+				try {
+					stat = Integer.parseInt(args[1]);
+				}
+				catch (NumberFormatException ex) {
+					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[1].toLowerCase());
+
+					if(stat == -1) {
+						player.message(messagePrefix + "Invalid stat");
+						return;
+					}
+				}
+
+				try {
+					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
+				}
+				catch (IndexOutOfBoundsException ex) {
+					player.message(messagePrefix + "Invalid stat");
+					return;
+				}
+			}
+
+			otherPlayer = player;
+		}
+		catch(NumberFormatException ex) {
+			otherPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
+
+			if (args.length < 2) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
+				return;
+			}
+			else if(args.length == 2) {
+				try {
+					if (Long.parseLong(args[1]) < 0) shouldZero = true;
+					experience = (int)Long.parseLong(args[1]);
+				} catch (NumberFormatException e) {
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
+					return;
+				}
+				stat = -1;
+				statName = "";
+			}
+			else {
+				try {
+					if (Long.parseLong(args[1]) < 0) shouldZero = true;
+					experience = (int)Long.parseLong(args[1]);
+				} catch (NumberFormatException e) {
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [experience] [stat] OR");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [experience] [stat]");
+					return;
+				}
+
+				try {
+					stat = Integer.parseInt(args[2]);
+				}
+				catch (NumberFormatException e) {
+					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[2].toLowerCase());
+
+					if(stat == -1) {
+						player.message(messagePrefix + "Invalid stat");
+						return;
+					}
+				}
+
+				try {
+					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
+				}
+				catch (IndexOutOfBoundsException e) {
+					player.message(messagePrefix + "Invalid stat");
+					return;
+				}
+			}
+		}
+
+		if (otherPlayer == null) {
+			player.message(messagePrefix + "Invalid name or player is not online");
+			return;
+		}
+
+		if(!player.isAdmin() && otherPlayer.getUsernameHash() != player.getUsernameHash()) {
+			player.message(messagePrefix + "You can not modify other players' stats.");
+			return;
+		}
+
+		if(!otherPlayer.isDefaultUser() && otherPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= otherPlayer.getGroupID()) {
+			player.message(messagePrefix + "You can not modify stats of a staff member of equal or greater rank.");
+			return;
+		}
+
+		if(shouldZero)
+			experience = 0;
+		if(player.getWorld().getServer().getConfig().WANT_EXPERIENCE_CAP &&
+			Integer.toUnsignedLong(experience) >= Integer.toUnsignedLong(otherPlayer.getWorld().getServer().getConfig().EXPERIENCE_LIMIT))
+			experience = otherPlayer.getWorld().getServer().getConfig().EXPERIENCE_LIMIT;
+		String experienceSt = Integer.toUnsignedString(experience);
+		if(stat != -1) {
+			otherPlayer.getSkills().setExperience(stat, experience);
+			if (stat == Skill.PRAYER.id()) {
+				otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
+			}
+
+			otherPlayer.checkEquipment();
+			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s " + statName + " to experience " + experienceSt);
+			otherPlayer.getSkills().sendUpdateAll();
+			if(player.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(otherPlayer)) {
+				otherPlayer.message(messagePrefix + "Your " + statName + " has been set to experience " + experienceSt + " by a staff member");
+				otherPlayer.getSkills().sendUpdateAll();
+			}
+		}
+		else {
+			for(int i = 0; i < player.getWorld().getServer().getConstants().getSkills().getSkillsCount(); i++) {
+				otherPlayer.getSkills().setExperience(i, experience);
+			}
+			if (Skill.PRAYER.id() != Skill.NONE.id()) {
+				otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
+			}
+
+			otherPlayer.checkEquipment();
+			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s stats to experience " + experienceSt);
+			otherPlayer.getSkills().sendUpdateAll();
+			if(player.getParty() != null){
+				player.getParty().sendParty();
+			}
+			if(otherPlayer.getUsernameHash() != player.getUsernameHash()) {
+				if(otherPlayer.getParty() != null){
+					otherPlayer.getParty().sendParty();
+				}
+				if (!player.isInvisibleTo(otherPlayer))
+					otherPlayer.message(messagePrefix + "All of your stats have been set to experience " + experienceSt + " by a staff member");
+				otherPlayer.getSkills().sendUpdateAll();
+			}
 		}
 	}
+
+	private void changeMaxStat(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
+			return;
+		}
+
+		String statName;
+		int level;
+		int stat;
+		Player otherPlayer;
+
+		try {
+			if(args.length == 1) {
+				level = Integer.parseInt(args[0]);
+				stat = -1;
+				statName = "";
+			}
+			else {
+				level = Integer.parseInt(args[0]);
+				try {
+					stat = Integer.parseInt(args[1]);
+				}
+				catch (NumberFormatException ex) {
+					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[1].toLowerCase());
+
+					if(stat == -1) {
+						player.message(messagePrefix + "Invalid stat");
+						return;
+					}
+				}
+
+				try {
+					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
+				}
+				catch (IndexOutOfBoundsException ex) {
+					player.message(messagePrefix + "Invalid stat");
+					return;
+				}
+			}
+
+			otherPlayer = player;
+		}
+		catch(NumberFormatException ex) {
+			otherPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
+
+			if (args.length < 2) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
+				return;
+			}
+			else if(args.length == 2) {
+				try {
+					level = Integer.parseInt(args[1]);
+				} catch (NumberFormatException e) {
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
+					return;
+				}
+				stat = -1;
+				statName = "";
+			}
+			else {
+				try {
+					level = Integer.parseInt(args[1]);
+				} catch (NumberFormatException e) {
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] OR ");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [player] [level] [stat] OR");
+					player.message(badSyntaxPrefix + command.toUpperCase() + " [level] [stat]");
+					return;
+				}
+
+				try {
+					stat = Integer.parseInt(args[2]);
+				}
+				catch (NumberFormatException e) {
+					stat = player.getWorld().getServer().getConstants().getSkills().getSkillIndex(args[2].toLowerCase());
+
+					if(stat == -1) {
+						player.message(messagePrefix + "Invalid stat");
+						return;
+					}
+				}
+
+				try {
+					statName = player.getWorld().getServer().getConstants().getSkills().getSkillName(stat);
+				}
+				catch (IndexOutOfBoundsException e) {
+					player.message(messagePrefix + "Invalid stat");
+					return;
+				}
+			}
+		}
+
+		if (otherPlayer == null) {
+			player.message(messagePrefix + "Invalid name or player is not online");
+			return;
+		}
+
+		if(!player.isAdmin() && otherPlayer.getUsernameHash() != player.getUsernameHash()) {
+			player.message(messagePrefix + "You can not modify other players' stats.");
+			return;
+		}
+
+		if(!otherPlayer.isDefaultUser() && otherPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= otherPlayer.getGroupID()) {
+			player.message(messagePrefix + "You can not modify stats of a staff member of equal or greater rank.");
+			return;
+		}
+
+		if(level < 1)
+			level = 1;
+		if(level > config().PLAYER_LEVEL_LIMIT)
+			level = config().PLAYER_LEVEL_LIMIT;
+
+		if(stat != -1) {
+			otherPlayer.getSkills().setLevelTo(stat, level);
+			if (stat == Skill.PRAYER.id()) {
+				otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
+			}
+
+			otherPlayer.checkEquipment();
+			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s " + statName + " to level " + level);
+			otherPlayer.getSkills().sendUpdateAll();
+			if(player.getUsernameHash() != player.getUsernameHash() && !player.isInvisibleTo(otherPlayer)) {
+				otherPlayer.message(messagePrefix + "Your " + statName + " has been set to level " + level + " by a staff member");
+				otherPlayer.getSkills().sendUpdateAll();
+			}
+		}
+		else {
+			for(int i = 0; i < player.getWorld().getServer().getConstants().getSkills().getSkillsCount(); i++) {
+				otherPlayer.getSkills().setLevelTo(i, level);
+			}
+			if (Skill.PRAYER.id() != Skill.NONE.id()) {
+				otherPlayer.setPrayerStatePoints(otherPlayer.getLevel(Skill.PRAYER.id()) * 120);
+			}
+
+			otherPlayer.checkEquipment();
+			player.message(messagePrefix + "You have set " + otherPlayer.getUsername() + "'s stats to level " + level);
+			otherPlayer.getSkills().sendUpdateAll();
+			if(player.getParty() != null){
+				player.getParty().sendParty();
+			}
+			if(otherPlayer.getUsernameHash() != player.getUsernameHash()) {
+				if(otherPlayer.getParty() != null){
+					otherPlayer.getParty().sendParty();
+				}
+				if (!player.isInvisibleTo(otherPlayer))
+					otherPlayer.message(messagePrefix + "All of your stats have been set to level " + level + " by a staff member");
+				otherPlayer.getSkills().sendUpdateAll();
+			}
+		}
+	}
+
 }

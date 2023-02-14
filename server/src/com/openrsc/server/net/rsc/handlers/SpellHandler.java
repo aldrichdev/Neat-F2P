@@ -4,10 +4,11 @@ import com.openrsc.server.constants.*;
 import com.openrsc.server.content.SkillCapes;
 import com.openrsc.server.database.impl.mysql.queries.logging.GenericLog;
 import com.openrsc.server.event.MiniEvent;
-import com.openrsc.server.event.rsc.impl.projectile.CustomProjectileEvent;
 import com.openrsc.server.event.rsc.impl.ObjectRemover;
-import com.openrsc.server.event.rsc.impl.projectile.ProjectileEvent;
 import com.openrsc.server.event.rsc.impl.combat.CombatFormula;
+import com.openrsc.server.event.rsc.impl.projectile.CustomProjectileEvent;
+import com.openrsc.server.event.rsc.impl.projectile.ProjectileEvent;
+import com.openrsc.server.external.Gauntlets;
 import com.openrsc.server.external.ItemSmeltingDef;
 import com.openrsc.server.external.ReqOreDef;
 import com.openrsc.server.external.SpellDef;
@@ -17,10 +18,7 @@ import com.openrsc.server.model.action.ActionType;
 import com.openrsc.server.model.action.WalkToMobAction;
 import com.openrsc.server.model.action.WalkToPointAction;
 import com.openrsc.server.model.container.Item;
-import com.openrsc.server.model.entity.GameObject;
-import com.openrsc.server.model.entity.GroundItem;
-import com.openrsc.server.model.entity.KillType;
-import com.openrsc.server.model.entity.Mob;
+import com.openrsc.server.model.entity.*;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.update.ChatMessage;
@@ -30,6 +28,11 @@ import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.SpellStruct;
+import com.openrsc.server.plugins.SpellFailureException;
+import com.openrsc.server.plugins.triggers.SpellInvTrigger;
+import com.openrsc.server.plugins.triggers.SpellLocTrigger;
+import com.openrsc.server.plugins.triggers.SpellNpcTrigger;
+import com.openrsc.server.plugins.triggers.SpellPlayerTrigger;
 import com.openrsc.server.util.rsc.CertUtil;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
@@ -48,6 +51,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 	private static final String AMULET = "amulet";
 	private static final String RING = "ring";
 	private static final String NECKLACE = "necklace";
+	private static final String CROWN = "crown";
 	private static final String DEFAULT = "";
 	private static final int[] elementalRunes = new int[4];
 
@@ -85,6 +89,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 	private static boolean canCast(Player player) {
 		// Retro RSC mechanic, could rapid cast spells
 		if (!player.castTimer(player.getConfig().RAPID_CAST_SPELLS)) {
+			// spell timer audited, see #3199 or `flying sno/flying sno (originals only)/penuslarge1/07-11-2018 16.12.51 autocast magic on some guards for 2 hours`
 			player.message("You need to wait " + player.getSpellWait() + " seconds before you can cast another spell");
 			player.resetPath();
 			return false;
@@ -92,10 +97,18 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		return true;
 	}
 
-	public static boolean checkAndRemoveRunes(Player player, SpellDef spell) {
-		if (SkillCapes.shouldActivate(player, ItemId.MAGIC_CAPE)) {
+	/**
+	 * Checks if player can cast spell
+	 * @param player
+	 * @param spell
+	 * @param rollMagicCape
+	 * @return The set of required runes that would be consumed or null if the next cast should be free due to Magic Cape
+	 * @throws SpellFailureException when player lacks the required runes to cast spell
+	 */
+	public static Set<Entry<Integer, Integer>> checkSpellRunes(Player player, SpellDef spell, boolean rollMagicCape) throws SpellFailureException {
+		if (rollMagicCape && SkillCapes.shouldActivate(player, ItemId.MAGIC_CAPE)) {
 			player.message("You manage to cast the spell without using any runes");
-			return true;
+			return null;
 		}
 		Set<Entry<Integer, Integer>> runesToConsume = new HashSet<>();
 
@@ -128,14 +141,36 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			if (player.getCarriedItems().getInventory().countId(e.getKey()) < e.getValue()) {
 				player.setSuspiciousPlayer(true, "player not all reagents for spell");
 				player.message("You don't have all the reagents you need for this spell");
+				throw new SpellFailureException("Player does not have all the reagents you need for this spell");
+			}
+			runesToConsume.add(new AbstractMap.SimpleEntry<>(e.getKey(), e.getValue()));
+		}
+		return runesToConsume;
+	}
+
+	public static boolean checkAndRemoveRunes(Player player, SpellDef spell) {
+		// check also against magic cape activation
+		return checkAndRemoveRunes(player, spell, null);
+	}
+
+	public static boolean checkAndRemoveRunes(Player player, SpellDef spell, Boolean magicCapeActivated) {
+		if (magicCapeActivated == null || !magicCapeActivated) {
+			try {
+				Set<Entry<Integer, Integer>> runesToConsume = checkSpellRunes(player, spell, magicCapeActivated == null);
+				if (runesToConsume != null) {
+					// remove now all the runes needed to be consumed
+					for (Entry<Integer, Integer> r : runesToConsume) {
+						player.getCarriedItems().remove(new Item(r.getKey(), r.getValue()));
+					}
+				}
+			} catch (SpellFailureException re) {
+				// cape did not activate and
+				// player does not have all runes
+				// message already displayed in checkSpellRunes
 				return false;
 			}
-			runesToConsume.add(new AbstractMap.SimpleEntry<Integer, Integer>(e.getKey(), e.getValue()));
 		}
-		// remove now if player meets all rune requirements
-		for (Entry<Integer, Integer> r : runesToConsume) {
-			player.getCarriedItems().remove(new Item(r.getKey(), r.getValue()));
-		}
+
 		return true;
 	}
 
@@ -213,6 +248,12 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		if (opcode == null)
 			return;
 
+		if (opcode == OpcodeIn.CAST_ON_INVENTORY_ITEM
+			&& (player.getTrade().isTradeActive() || (player.getDuel().isDuelActive() && !player.inCombat()))) {
+			// prevent of changing inventory items via magic during trade & duels windows
+			return;
+		}
+
 		player.resetAllExceptDueling();
 
 		if (!player.isUsingCustomClient()) {
@@ -259,7 +300,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 						if (checkCastOnPlayer(player, affectedPlayer, payload.spell)) return;
 
-						handleMobCast(player, affectedPlayer, payload.spell);
+						handleMobCast(player, affectedPlayer, payload.spell, spell.getSpellType());
 					}
 					break;
 				case CAST_ON_NPC:
@@ -282,7 +323,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 						if (checkCastOnNpc(player, affectedNpc, spell)) return;
 
-						handleMobCast(player, affectedNpc, payload.spell);
+						handleMobCast(player, affectedNpc, payload.spell, spell.getSpellType());
 					}
 					break;
 				case CAST_ON_INVENTORY_ITEM:
@@ -316,7 +357,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						}
 
 						// Attempt to find a spell in a plugin, otherwise use this file.
-						if (player.getWorld().getServer().getPluginHandler().handlePlugin(player, "SpellInv",
+						if (player.getWorld().getServer().getPluginHandler().handlePlugin(SpellInvTrigger.class, player,
 							new Object[]{player, invIndex, item.getCatalogId(), payload.spell})) {
 							return;
 						}
@@ -352,7 +393,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						return;
 					}
 
-					if (player.getWorld().getServer().getPluginHandler().handlePlugin(player, "SpellLoc",
+					if (player.getWorld().getServer().getPluginHandler().handlePlugin(SpellLocTrigger.class, player,
 						new Object[]{player, gameObject, spell})) {
 						return;
 					}
@@ -428,7 +469,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 						if (checkCastOnPlayer(player, affectedPlayer, payload.spell)) return;
 
-						handleMobCast(player, affectedPlayer, payload.spell);
+						handleMobCast(player, affectedPlayer, payload.spell, spell.getSpellType());
 					}
 					break;
 				case CAST_ON_NPC:
@@ -441,7 +482,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 						if (checkCastOnNpc(player, affectedNpc, spell)) return;
 
-						handleMobCast(player, affectedNpc, payload.spell);
+						handleMobCast(player, affectedNpc, payload.spell, spell.getSpellType());
 					}
 					break;
 				case CAST_ON_INVENTORY_ITEM:
@@ -466,7 +507,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						}
 
 						// Attempt to find a spell in a plugin, otherwise use this file.
-						if (player.getWorld().getServer().getPluginHandler().handlePlugin(player, "SpellInv",
+						if (player.getWorld().getServer().getPluginHandler().handlePlugin(SpellInvTrigger.class, player,
 							new Object[]{player, invIndex, item.getCatalogId(), payload.spell})) {
 							return;
 						}
@@ -484,7 +525,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						return;
 					}
 
-					if (player.getWorld().getServer().getPluginHandler().handlePlugin(player, "SpellLoc",
+					if (player.getWorld().getServer().getPluginHandler().handlePlugin(SpellLocTrigger.class, player,
 						new Object[]{player, gameObject, spell})) {
 						return;
 					}
@@ -512,7 +553,6 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 	}
 
 	private boolean checkCastOnPlayer(Player player, Player affectedPlayer, Spells spellEnum) {
-
 		// Duel with "No Magic" selected.
 		if (player.getDuel().isDuelActive() && player.getDuel().getDuelSetting(1)) {
 			player.message("Magic cannot be used during this duel!");
@@ -524,12 +564,12 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		// Only ranged & melee are authentically blocked in that safespot.
 
 		// Stop the player if they are close enough to their opponent.
-		if (player.withinRange(affectedPlayer, 4)) {
+		if (player.withinRange(affectedPlayer, player.getConfig().SPELL_RANGE_DISTANCE)) {
 			player.resetPath();
 		}
 
 		return player.getWorld().getServer().getPluginHandler()
-				.handlePlugin(player, "SpellPlayer", new Object[]{player, affectedPlayer, spellEnum});
+				.handlePlugin(SpellPlayerTrigger.class, player, new Object[]{player, affectedPlayer, spellEnum});
 	}
 
 	private boolean checkCastOnNpc(Player player, Npc affectedNpc, SpellDef spell) {
@@ -557,7 +597,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		}
 
 		// Stop movement if the player is within range.
-		if (player.withinRange(affectedNpc, 4)) {
+		if (player.withinRange(affectedNpc, player.getConfig().SPELL_RANGE_DISTANCE)) {
 			player.resetPath();
 		}
 
@@ -573,7 +613,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		}
 
 		return player.getWorld().getServer().getPluginHandler()
-				.handlePlugin(player, "SpellNpc", new Object[]{player, affectedNpc});
+				.handlePlugin(SpellNpcTrigger.class, player, new Object[]{player, affectedNpc});
 	}
 
 	private void finalizeSpellNoMessage(Player player, SpellDef spell) {
@@ -765,8 +805,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 	private void enchantTierOneJewelry(Player player, Item affectedItem, SpellDef spell) {
 		if (affectedItem.getCatalogId() == ItemId.SAPPHIRE_AMULET.id()
-				|| (player.getConfig().WANT_EQUIPMENT_TAB
-				&& (affectedItem.getCatalogId() == ItemId.SAPPHIRE_RING.id() || affectedItem.getCatalogId() == ItemId.OPAL_RING.id()))) {
+			|| (player.getConfig().WANT_EQUIPMENT_TAB
+			&& (inArray(affectedItem.getCatalogId(), ItemId.SAPPHIRE_CROWN.id(), ItemId.SAPPHIRE_RING.id(), ItemId.OPAL_RING.id())))) {
 			if (!checkAndRemoveRunes(player, spell)) {
 				return;
 			}
@@ -776,6 +816,10 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 				case SAPPHIRE_AMULET:
 					itemID = ItemId.SAPPHIRE_AMULET_OF_MAGIC.id();
 					jewelryType = AMULET;
+					break;
+				case SAPPHIRE_CROWN:
+					itemID = ItemId.CROWN_OF_DEW.id();
+					jewelryType = CROWN;
 					break;
 				case SAPPHIRE_RING:
 					itemID = ItemId.RING_OF_RECOIL.id();
@@ -789,7 +833,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					jewelryType = RING;
 					break;
 			}
-			player.getCarriedItems().remove(affectedItem);
+			if (player.getCarriedItems().remove(affectedItem) == -1) return;
 			player.getCarriedItems().getInventory().add(new Item(itemID));
 			finalizeSpell(player, spell, "You succesfully enchant the " + jewelryType);
 		} else
@@ -846,7 +890,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		if (newTalisman == null) return;
 
 		// Remove it
-		player.getCarriedItems().remove(item);
+		if (player.getCarriedItems().remove(item) == -1) return;
 		player.getCarriedItems().getInventory().add(newTalisman);
 		finalizeSpell(player, spell, "You successfully cast " + spell.getName()
 			+ " on the " + item.getDef(player.getWorld()).getName());
@@ -854,7 +898,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 	private void enchantTierTwoJewelry(Player player, Item affectedItem, SpellDef spell) {
 		if (affectedItem.getCatalogId() == ItemId.EMERALD_AMULET.id()
-				|| (player.getConfig().WANT_EQUIPMENT_TAB && affectedItem.getCatalogId() == ItemId.EMERALD_RING.id())) {
+			|| (player.getConfig().WANT_EQUIPMENT_TAB
+			&& (inArray(affectedItem.getCatalogId(), ItemId.EMERALD_CROWN.id(), ItemId.EMERALD_RING.id())))) {
 			if (!checkAndRemoveRunes(player, spell)) {
 				return;
 			}
@@ -865,6 +910,10 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					itemID = ItemId.EMERALD_AMULET_OF_PROTECTION.id();
 					jewelryType = AMULET;
 					break;
+				case EMERALD_CROWN:
+					itemID = ItemId.CROWN_OF_MIMICRY.id();
+					jewelryType = CROWN;
+					break;
 				case EMERALD_RING:
 					itemID = ItemId.RING_OF_SPLENDOR.id();
 					jewelryType = RING;
@@ -873,7 +922,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					jewelryType = NECKLACE;
 					break;
 			}
-			player.getCarriedItems().remove(affectedItem);
+			if (player.getCarriedItems().remove(affectedItem) == -1) return;
 			player.getCarriedItems().getInventory().add(new Item(itemID));
 			finalizeSpell(player, spell, "You succesfully enchant the " + jewelryType);
 		} else
@@ -882,7 +931,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 	private void enchantTierThreeJewelry(Player player, Item affectedItem, SpellDef spell) {
 		if (affectedItem.getCatalogId() == ItemId.RUBY_AMULET.id()
-				|| (player.getConfig().WANT_EQUIPMENT_TAB && affectedItem.getCatalogId() == ItemId.RUBY_RING.id())) {
+			|| (player.getConfig().WANT_EQUIPMENT_TAB
+			&& (inArray(affectedItem.getCatalogId(), ItemId.RUBY_CROWN.id(), ItemId.RUBY_RING.id())))) {
 			if (!checkAndRemoveRunes(player, spell)) {
 				return;
 			}
@@ -893,6 +943,10 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					itemID = ItemId.RUBY_AMULET_OF_STRENGTH.id();
 					jewelryType = AMULET;
 					break;
+				case RUBY_CROWN:
+					itemID = ItemId.CROWN_OF_THE_ARTISAN.id();
+					jewelryType = CROWN;
+					break;
 				case RUBY_RING:
 					itemID = ItemId.RING_OF_FORGING.id();
 					jewelryType = RING;
@@ -901,7 +955,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					jewelryType = NECKLACE;
 					break;
 			}
-			player.getCarriedItems().remove(affectedItem);
+			if (player.getCarriedItems().remove(affectedItem) == -1) return;
 			player.getCarriedItems().getInventory().add(new Item(itemID));
 			finalizeSpell(player, spell, "You succesfully enchant the " + jewelryType);
 		} else
@@ -910,7 +964,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 	private void enchantTierFourJewelry(Player player, Item affectedItem, SpellDef spell) {
 		if (affectedItem.getCatalogId() == ItemId.DIAMOND_AMULET.id()
-				|| (player.getConfig().WANT_EQUIPMENT_TAB && affectedItem.getCatalogId() == ItemId.DIAMOND_RING.id())){
+			|| (player.getConfig().WANT_EQUIPMENT_TAB
+			&& (inArray(affectedItem.getCatalogId(), ItemId.DIAMOND_CROWN.id(), ItemId.DIAMOND_RING.id())))){
 			if (!checkAndRemoveRunes(player, spell)) {
 				return;
 			}
@@ -921,6 +976,10 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					itemID = ItemId.DIAMOND_AMULET_OF_POWER.id();
 					jewelryType = AMULET;
 					break;
+				case DIAMOND_CROWN:
+					itemID = ItemId.CROWN_OF_THE_ITEMS.id();
+					jewelryType = CROWN;
+					break;
 				case DIAMOND_RING:
 					itemID = ItemId.RING_OF_LIFE.id();
 					jewelryType = RING;
@@ -929,7 +988,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					jewelryType = NECKLACE;
 					break;
 			}
-			player.getCarriedItems().remove(affectedItem);
+			if (player.getCarriedItems().remove(affectedItem) == -1) return;
 			player.getCarriedItems().getInventory().add(new Item(itemID));
 			finalizeSpell(player, spell, "You succesfully enchant the " + jewelryType);
 		} else
@@ -953,7 +1012,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			if (!checkAndRemoveRunes(player, spell)) {
 				return;
 			}
-			player.getCarriedItems().remove(affectedItem);
+			if (player.getCarriedItems().remove(affectedItem) == -1) return;
 			player.getCarriedItems().getInventory().add(new Item(itemID));
 			finalizeSpell(player, spell, "You succesfully enchant the " + jewelryType);
 		} else
@@ -977,10 +1036,9 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			player.message("@gre@Ana: Don't you start casting spells on me!");
 			finalizeSpellNoMessage(player, spell);
 		} else {
-			if (player.getCarriedItems().remove(new Item(affectedItem.getCatalogId(), affectedItem.getAmount())) > -1) {
-				int value = (int) (affectedItem.getDef(player.getWorld()).getDefaultPrice() * 0.4D * affectedItem.getAmount());
-				player.getCarriedItems().getInventory().add(new Item(ItemId.COINS.id(), value)); // 40%
-			}
+			if (player.getCarriedItems().remove(new Item(affectedItem.getCatalogId(), affectedItem.getAmount())) == -1) return;
+			int value = (int) (affectedItem.getDef(player.getWorld()).getDefaultPrice() * 0.4D * affectedItem.getAmount());
+			player.getCarriedItems().getInventory().add(new Item(ItemId.COINS.id(), value)); // 40%
 			finalizeSpell(player, spell, "Alchemy spell successful");
 		}
 	}
@@ -1002,10 +1060,9 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			player.message("@gre@Ana: Don't you start casting spells on me!");
 			finalizeSpellNoMessage(player, spell);
 		} else {
-			if (player.getCarriedItems().remove(new Item(affectedItem.getCatalogId(), affectedItem.getAmount())) > -1) {
-				int value = (int) (affectedItem.getDef(player.getWorld()).getDefaultPrice() * 0.6D * affectedItem.getAmount());
-				player.getCarriedItems().getInventory().add(new Item(ItemId.COINS.id(), value)); // 60%
-			}
+			if (player.getCarriedItems().remove(new Item(affectedItem.getCatalogId(), affectedItem.getAmount())) == -1) return;
+			int value = (int) (affectedItem.getDef(player.getWorld()).getDefaultPrice() * 0.6D * affectedItem.getAmount());
+			player.getCarriedItems().getInventory().add(new Item(ItemId.COINS.id(), value)); // 60%
 			finalizeSpell(player, spell, "Alchemy spell successful");
 		}
 	}
@@ -1043,23 +1100,22 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			return;
 		}
 		Item bar = new Item(smeltingDef.getBarId());
-		if (player.getCarriedItems().remove(affectedItem) > -1) {
-			for (ReqOreDef reqOre : smeltingDef.getReqOres()) {
-				int toUse = reqOre.getAmount();
-				if (reqOre.getId() == ItemId.COAL.id()
-					&& SkillCapes.shouldActivate(player, ItemId.SMITHING_CAPE)) {
+		if (player.getCarriedItems().remove(affectedItem) == -1) return;
+		for (ReqOreDef reqOre : smeltingDef.getReqOres()) {
+			int toUse = reqOre.getAmount();
+			if (reqOre.getId() == ItemId.COAL.id()
+				&& SkillCapes.shouldActivate(player, ItemId.SMITHING_CAPE)) {
 
-					toUse = reqOre.getAmount()/2;
-					player.message("You heat the ore using half the usual amount of coal");
-				}
-				for (int i = 0; i < toUse; i++) {
-					player.getCarriedItems().remove(new Item(reqOre.getId()));
-				}
+				toUse = reqOre.getAmount()/2;
+				player.message("You heat the ore using half the usual amount of coal");
 			}
-			player.playerServerMessage(MessageType.QUEST, "You make a bar of " + bar.getDef(player.getWorld()).getName().replace("bar", "").toLowerCase());
-			player.getCarriedItems().getInventory().add(bar);
-			player.incExp(Skill.SMITHING.id(), smeltingDef.getExp(), true);
+			for (int i = 0; i < toUse; i++) {
+				player.getCarriedItems().remove(new Item(reqOre.getId()));
+			}
 		}
+		player.playerServerMessage(MessageType.QUEST, "You make a bar of " + bar.getDef(player.getWorld()).getName().replace("bar", "").toLowerCase());
+		player.getCarriedItems().getInventory().add(bar);
+		player.incExp(Skill.SMITHING.id(), smeltingDef.getExp(), true);
 		finalizeSpellNoMessage(player, spell);
 	}
 
@@ -1125,7 +1181,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							getPlayer().message("Telegrab has been disabled");
 							return;
 						}
-						if (affectedItem.getLocation().isInSeersPartyHall()) {
+						if (affectedItem.getLocation().isInSeersPartyHallUpstairs()) {
+							// Only the upstairs is affected, see "RSC 2001/LAST 2 DAYS REPLAYS (ACCOUNT 1)/flying sno train - 08-05-2018 22.55.55" at 33:00
 							getPlayer().message("You can't cast this spell within the vicinity of the party hall");
 							return;
 						}
@@ -1151,10 +1208,11 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							return;
 						}
 						if (affectedItem.getLocation().inBounds(97, 1428, 106, 1440)) {
+							// upstairs of Varrock Museum, where drop parties were sometimes held
 							getPlayer().message("Telekinetic grab cannot be used in here");
 							return;
 						}
-						if (affectedItem.getLocation().inBounds(114, 532, 115, 535) && affectedItem.getID() == ItemId.PUMPKIN.id()) {
+						if (player.getConfig().MICE_TO_MEET_YOU_EVENT && affectedItem.getLocation().inBounds(114, 532, 115, 535) && affectedItem.getID() == ItemId.PUMPKIN.id()) {
 							getPlayer().message("A strange power prevents you from telegrabbing the pumpkin.");
 							delay(3);
 							getPlayer().message("@yel@Death: Do NOT cast magic on my belongings!!");
@@ -1216,7 +1274,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		});
 	}
 
-	private void handleMobCast(final Player player, final Mob affectedMob, Spells spellEnum) {
+	private void handleMobCast(final Player player, final Mob affectedMob, Spells spellEnum, int spellType) {
 		if (player.getDuel().isDuelActive() && affectedMob.isPlayer()) {
 			Player aff = (Player) affectedMob;
 			if (!player.getDuel().getDuelRecipient().getUsername().toLowerCase()
@@ -1246,10 +1304,12 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		}
 
 		// Do not cast if the mob is too far away and we are already in a fight.
-		if (!player.withinRange(affectedMob, 4) && player.inCombat()) return;
+		if (!player.withinRange(affectedMob, player.getConfig().SPELL_RANGE_DISTANCE) && player.inCombat()) return;
 
 		// Retro RSC mechanic, could not use magic if already engaged in combat
-		if (player.inCombat() && player.getConfig().BLOCK_USE_MAGIC_IN_COMBAT) {
+		// and spell was not personal spell (cast on self, type = 0)
+		if (player.getConfig().BLOCK_USE_MAGIC_IN_COMBAT && player.inCombat() &&
+			spellType != 0 && spellEnum != Spells.FEAR) {
 			player.message("You cannot do that whilst fighting!");
 			return;
 		}
@@ -1298,8 +1358,21 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					}
 				}
 				boolean setChasing = true;
+				Set<Entry<Integer, Integer>> necessaryRunes;
+				try {
+					necessaryRunes = checkSpellRunes(player, spell, true);
+				} catch (SpellFailureException re) {
+					// magic cape effect did not roll out and
+					// player does not meet required spell runes
+					// message already given out
+					getPlayer().resetPath();
+					return;
+				}
+				boolean capeActivated = necessaryRunes == null;
+
 				if (affectedMob.isNpc()) {
 					Npc n = (Npc) affectedMob;
+
 					if (n.getID() == NpcId.DRAGON.id() || n.getID() == NpcId.KING_BLACK_DRAGON.id()) {
 						getPlayer().playerServerMessage(MessageType.QUEST, "The dragon breathes fire at you");
 						int percentage = 20;
@@ -1334,27 +1407,37 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 				}
 				getPlayer().resetAllExceptDueling();
+				EntityType entityType = mob.isPlayer() ? EntityType.PLAYER : EntityType.NPC;
 				switch (spellEnum) {
 					case FEAR:
 						if (!getPlayer().getConfig().HAS_FEAR_SPELL) {
 							getPlayer().playerServerMessage(MessageType.QUEST, "This world does not support fear spell");
 							return;
 						}
-						if (!affectedMob.isNpc() || !affectedMob.inCombat() || affectedMob.getHitsMade() < 2) {
+						if (!affectedMob.isNpc() || !((Npc)affectedMob).getDef().isAttackable() || !affectedMob.inCombat()) {
 							getPlayer().playerServerMessage(MessageType.QUEST, "This spell can only be used on monsters engaged in combat");
 							return;
 						}
 
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
+							return;
+						}
+
+						if (affectedMob.inCombat() && affectedMob.getHitsMade() < 2) {
+							getPlayer().message("Your opponent can't retreat during the first 3 rounds of combat");
 							return;
 						}
 
 						getPlayer().getWorld().getServer().getGameEventHandler().add(new CustomProjectileEvent(getPlayer().getWorld(), getPlayer(), affectedMob, 1, setChasing) {
 							@Override
 							public void doSpell() {
-								affectedMob.getOpponent().resetCombatEvent();
-								affectedMob.resetCombatEvent();
-								getPlayer().message("Your opponent is retreating");
+								// https://www.tip.it/runescape/times/view/615-forever-runescape-part-1
+								// https://web.archive.org/web/20010410193705/http://www.geocities.com/ngrunescape/magic.html
+								if (affectedMob.inCombat()) {
+									affectedMob.getOpponent().resetCombatEvent();
+									affectedMob.resetCombatEvent();
+									getPlayer().message("Your opponent is retreating");
+								}
 							}
 						});
 
@@ -1362,8 +1445,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						break;
 
 					case CONFUSE_R:
-						double reduceBy = 0.02; // to date not known effect, but possible
-						int[] stats = {Skill.ATTACK.id(), Skill.DEFENSE.id(), Skill.STRENGTH.id()};
+						double reduceBy = 0.02; // to date not known percentage, but possible
+						int[] stats = {Skill.ATTACK.id(), Skill.DEFENSE.id()};
 						int lowerAmt, newLvl, maxLower;
 						for (int affectedStat : stats) {
 							lowerAmt = (int) Math.ceil((affectedMob.getSkills().getLevel(affectedStat) * reduceBy));
@@ -1379,7 +1462,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							}
 						}
 
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
 
@@ -1392,8 +1475,9 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 									affectedMob.getSkills().setLevel(stat, newStat);
 								}
 
+								// https://web.archive.org/web/20010410193705/http://www.geocities.com:80/ngrunescape/magic.html
 								if (affectedMob.isPlayer()) {
-									((Player) affectedMob).message("You have been weakened");
+									((Player) affectedMob).message("Your Attack and Defense have been lowered from a confuse spell!");
 								}
 							}
 						});
@@ -1446,7 +1530,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							getPlayer().playerServerMessage(MessageType.QUEST, "Your opponent already has weakened " + getPlayer().getWorld().getServer().getConstants().getSkills().getSkillName(affectsStat));
 							return;
 						}
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
 						final int stat = affectsStat;
@@ -1472,7 +1556,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							return;
 						}
 						int damaga = DataConversions.random(3, Constants.CRUMBLE_UNDEAD_MAX);
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
 						if (DataConversions.random(0, 8) == 2)
@@ -1497,7 +1581,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							getPlayer().message("at iban's temple");
 							return;
 						}
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
 						if (getPlayer().getCache().hasKey(spell.getName() + "_casts")) {
@@ -1542,7 +1626,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 								return;
 							}
 						}
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
 						if (getPlayer().getLocation().inMageArena()) {
@@ -1568,15 +1652,11 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					case SHOCK_BOLT:
 					case ELEMENTAL_BOLT:
 					case WIND_BOLT_R:
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
-						int maxR = -1;
-						if (spellEnum == Spells.CHILL_BOLT || spellEnum == Spells.SHOCK_BOLT) {
-							maxR = 1;
-						} else if (spellEnum == Spells.ELEMENTAL_BOLT || spellEnum == Spells.WIND_BOLT_R) {
-							maxR = 2;
-						}
+
+						int maxR = (int)getPlayer().getWorld().getServer().getConstants().getSpellDamages().getSpellDamage(spellEnum, entityType, SpellDamages.MagicType.GOODEVILMAGIC);
 
 						int damageR = CombatFormula.calculateMagicDamage(maxR + 1) - 1;
 
@@ -1586,7 +1666,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						break;
 
 					default:
-						if (!checkAndRemoveRunes(getPlayer(), spell)) {
+						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
 						// SALARIN THE TWISTED - STRIKE SPELLS
@@ -1639,14 +1719,14 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							return;
 						}
 
-						int max = -1;
-						for (int i = 0; i < getPlayer().getWorld().getServer().getConstants().SPELLS.length; i++) {
-							if (spell.getReqLevel() == getPlayer().getWorld().getServer().getConstants().SPELLS[i][0])
-								max = getPlayer().getWorld().getServer().getConstants().SPELLS[i][1];
-						}
+						int max = (int)getPlayer().getWorld().getServer().getConstants().getSpellDamages().getSpellDamage(spellEnum, entityType, SpellDamages.MagicType.MODERNMAGIC);
+
+						// If the player is wearing chaos gauntlets and casts a bolt spell, they get +1 damage
+						final boolean gauntletBonus = getPlayer().getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_CHAOS.id())
+							&& getPlayer().getCache().getInt("famcrest_gauntlets") == Gauntlets.CHAOS.id();
 
 						if (getPlayer().getMagicPoints() > 30
-							|| (getPlayer().getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_CHAOS.id()) && spell.getName().contains("bolt")))
+							|| (gauntletBonus && spell.getName().contains("bolt")))
 							max += 1;
 
 						int damage = CombatFormula.calculateMagicDamage(max + 1) - 1;
@@ -1662,7 +1742,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 
 	private boolean isBoostSpell(Player player, Spells spellEnum) {
 		return spellEnum == Spells.THICK_SKIN || spellEnum == Spells.BURST_OF_STRENGTH
-			|| spellEnum == Spells.CAMOUFLAGE || spellEnum == Spells.ROCK_SKIN;
+			|| spellEnum == Spells.CAMOFLAUGE || spellEnum == Spells.ROCK_SKIN;
 	}
 
 	private boolean canTeleport(Player player, SpellDef spell, Spells spellEnum) {
@@ -1748,7 +1828,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 	private void handleBoost(Player player, SpellDef spell, Spells spellEnum) {
 		switch (spellEnum) {
 			case BURST_OF_STRENGTH:
-			case CAMOUFLAGE:
+			case CAMOFLAUGE:
 			case ROCK_SKIN:
 			case THICK_SKIN:
 				double raisesBy = 0.0;
@@ -1762,7 +1842,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 				} else if (spellEnum == Spells.ROCK_SKIN) {
 					raisesBy = 0.10;
 					affectedStat = Skill.DEFENSE.id();
-				} else if (spellEnum == Spells.CAMOUFLAGE) {
+				} else if (spellEnum == Spells.CAMOFLAUGE) {
 					affectedStat = Skill.NONE.id();
 				}
 

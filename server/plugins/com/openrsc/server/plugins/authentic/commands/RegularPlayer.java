@@ -16,6 +16,7 @@ import com.openrsc.server.model.entity.player.PlayerSettings;
 import com.openrsc.server.model.snapshot.Chatlog;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
+import com.openrsc.server.util.languages.PreferredLanguage;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.MessageType;
 import org.apache.commons.lang.StringUtils;
@@ -24,11 +25,11 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import static com.openrsc.server.plugins.Functions.config;
-import static com.openrsc.server.plugins.Functions.multi;
+import static com.openrsc.server.plugins.Functions.*;
 import static com.openrsc.server.plugins.authentic.quests.free.ShieldOfArrav.isBlackArmGang;
 import static com.openrsc.server.plugins.authentic.quests.free.ShieldOfArrav.isPhoenixGang;
 
@@ -83,7 +84,7 @@ public final class RegularPlayer implements CommandTrigger {
 		} else if (command.equalsIgnoreCase("shareexp")) {
 			toggleExperienceShare(player);
 		} else if (command.equalsIgnoreCase("onlinelist")) {
-			queryOnlinePlayers(player);
+			queryOnlinePlayers(player, args);
 		} else if (command.equalsIgnoreCase("groups") || command.equalsIgnoreCase("ranks")) {
 			queryGroupIDs(player);
 		} else if (command.equalsIgnoreCase("time") || command.equalsIgnoreCase("date") || command.equalsIgnoreCase("datetime")) {
@@ -98,7 +99,7 @@ public final class RegularPlayer implements CommandTrigger {
 			queryCommands(player, 0);
 		} else if (command.equalsIgnoreCase("b") && config().RIGHT_CLICK_BANK) {
 			if (!player.getQolOptOut()) {
-				if (player.getLocation().isInBank()) {
+				if (player.getLocation().isInBank(config().BASED_MAP_DATA)) {
 					player.getBank().quickFeature(null, player, false);
 				} else {
 					player.playerServerMessage(MessageType.QUEST, "You are not inside a bank.");
@@ -140,6 +141,127 @@ public final class RegularPlayer implements CommandTrigger {
 			setOldTrade(player);
 		} else if (command.equalsIgnoreCase("coords")) {
 			tellCoordinates(player);
+		} else if (command.equalsIgnoreCase("setlanguage")) {
+			setLanguage(command, player, args);
+		} else if (command.equalsIgnoreCase("language")) {
+			getLanguage(command, player, args);
+		} else if (command.equalsIgnoreCase("togglereceipts")) {
+			toggleReceipts(player);
+		} else if (command.equalsIgnoreCase("getpidlesscatching") || command.equalsIgnoreCase("tellpidlesscatching") || command.equalsIgnoreCase("pidless")) {
+			tellPidlessCatching(player);
+		} else if (command.equalsIgnoreCase("maxplayersperip") || command.equalsIgnoreCase("mppi")) {
+			queryMaxPlayersPerIp(player);
+		} else if (command.equalsIgnoreCase("setglobalmessagecolor")) {
+			setGlobalMessageColor(player, args);
+		} else if (command.equalsIgnoreCase("globalquest") || command.equalsIgnoreCase("gq")) {
+			setGlobalOutput(player, MessageType.QUEST);
+		} else if (command.equalsIgnoreCase("globalprivate") || command.equalsIgnoreCase("gp")) {
+			setGlobalOutput(player, MessageType.PRIVATE_RECIEVE);
+		}
+	}
+
+	private void setGlobalOutput(Player player, MessageType questOrPrivate) {
+		if (questOrPrivate.equals(MessageType.QUEST)) {
+			if (player.getCache().hasKey("private_message_global")) {
+				player.getCache().remove("private_message_global");
+				player.message("@cya@Global messages now are received on the @whi@Quest history@cya@ tab.");
+			} else {
+				player.message("@cya@Global messages were already received on the @whi@Quest history@cya@ tab.");
+				player.message("@cya@Type @whi@::gp@cya@ to change this.");
+			}
+		} else if (questOrPrivate.equals(MessageType.PRIVATE_RECIEVE)) {
+			if (!player.getCache().hasKey("private_message_global")) {
+				player.getCache().store("private_message_global", true);
+				player.message("@cya@Global messages now are received on the @whi@Private history@cya@ tab.");
+			} else {
+				player.message("@cya@Global messages were already received on the @whi@Private history@cya@ tab.");
+				player.message("@cya@Type @whi@::gq@cya@ to change this.");
+			}
+		}
+	}
+
+	private void setGlobalMessageColor(Player player, String[] args) {
+		if (args.length >= 1) {
+			player.getCache().store("global_message_color", args[0]);
+			player.message("@cya@Global message color set to " + args[0] + "This color.");
+		} else {
+			if (player.getCache().hasKey("global_message_color")) {
+				player.getCache().remove("global_message_color");
+				player.message("@cya@Global message color reset.");
+			}
+		}
+	}
+
+	private void queryMaxPlayersPerIp(final Player player) {
+		player.playerServerMessage(MessageType.QUEST, String.format("%sMax players per ip: %d", messagePrefix, player.getConfig().MAX_PLAYERS_PER_IP));
+		player.playerServerMessage(MessageType.QUEST, String.format("%sYou have %d player(s) logged in.", messagePrefix, player.getWorld().getServer().getPacketFilter().getPlayersCount(player.getCurrentIP())));
+	}
+
+	private void tellPidlessCatching(Player player) {
+		player.playerServerMessage(MessageType.QUEST, "@ora@Pidless catching is currently @gre@" +
+			(player.getConfig().PIDLESS_CATCHING ? "Enabled" : "Disabled"));
+	}
+
+	private void setLanguage(String command, Player player, String[] args) {
+		if (args.length < 1) {
+			setLanguageBadSyntax(command, player);
+			return;
+		}
+		PreferredLanguage lang = PreferredLanguage.getByLocaleName(args[0]);
+		if (lang == PreferredLanguage.NONE_SET) {
+			setLanguageBadSyntax(command, player);
+			return;
+		}
+
+		if (player.isMod() && args.length >= 2) {
+			Player targetPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[1]));
+
+			if (targetPlayer == null) {
+				player.message(messagePrefix + "Invalid name or player is not online");
+				return;
+			}
+
+			if (!targetPlayer.isDefaultUser() && targetPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= targetPlayer.getGroupID()) {
+				player.message(messagePrefix + "You can not change the language of a staff member of equal or greater rank.");
+				return;
+			}
+
+			targetPlayer.setPreferredLanguage(lang);
+			targetPlayer.playerServerMessage(MessageType.QUEST, "Your language has been set to " + lang.getLocaleName());
+			player.playerServerMessage(MessageType.QUEST, targetPlayer.getUsername() + " had their language set to @cya@" + lang.getLocaleName());
+		} else {
+			player.setPreferredLanguage(lang);
+			player.playerServerMessage(MessageType.QUEST, "Your language has been set to @cya@" + lang.getLocaleName());
+		}
+	}
+
+	private void setLanguageBadSyntax(String command, Player player) {
+		player.playerServerMessage(MessageType.QUEST, badSyntaxPrefix + command.toUpperCase() + " [language name]");
+		player.playerServerMessage(MessageType.QUEST, "Available language names are:");
+		player.playerServerMessage(MessageType.QUEST, "@yel@\"@cya@en_UK_male@yel@\", \"@cya@en_UK_female@yel@\", \"@cya@en_UK_female_no_misgender@yel@\", and \"@cya@en_UK_gender_neutral@yel@\"");
+	}
+
+	private void getLanguage(String command, Player player, String[] args) {
+		if (player.isMod() && args.length >= 1) {
+			Player targetPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[1]));
+
+			if (targetPlayer == null) {
+				player.message(messagePrefix + "Invalid name or player is not online");
+				return;
+			}
+			PreferredLanguage lang = targetPlayer.getPreferredLanguage();
+			if (lang == PreferredLanguage.NONE_SET) {
+				player.playerServerMessage(MessageType.QUEST, targetPlayer.getUsername() + "has not set any custom language settings.");
+			} else {
+				player.playerServerMessage(MessageType.QUEST, targetPlayer.getUsername() + " has their language set to @cya@" + lang.getLocaleName());
+			}
+		} else {
+			PreferredLanguage lang = player.getPreferredLanguage();
+			if (lang == PreferredLanguage.NONE_SET) {
+				player.playerServerMessage(MessageType.QUEST, "You have not set any custom language settings.");
+			} else {
+				player.playerServerMessage(MessageType.QUEST, "Your language set to @cya@" + lang.getLocaleName());
+			}
 		}
 	}
 
@@ -237,15 +359,22 @@ public final class RegularPlayer implements CommandTrigger {
 	}
 
 	private void queryPlayerInfo(Player player) {
-		player.updateTotalPlayed();
-		long timePlayed = player.getCache().getLong("total_played");
+		long sessionPlay = player.getSessionPlay();
+		long timePlayed = (player.getCache().hasKey("total_played") ?
+			player.getCache().getLong("total_played") : 0) + sessionPlay;
 
-		ActionSender.sendBox(player,
-			"@lre@Player Information: %"
-				+ " %"
-				+ "@gre@Coordinates:@whi@ " + player.getLocation().toString() + " %"
-				+ "@gre@Total Time Played:@whi@ " + DataConversions.getDateFromMsec(timePlayed) + " %"
-			, true);
+		if (player.getClientLimitations().supportsMessageBox) {
+			ActionSender.sendBox(player,
+				"@lre@Player Information: %"
+					+ " %"
+					+ "@gre@Coordinates:@whi@ " + player.getLocation().toString() + " %"
+					+ "@gre@Total Time Played:@whi@ " + DataConversions.getDateFromMsec(timePlayed) + " %"
+				, true);
+		} else {
+			player.playerServerMessage(MessageType.QUEST,"@lre@Player Information:");
+			player.playerServerMessage(MessageType.QUEST,"@gre@Coordinates:@whi@ " + player.getLocation().toString());
+			player.playerServerMessage(MessageType.QUEST,"@gre@Total Time Played:@whi@ " + DataConversions.getDateFromMsec(timePlayed));
+		}
 	}
 
 	private void queryEvents(Player player) {
@@ -270,38 +399,8 @@ public final class RegularPlayer implements CommandTrigger {
 
 	private void sendMessageGlobal(Player player, String command, String[] args) {
 		if (!config().WANT_GLOBAL_CHAT && !config().WANT_GLOBAL_FRIEND) return;
-		if (player.isMuted()) {
-			if (player.getMuteNotify()) {
-				player.message(messagePrefix + "You are muted, you cannot send messages");
-			}
-			return;
-		}
-		if (player.getCache().hasKey("global_mute") && (player.getCache().getLong("global_mute") - System.currentTimeMillis() > 0 || player.getCache().getLong("global_mute") == -1) && command.equals("g")) {
-			long globalMuteDelay = player.getCache().getLong("global_mute");
-			player.message(messagePrefix + "You are " + (globalMuteDelay == -1 ? "permanently muted" : "temporary muted for " + (int) ((player.getCache().getLong("global_mute") - System.currentTimeMillis()) / 1000 / 60) + " minutes") + " from the ::g chat.");
-			return;
-		}
-		long sayDelay = 0;
-		if (player.getCache().hasKey("say_delay")) {
-			sayDelay = player.getCache().getLong("say_delay");
-		}
 
-		long waitTime = config().GLOBAL_MESSAGE_COOLDOWN;
-
-		if (player.isMod()) {
-			waitTime = 0;
-		}
-
-		if (System.currentTimeMillis() - sayDelay < waitTime) {
-			player.message(messagePrefix + "You can only use this command every " + (waitTime / 1000) + " seconds");
-			return;
-		}
-
-		if (player.getLocation().onTutorialIsland() && !player.isMod()) {
-			return;
-		}
-
-		player.getCache().store("say_delay", System.currentTimeMillis());
+		if (!player.isElligibleToGlobalChat()) return;
 
 		StringBuilder newStr = new StringBuilder();
 		for (String arg : args) {
@@ -420,12 +519,18 @@ public final class RegularPlayer implements CommandTrigger {
 
 	private void queryUniqueOnlinePlayerCount(Player player) {
 		ArrayList<String> IP_ADDRESSES = new ArrayList<>();
+		int webclientUsers = 0;
 		for (Player targetPlayer : player.getWorld().getPlayers()) {
 			boolean elevated = targetPlayer.hasElevatedPriveledges();
-			if (!IP_ADDRESSES.contains(targetPlayer.getCurrentIP()) && !elevated)
-				IP_ADDRESSES.add(targetPlayer.getCurrentIP());
+			if (targetPlayer.getCurrentIP().equals("127.0.0.1") || targetPlayer.getCurrentIP().equals("192.168.1.100")) {
+				webclientUsers += 1;
+			} else {
+				if (!IP_ADDRESSES.contains(targetPlayer.getCurrentIP()) && !elevated)
+					IP_ADDRESSES.add(targetPlayer.getCurrentIP());
+			}
 		}
-		player.message(messagePrefix + "There are " + IP_ADDRESSES.size() + " unique players online");
+		player.message(messagePrefix + "There are " + IP_ADDRESSES.size() + " unique players online not using web client.");
+		player.message(messagePrefix + "as well as " + webclientUsers + " players online that are using web client.");
 	}
 
 	private void sendClanRequest(Player player, String[] args) {
@@ -473,7 +578,17 @@ public final class RegularPlayer implements CommandTrigger {
 		}
 	}
 
-	public static void queryOnlinePlayers(Player player) {
+	public static void queryOnlinePlayers(Player player, String[] args) {
+		if (args.length > 0) {
+			if (args[0].equalsIgnoreCase("all") || args[0].equalsIgnoreCase("yes") || args[0].equals("1") || args[0].equalsIgnoreCase("true")) {
+				queryOnlinePlayers(player, true);
+				return;
+			}
+		}
+		queryOnlinePlayers(player, false);
+	}
+
+	public static void queryOnlinePlayers(Player player, boolean retroClientListsAll) {
 		int online = 0;
 		ArrayList<Player> players = new ArrayList<>();
 		ArrayList<String> locations = new ArrayList<>();
@@ -508,7 +623,8 @@ public final class RegularPlayer implements CommandTrigger {
 				}
 			}
 		}
-		ActionSender.sendOnlineList(player, players, locations, online);
+
+		ActionSender.sendOnlineList(player, players, locations, online, retroClientListsAll);
 	}
 
 	private void confirmQOLOptOut(Player player) {
@@ -649,9 +765,9 @@ public final class RegularPlayer implements CommandTrigger {
 	private void checkHolidayDrop(Player player) {
 		boolean foundEvent = false;
 		StringBuilder eventDetails = new StringBuilder();
-		HashMap<String, GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
+		List<GameTickEvent> events = player.getWorld().getServer().getGameEventHandler().getEvents();
 		eventDetails.append("% %");
-		for (GameTickEvent event : events.values()) {
+		for (GameTickEvent event : events) {
 			if (!(event instanceof HolidayDropEvent)) continue;
 
 			foundEvent = true;
@@ -777,42 +893,27 @@ public final class RegularPlayer implements CommandTrigger {
 
 	private void queryCommands(Player player, int page) {
 		if (page == 0) {
-			ActionSender.sendBox(player, ""
-				+ "@yel@Commands available: %"
-				+ "@lre@Type :: before you enter your command, see the list below. %"
-				+ " %" // this adds a line of whitespace for readability
-				+ "@whi@::gameinfo - shows player and server information %"
-				+ "@whi@::online - shows players currently online %"
-				+ "@whi@::uniqueonline - shows number of unique IPs logged in %"
-				+ "@whi@::onlinelist - shows players currently online in a list %"
-				+ "@whi@::g <message> - to talk in @gr1@general @whi@global chat channel %"
-				+ "@whi@::pk <message> - to talk in @or1@pking @whi@global chat channel %"
-				+ "@whi@::c <message> - talk in clan chat %"
-				+ "@whi@::p <message> - talk in party chat %"
-				+ "@whi@::gang - shows if you are 'Phoenix' or 'Black arm' gang %"
-				+ "@whi@::wilderness - shows the wilderness activity %"
-				+ "@whi@::event - to enter an ongoing server event %"
-				+ "@whi@::kills - shows kill counts of npcs %"
-				+ "@whi@::qoloptout - opts you out of Quality of Life features %"
-				+ "@whi@::certoptout - opts you out of the traditional 'cert' system %",true
-			);
+			if (player.getClientLimitations().supportsMessageBox) {
+				ActionSender.sendBox(player, String.join("", pageZeroCommands), true);
+			} else {
+				for (String command : pageZeroCommands) {
+					player.playerServerMessage(MessageType.QUEST, command.replace("%", ""));
+					delay(2);
+				}
+			}
 			int cont = multi(player, "continue reading", "finished reading");
 			if (cont == 0) {
 				queryCommands(player, 1);
 			}
 		} else if (page == 1) {
-			ActionSender.sendBox(player, ""
-				+ "@yel@Commands available: %"
-				+ "@lre@Type :: before you enter your command, see the list below. %"
-				+ " %" // this adds a line of whitespace for readability
-				+ "@whi@::time - shows the current server time %"
-				+ "@whi@::toggleglobalchat - toggle blocking Global$ messages %"
-				+ "@whi@::toggleblockchat - toggle blocking all chat messages %"
-				+ "@whi@::toggleblockprivate - toggle block all private messages %"
-				+ "@whi@::toggleblocktrade - toggle blocking all trade requests %"
-				+ "@whi@::toggleblockduel - toggle blocking all duel requests %"
-				+ "@whi@::groups - shows available ranks on the server %",true
-			);
+			if (player.getClientLimitations().supportsMessageBox) {
+				ActionSender.sendBox(player, String.join("", pageOneCommands), true);
+			} else {
+				for (String command : pageOneCommands) {
+					player.playerServerMessage(MessageType.QUEST, command.replace("%", ""));
+					delay(2);
+				}
+			}
 		}
 
 	}
@@ -866,4 +967,48 @@ public final class RegularPlayer implements CommandTrigger {
 		if (player.isDev()) return;
 		player.tellCoordinates();
 	}
+
+	private void toggleReceipts(Player player) {
+		boolean toggledShow = !player.getShowReceipts();
+		if (toggledShow) {
+			player.playerServerMessage(MessageType.QUEST, "You will now get receipts when selling/buying at the shop");
+		} else {
+			player.playerServerMessage(MessageType.QUEST, "You will no longer get receipts when selling/buying at the shop");
+		}
+		player.setShowReceipts(toggledShow);
+	}
+
+	private static final String[] pageZeroCommands = new String[]{
+		"@yel@Commands available: %",
+		"@lre@Type :: before you enter your command, see the list below. %",
+		" %", // this adds a line of whitespace for readability
+		"@whi@::gameinfo - shows player and server information %",
+		"@whi@::online - shows players currently online %",
+		"@whi@::uniqueonline - shows number of unique IPs logged in %",
+		"@whi@::onlinelist - shows players currently online in a list %",
+		"@whi@::g <message> - to talk in @gr1@general @whi@global chat channel %",
+		"@whi@::pk <message> - to talk in @or1@pking @whi@global chat channel %",
+		"@whi@::c <message> - talk in clan chat %",
+		"@whi@::p <message> - talk in party chat %",
+		"@whi@::gang - shows if you are 'Phoenix' or 'Black arm' gang %",
+		"@whi@::wilderness - shows the wilderness activity %",
+		"@whi@::event - to enter an ongoing server event %",
+		"@whi@::kills - shows kill counts of npcs %",
+		"@whi@::qoloptout - opts you out of Quality of Life features %",
+		"@whi@::certoptout - opts you out of the traditional 'cert' system %"
+	};
+
+	private static final String[] pageOneCommands = new String[]{
+		"@yel@Commands available: %",
+		"@lre@Type :: before you enter your command, see the list below. %",
+		" %", // this adds a line of whitespace for readability
+		"@whi@::time - shows the current server time %",
+		"@whi@::toggleglobalchat - toggle blocking Global$ messages %",
+		"@whi@::toggleblockchat - toggle blocking all chat messages %",
+		"@whi@::toggleblockprivate - toggle block all private messages %",
+		"@whi@::toggleblocktrade - toggle blocking all trade requests %",
+		"@whi@::toggleblockduel - toggle blocking all duel requests %",
+		"@whi@::groups - shows available ranks on the server %",
+		"@whi@::togglereceipts - toggle showing shop receipts %"
+	};
 }

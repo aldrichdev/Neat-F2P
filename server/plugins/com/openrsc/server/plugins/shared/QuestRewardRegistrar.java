@@ -28,8 +28,10 @@ public final class QuestRewardRegistrar extends AbstractRegistrar {
 
 		// 0 - BLACK_KNIGHTS_FORTRESS
 		rewardsList = new ArrayList<>();
-		if (awardInfluence)
+		if (awardInfluence) {
+			rewardsList.add(new XPReward(Skill.THIEVING, 400, 300));
 			rewardsList.add(new XPReward(Skill.INFLUENCE, 300, 200));
+		}
 		skillRewardsAdd = new XPReward[rewardsList.size()];
 		mapQuests.put(Quests.BLACK_KNIGHTS_FORTRESS,
 			new AbstractMap.SimpleImmutableEntry<>(++questNum, new QuestReward(3, rewardsList.toArray(skillRewardsAdd))));
@@ -75,7 +77,7 @@ public final class QuestRewardRegistrar extends AbstractRegistrar {
 		// 6 - ERNEST_THE_CHICKEN
 		rewardsList = new ArrayList<>();
 		if (awardInfluence)
-			rewardsList.add(new XPReward(Skill.INFLUENCE, 300, 400));
+			rewardsList.add(new XPReward(Skill.INFLUENCE, 900, 300));
 		skillRewardsAdd = new XPReward[rewardsList.size()];
 		mapQuests.put(Quests.ERNEST_THE_CHICKEN,
 			new AbstractMap.SimpleImmutableEntry<>(++questNum, new QuestReward(4, rewardsList.toArray(skillRewardsAdd))));
@@ -414,6 +416,15 @@ public final class QuestRewardRegistrar extends AbstractRegistrar {
 		skillRewardsAdd = new XPReward[rewardsList.size()];
 		mapQuests.put(Quests.RUNE_MYSTERIES,
 			new AbstractMap.SimpleImmutableEntry<>(++questNum, new QuestReward(1, rewardsList.toArray(skillRewardsAdd))));
+
+		// 51 - PEELING_THE_ONION
+		rewardsList = new ArrayList<>();
+		rewardsList.add(new XPReward(Skill.COOKING, 200, 100));
+		rewardsList.add(new XPReward(Skill.CRAFTING, 200, 75));
+		skillRewardsAdd = new XPReward[rewardsList.size()];
+		mapQuests.put(Quests.PEELING_THE_ONION,
+			new AbstractMap.SimpleImmutableEntry<>(++questNum, new QuestReward(2, rewardsList.toArray(skillRewardsAdd))));
+
 
 		///////////////////////////////////////
 		// Call to initialize into Enum-like //

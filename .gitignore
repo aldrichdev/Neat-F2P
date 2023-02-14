@@ -6,11 +6,12 @@
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 # User-specific stuff
-#.idea/**/workspace.xml
+.idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
 .idea/**/shelf
+.idea/
 
 # Generated files
 .idea/**/contentModel.xml
@@ -99,7 +100,9 @@ gameserver.log
 
 local.properties
 
-server/logs/
+server/logs/*.gz
+server/logs/*.log
+server/logs/pcaps/*.gz
 
 Client_Base/Open_RSC_Client.jar
 Client_Base/Cache/credentials.txt
@@ -125,7 +128,7 @@ Backups/*.sql
 
 Portable_Windows/HeidiSQL_11.1_64_Portable/Backups/
 
-!.idea/workspace.xml
+.idea/workspace.xml
 
 server/conf/server/data/sleepwords/
 
@@ -137,3 +140,11 @@ server/create_db.log
 server/create_db_error.log
 
 .idea/sqldialects.xml
+server/conf/server/data/specialsleepwords/
+
+Client_Base/Cache/video/BoundaryLocsExpansion.json
+Client_Base/Cache/video/GroundItemsExpansion.json
+Client_Base/Cache/video/NpcLocsExpansion.json
+Client_Base/Cache/video/SceneryLocsExpansion.json
+
+Backups/*.zip

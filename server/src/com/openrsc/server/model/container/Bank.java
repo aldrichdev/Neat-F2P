@@ -138,51 +138,44 @@ public class Bank {
 		return remove(item, true);
 	}
 
-	public boolean remove(Item item, boolean updateClient) {
-		return remove(item.getCatalogId(), item.getAmount(), updateClient);
+	public boolean remove(final Item item, final boolean updateClient) {
+		return this.remove(item.getCatalogId(), item.getAmount(), updateClient);
 	}
 
 	public boolean remove(int catalogID, int amount) {
 		return remove(catalogID, amount, true);
 	}
 
-	public boolean remove(int catalogID, int amount, boolean updateClient) {
-		synchronized(list) {
-			int bankIndex = getFirstIndexById(catalogID);
-			Item bankItem = get(bankIndex);
-
-			// Continue until a matching catalogID is found.
-			if (bankItem == null) return false;
-
-			// Check that there's enough in the stack
-			if (bankItem.getAmount() < amount)
-				amount = bankItem.getAmount();
-
-			if (player.getWorld().getPlayer(DataConversions.usernameToHash(player.getUsername())) == null) {
+	public boolean remove(final int catalogID, final int amount, final boolean updateClient) {
+		synchronized(this.list) {
+			if (this.player.getWorld().getPlayer(DataConversions.usernameToHash(this.player.getUsername())) == null)
 				return false;
+
+			int bankItemIndex;
+			Item bankItem = null;
+
+			for (bankItemIndex = this.list.size() - 1; bankItemIndex >= 0; bankItemIndex--) {
+				final Item item = this.list.get(bankItemIndex);
+
+				if (item.getCatalogId() == catalogID) {
+					bankItem = item;
+					break;
+				}
 			}
 
-			// We are removing all of the itemID from the bank
-			if (bankItem.getAmount() == amount) {
+			if (bankItem == null) return false;
 
-				// Update the Server Bank
-				list.remove(bankIndex);
+			final int amountToRemove = Math.min(amount, bankItem.getAmount());
 
-				// Update the Client
-				if (updateClient) {
-					ActionSender.updateBankItem(player, bankIndex, bankItem, 0);
-				}
-
-			// We are removing only some of the total held in the bank
+			if (amountToRemove == bankItem.getAmount()) {
+				this.list.remove(bankItemIndex);
+				if (updateClient)
+					ActionSender.updateBankItem(this.player, bankItemIndex, bankItem, 0);
 			} else {
+				bankItem.setAmount(bankItem.getAmount() - amountToRemove);
 
-				// Update the Database and Server Bank
-				bankItem.changeAmount(-amount);
-
-				// Update the Client
-				if (updateClient) {
-					ActionSender.updateBankItem(player, bankIndex, bankItem, bankItem.getAmount());
-				}
+				if (updateClient)
+					ActionSender.updateBankItem(this.player, bankItemIndex, bankItem, bankItem.getAmount());
 			}
 
 			return true;
@@ -220,7 +213,10 @@ public class Bank {
 			int ret = 0;
 			for (Item i : list) {
 				if (i.getCatalogId() == catalogID) {
-					ret += i.getAmount();
+					final int amount = i.getAmount();
+					if (amount > Integer.MAX_VALUE - ret)
+						return Integer.MAX_VALUE;
+					ret += amount;
 				}
 			}
 			return ret;
@@ -318,40 +314,52 @@ public class Bank {
 
 	public boolean swap(int slot, int to) {
 		synchronized(list) {
-			if (slot <= 0 && to <= 0 && to == slot) {
+			if (slot < 0 || to < 0 || slot == to) {
 				return false;
 			}
-			int idx = list.size() - 1;
-			if (to > idx) {
+
+			final int bankSize = list.size();
+
+			if (slot >= bankSize || to >= bankSize) {
 				return false;
 			}
-			Item item = get(slot);
-			Item item2 = get(to);
-			if (item != null && item2 != null) {
-				list.set(slot, item2);
-				list.set(to, item);
-				return true;
+
+			final Item item1 = get(slot);
+			final Item item2 = get(to);
+
+			if (item1 == null || item2 == null) {
+				return false;
 			}
-			return false;
+
+			list.set(slot, item2);
+			list.set(to, item1);
+			return true;
 		}
 	}
 
 	public boolean insert(int slot, int to) {
 		synchronized(list) {
-			if (slot <= 0 && to <= 0 && to == slot) {
+			if (slot < 0 || to < 0 || to == slot) {
 				return false;
 			}
-			int idx = list.size() - 1;
-			if (to > idx) {
+
+			final int bankSize = list.size();
+
+			if (slot >= bankSize || to >= bankSize) {
 				return false;
 			}
+
+			final Item item = get(slot);
+
+			if (item == null) {
+				return false;
+			}
+
+			final Item[] array = list.toArray(new Item[0]);
+
 			// we reset the item in the from slot
-			Item from = get(slot);
-			Item[] array = list.toArray(new Item[list.size()]);
-			if (slot >= array.length || from == null || to >= array.length) {
-				return false;
-			}
 			array[slot] = null;
+
 			// find which direction to shift in
 			if (slot > to) {
 				int shiftFrom = to;
@@ -378,8 +386,9 @@ public class Bank {
 				System.arraycopy(array, sliceStart, slice, 0, slice.length);
 				System.arraycopy(slice, 0, array, sliceStart - 1, slice.length);
 			}
+
 			// now fill in the target slot
-			array[to] = from;
+			array[to] = item;
 			list = new ArrayList<Item>(Arrays.asList(array));
 			return true;
 		}
@@ -436,90 +445,87 @@ public class Bank {
 	 * When you withdraw stack items, it will withdraw the full quantity at once, updating the inventory AND bank stack
 	 * only one time.
 	 */
-	public void withdrawItemToInventory(final Integer catalogID, Integer requestedAmount, final Boolean wantsNotes) {
-		withdrawItemToInventory(catalogID, requestedAmount, wantsNotes, true);
+	public void withdrawItemToInventory(final Integer catalogID, final Integer requestedAmount,
+										final Boolean wantsNotes) {
+		this.withdrawItemToInventory(catalogID, requestedAmount, wantsNotes, true);
 	}
 
-	public void withdrawItemToInventory(final Integer catalogID, Integer requestedAmount, final Boolean wantsNotes, boolean updateClient) {
+	public void withdrawItemToInventory(final Integer catalogID, final Integer requestedAmount,
+										final Boolean wantsNotes, final boolean updateClient) {
+		synchronized (this.list) {
+			synchronized (this.player.getCarriedItems().getInventory().getItems()) {
+				if (this.list.isEmpty()) return;
 
-		// Flag for if the item is withdrawn as a note
-		boolean withdrawNoted = wantsNotes;
+				Item bankItem = null;
 
-		synchronized (list) {
-			synchronized (player.getCarriedItems().getInventory().getItems()) {
-				// Check if the bank is empty
-				if (list.isEmpty()) return;
+				for (int i = this.list.size() - 1; i >= 0; i--) {
+					final Item item = this.list.get(i);
 
-				Item withdrawItem = get(getFirstIndexById(catalogID));
-				if (withdrawItem == null) return;
-
-				// Check the item definition
-				ItemDefinition withdrawDef = withdrawItem.getDef(player.getWorld());
-				if (withdrawDef == null) return;
-
-				// Don't allow notes for non noteable items
-				if (wantsNotes && !withdrawDef.isNoteable()) {
-					withdrawNoted = false;
-				}
-
-				int originalAmount = requestedAmount;
-
-				// Make sure they actually have the item in the bank
-				requestedAmount = Math.min(requestedAmount, countId(catalogID));
-				int requiredSlots = player.getCarriedItems().getInventory().getRequiredSlots(
-					new Item(withdrawItem.getCatalogId(), requestedAmount, withdrawNoted)
-				);
-				int freeSpace = player.getCarriedItems().getInventory().getFreeSlots();
-				if (requiredSlots > freeSpace) {
-					if (withdrawDef.isStackable() || withdrawNoted) {
-						requestedAmount = 0;
-					}
-					else {
-						requestedAmount = freeSpace;
+					if (item.getCatalogId() == catalogID) {
+						bankItem = item;
+						break;
 					}
 				}
 
-				if (requestedAmount <= 0) {
-					player.message("You don't have room to hold everything!");
+				if (bankItem == null) return;
+
+				int amountToWithdraw = Math.min(requestedAmount, bankItem.getAmount());
+
+				final ItemDefinition itemDef = bankItem.getDef(this.player.getWorld());
+				if (itemDef == null) return;
+
+				final boolean withdrawNoted = wantsNotes && itemDef.isNoteable();
+
+				final int requiredInventorySlots = this.player.getCarriedItems()
+					.getInventory()
+					.getRequiredSlots(bankItem.getCatalogId(), amountToWithdraw, withdrawNoted);
+
+				final int freeInventorySlots = this.player.getCarriedItems().getInventory().getFreeSlots();
+
+				boolean limitedSlots = false;
+
+				if (requiredInventorySlots > freeInventorySlots) {
+					if (itemDef.isStackable() || withdrawNoted) {
+						this.player.message("You don't have room to hold everything!");
+						return;
+					}
+
+					amountToWithdraw = freeInventorySlots;
+					limitedSlots = true;
+				}
+
+				final Item item = new Item(bankItem.getCatalogId(), amountToWithdraw, withdrawNoted,
+					bankItem.getItemId());
+
+				if (this.player.isUsingCustomClient()) {
+					if (!this.remove(item, updateClient)) return;
+
+					this.addToInventory(item, itemDef, amountToWithdraw, updateClient);
+
+					if (limitedSlots && requestedAmount > amountToWithdraw)
+						this.player.message("You don't have room to hold everything!");
+
 					return;
 				}
 
-				withdrawItem = new Item(withdrawItem.getCatalogId(), requestedAmount, withdrawNoted, withdrawItem.getItemId());
+				// Authentic client requires bank update to happen after adding to inventory,
+				// in order to display properly
+				this.addToInventory(item, itemDef, amountToWithdraw, updateClient);
 
-				if (player.isUsingCustomClient()) {
-					// Remove the item from the bank (or fail out).
-					if (!remove(withdrawItem, updateClient)) return;
-				} else {
-					// The authentic client needs the bank update to happen AFTER inventory is added, or else it won't display properly
-					if(!canRemoveAtLeast1(withdrawItem.getCatalogId())) return;
-				}
-
-				addToInventory(withdrawItem, withdrawDef, requestedAmount, updateClient);
-
-				if (originalAmount > requestedAmount) {
-					player.message("You don't have room to hold everything!");
-				}
+				if (limitedSlots && requestedAmount > amountToWithdraw)
+					this.player.message("You don't have room to hold everything!");
 
 				// TODO: there are safeguards here which might be fine, but it may be better to
 				// implement a way to sort the packets in Player.outgoingPackets instead?
 				// Not sure how Jagex would have done it.
-				if (!player.isUsingCustomClient()) {
-					boolean successfulRemove = false;
-					try {
-						successfulRemove = remove(withdrawItem, updateClient);
-					} catch (Exception e) {
-						// Possibly the database is unavailable?
-						// Not sure, but it's important to not halt execution mid-remove() if an exception happens.
-						LOGGER.error("Exception after canRemoveAtLeast1!!");
-						LOGGER.error(e.toString());
-						removeFromInventory(withdrawItem, withdrawDef, requestedAmount, updateClient);
-					}
-
-					if (!successfulRemove) {
-						// This should not happen unless canRemoveAtLeast1 is flawed, but good to check
-						LOGGER.error("error in canRemoveAtLeast1!!");
-						removeFromInventory(withdrawItem, withdrawDef, requestedAmount, updateClient);
-					}
+				try {
+					if (!this.remove(item, updateClient))
+						this.removeFromInventory(item, itemDef, amountToWithdraw, updateClient);
+				} catch (final Exception e) {
+					// Possibly the database is unavailable?
+					// Not sure, but it's important to not halt execution mid-remove() if an exception happens.
+					LOGGER.error(e.getMessage(), e);
+					this.removeFromInventory(item, itemDef, amountToWithdraw, updateClient);
 				}
 			}
 		}
@@ -550,16 +556,12 @@ public class Bank {
 				int itemToAddCatalogId = depositItem.getCatalogId();
 				int itemToAddAmount = requestedAmount;
 
-				if (player.getAttribute("swap_cert", false)) {
+				if (player.getConfig().WANT_CERT_DEPOSIT && player.getAttribute("swap_cert", false)) {
 					itemToAddCatalogId = uncertedID(itemToAddCatalogId);
 
 					if (itemToAddCatalogId != depositItem.getCatalogId()) {
 						itemToAddAmount *= 5;
 					}
-
-					// With this line in place, players can only swap certs once per client session
-					// Not sure why it's here... commenting it out
-					//player.setAttribute("swap_cert", false);
 				}
 
 				Item itemToAdd = new Item(itemToAddCatalogId, itemToAddAmount);
@@ -585,17 +587,11 @@ public class Bank {
 		}
 	}
 
-	// Add the items to the inventory one slot at a time.
+	// Add the items to the inventory one slot at a time or all at once if stackable/noted.
 	private void addToInventory(Item item, ItemDefinition def, int requestedAmount, boolean updateClient) {
-		int i = 1;
-		int slotAmount = 1;
-		if(def.isStackable() || item.getNoted()) {
-			i = slotAmount = requestedAmount;
-		}
-		for (; i <= requestedAmount; i++) {
-			item = new Item(item.getCatalogId(), slotAmount, item.getNoted());
+		if (def.isStackable() || item.getNoted()) {
+			item = new Item(item.getCatalogId(), requestedAmount, item.getNoted());
 
-			// Make sure they have enough space in their inventory
 			if (!player.getCarriedItems().getInventory().canHold(item)) {
 				player.message("You don't have room to hold everything!");
 				return;
@@ -604,10 +600,21 @@ public class Bank {
 			// Add the item to the inventory (or fail and place it back into the bank).
 			if (!player.getCarriedItems().getInventory().add(item, updateClient)) {
 				add(item);
-				if (updateClient && player.isUsingCustomClient()) {
-					ActionSender.sendInventory(player);
+			}
+		} else {
+			for (int i = 1; i <= requestedAmount; i++) {
+				item = new Item(item.getCatalogId(), 1, item.getNoted());
+
+				if (!player.getCarriedItems().getInventory().canHold(item)) {
+					player.message("You don't have room to hold everything!");
+					return;
 				}
-				return;
+
+				// Add the item to the inventory (or fail and place it back into the bank).
+				if (!player.getCarriedItems().getInventory().add(item, updateClient)) {
+					add(item);
+					break;
+				}
 			}
 		}
 		if (updateClient && player.isUsingCustomClient()) {

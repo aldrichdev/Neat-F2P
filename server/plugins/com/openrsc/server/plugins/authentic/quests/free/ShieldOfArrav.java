@@ -9,6 +9,7 @@ import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.plugins.QuestInterface;
 import com.openrsc.server.plugins.authentic.npcs.varrock.ManPhoenix;
+import com.openrsc.server.plugins.custom.quests.free.PeelingTheOnion;
 import com.openrsc.server.plugins.shared.constants.Quest;
 import com.openrsc.server.plugins.shared.model.QuestReward;
 import com.openrsc.server.plugins.shared.model.XPReward;
@@ -62,7 +63,11 @@ public class ShieldOfArrav implements QuestInterface, UseBoundTrigger,
 
 	@Override
 	public void handleReward(Player player) {
-		player.message("Well done, you have completed the shield of Arrav quest");
+		if (player.getConfig().INFLUENCE_INSTEAD_QP) {
+			player.message("Well done, you have completed the shield quest");
+		} else {
+			player.message("Well done, you have completed the shield of Arrav quest");
+		}
 		final QuestReward reward = Quest.SHIELD_OF_ARRAV.reward();
 		for (XPReward xpReward : reward.getXpRewards()) {
 			incStat(player, xpReward.getSkill().id(), xpReward.getBaseXP(), xpReward.getVarXP());
@@ -102,6 +107,10 @@ public class ShieldOfArrav implements QuestInterface, UseBoundTrigger,
 	public void onOpLoc(Player player, GameObject obj, String command) {
 		switch (obj.getID()) {
 			case 67:
+				if (player.getConfig().WANT_CUSTOM_QUESTS && obj.getX() == 221 && obj.getY() == 3518) {
+					PeelingTheOnion.bookcaseSearch(player);
+					return;
+				}
 				if (player.getQuestStage(this) == 1) {
 					say(player, null, "Aha the shield of Arrav");
 					say(player, null, "That was what I was looking for");
@@ -237,7 +246,8 @@ public class ShieldOfArrav implements QuestInterface, UseBoundTrigger,
 					}
 					say(player, n, "Hey");
 					npcsay(player, n, "Hey");
-					if (player.getCarriedItems().hasCatalogID(ItemId.CANDLESTICK.id(), Optional.of(false)) && !player.getCache().hasKey("armband")) {
+					if (player.getCarriedItems().hasCatalogID(ItemId.CANDLESTICK.id(), Optional.of(false)) && player.getCache().hasKey("looted_grip")
+						&& !player.getCache().hasKey("armband")) {
 						int choice3 = multi(player, n,
 							"Who are all those people in there?",
 							"I have a candlestick now");
@@ -539,7 +549,8 @@ public class ShieldOfArrav implements QuestInterface, UseBoundTrigger,
 					} else {
 						if (player.getY() <= 3369) {
 							player.message("The door is locked");
-							if (player.getCarriedItems().hasCatalogID(ItemId.PHOENIX_GANG_KEY.id())) {
+							if (player.getCarriedItems().hasCatalogID(ItemId.PHOENIX_GANG_KEY.id())
+								&& player.getConfig().OLD_QUEST_MECHANICS) {
 								player.message("You need to use your key to open it");
 								return;
 							}
@@ -605,13 +616,22 @@ public class ShieldOfArrav implements QuestInterface, UseBoundTrigger,
 			delay(3);
 		} else if (item.getCatalogId() == ItemId.PHOENIX_GANG_KEY.id() && obj.getID() == 19
 			&& obj.getY() == 3370) {
-			// Retro RSC mechanic - had to use key on door to get in
-			thinkbubble(item);
-			mes("You unlock the door");
-			delay(3);
-			doDoor(obj, player);
-			mes("You go through the door");
-			delay(3);
+			if (player.getConfig().OLD_QUEST_MECHANICS) {
+				// Retro RSC mechanic - had to use key on door to get in
+				thinkbubble(item);
+				mes("You unlock the door");
+				delay(3);
+				doDoor(obj, player);
+				mes("You go through the door");
+				delay(3);
+			} else {
+				// Taken from persisting message OSRS code had
+				mes("This door has been replaced");
+				delay(3);
+				mes("It no longer has a keyhole");
+				delay(3);
+				mes("If you are a member of the Pheonix Gang it should open for you anyway");
+			}
 		}
 
 	}

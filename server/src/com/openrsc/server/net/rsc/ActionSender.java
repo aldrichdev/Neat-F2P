@@ -8,6 +8,7 @@ import com.openrsc.server.content.clan.ClanPlayer;
 import com.openrsc.server.content.party.Party;
 import com.openrsc.server.content.party.PartyManager;
 import com.openrsc.server.content.party.PartyPlayer;
+import com.openrsc.server.database.struct.UsernameChangeType;
 import com.openrsc.server.event.custom.HolidayDropEvent;
 import com.openrsc.server.model.Point;
 import com.openrsc.server.model.Shop;
@@ -23,6 +24,8 @@ import com.openrsc.server.net.rsc.generators.impl.*;
 import com.openrsc.server.net.rsc.struct.AbstractStruct;
 import com.openrsc.server.net.rsc.struct.outgoing.*;
 import com.openrsc.server.plugins.QuestInterface;
+import com.openrsc.server.service.PlayerService;
+import com.openrsc.server.util.EntityList;
 import com.openrsc.server.util.rsc.CaptchaGenerator;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
@@ -52,14 +55,18 @@ public class ActionSender {
 	 * */
 	public static PayloadGenerator<OpcodeOut> getGenerator(Player player) {
 		PayloadGenerator<OpcodeOut> generator;
-		if (player.isRetroClient()) {
+		if (player.isUsing38CompatibleClient() || player.isUsing39CompatibleClient()) {
 			generator = new Payload38Generator();
+		} else if (player.isUsing69CompatibleClient()) {
+			generator = new Payload69Generator();
 		} else if (player.isUsing233CompatibleClient()) {
 			generator = new Payload235Generator();
 		} else if (player.isUsing177CompatibleClient()) {
 			generator = new Payload177Generator();
 		} else if (player.isUsing140CompatibleClient()) {
 			generator = new Payload140Generator();
+		} else if (player.isUsing115CompatibleClient()) {
+			generator = new Payload115Generator();
 		} else {
 			generator = new PayloadCustomGenerator();
 		}
@@ -84,7 +91,7 @@ public class ActionSender {
 
 	public static boolean isRetroClient(Player player) {
 		//return player.getClientVersion() == 38;
-		return player.isRetroClient();
+		return player.isUsing38CompatibleClient() || player.isUsing39CompatibleClient() || player.isUsing69CompatibleClient();
 	}
 
 	/**
@@ -140,8 +147,24 @@ public class ActionSender {
 	 */
 	public static void sendAppearanceScreen(Player player) {
 		player.setChangingAppearance(true);
+		PlayerService.updateUnlockedPlayerSkins(player);
 		NoPayloadStruct struct = new NoPayloadStruct();
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_APPEARANCE_SCREEN, struct, player);
+	}
+
+	/**
+	 * Send players using mudclients 61 to 75 a prototype Yoptin signup screen.
+	 * @param player
+	 */
+	public static void sendYoptinScreen(Player player) {
+		NoPayloadStruct struct = new NoPayloadStruct();
+		tryFinalizeAndSendPacket(OpcodeOut.SEND_YOPTIN, struct, player);
+	}
+
+	public static void sendMaxInventorySpaces(Player player, int size) {
+		InventoryStruct struct = new InventoryStruct();
+		struct.inventorySize = size;
+		tryFinalizeAndSendPacket(OpcodeOut.SEND_INVENTORY_SIZE, struct, player);
 	}
 
 	public static void sendRecoveryScreen(Player player) {
@@ -158,7 +181,7 @@ public class ActionSender {
 
 	public static void sendPlayerOnTutorial(Player player) {
 		PlayerOnTutorialStruct struct = new PlayerOnTutorialStruct();
-		struct.onTutorial = player.getLocation().onTutorialIsland() && 
+		struct.onTutorial = player.getLocation().onTutorialIsland() &&
 			player.getWorld().getServer().getConfig().SHOW_TUTORIAL_SKIP_OPTION ? 1 : 0;
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_ON_TUTORIAL, struct, player);
 	}
@@ -498,7 +521,7 @@ public class ActionSender {
 				}
 
 				struct.name[i] = username;
-				struct.formerName[i] = "";
+				struct.formerName[i] = player.getSocial().getFriendListFormerNames().getOrDefault(usernameHash, "");
 				struct.onlineStatus[i] = onlineStatus;
 				i++;
 			}
@@ -508,7 +531,11 @@ public class ActionSender {
 				int iteratorIndex = 0;
 				for (Entry<Long, Integer> entry : player.getSocial().getFriendListEntry()) {
 					if (iteratorIndex == currentFriend) {
-						sendFriendUpdate(player, entry.getKey());
+						sendFriendUpdate(player,
+							entry.getKey(),
+							player.getSocial().getFriendListNames().get(entry.getKey()),
+							player.getSocial().getFriendListFormerNames().getOrDefault(entry.getKey(), "")
+						);
 						break;
 					}
 					iteratorIndex++;
@@ -535,13 +562,16 @@ public class ActionSender {
 	/**
 	 * Updates a friends login status
 	 * @param player - Our player
-	 * @param usernameHash - the friend player
+	 * @param usernameHash - the friend player's usernamehash
+	 * @param username - the friend player's username (with proper capitalization)
 	 */
-	public static void sendFriendUpdate(Player player, long usernameHash) {
+	public static void sendFriendUpdate(Player player, long usernameHash, String username, String formerName) {
+		sendFriendUpdate(player, usernameHash, username, false, formerName);
+	}
+	public static void sendFriendUpdate(Player player, long usernameHash, String username, boolean nameChangeEvent, String formerName) {
 		FriendUpdateStruct struct = new FriendUpdateStruct();
 		int onlineStatus = 0;
 		struct.worldNumber = 0;
-		String username = DataConversions.hashToUsername(usernameHash);
 
 		if (usernameHash == Long.MIN_VALUE && player.getConfig().WANT_GLOBAL_FRIEND) {
 			if (player.getBlockGlobalFriend()) return;
@@ -564,8 +594,8 @@ public class ActionSender {
 		}
 
 		struct.name = username;
-		struct.formerName = ""; // TODO: Allow name changes to fill this variable.
-		struct.onlineStatus = onlineStatus;
+		struct.formerName = formerName.equalsIgnoreCase(username) ? "" : formerName;
+		struct.onlineStatus = nameChangeEvent ? onlineStatus | 1 : onlineStatus;
 		struct.worldName = (onlineStatus & 4) != 0 ? "OpenRSC" : "";
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_FRIEND_UPDATE, struct, player);
 	}
@@ -587,12 +617,12 @@ public class ActionSender {
 			customOptions.add(player.getGlobalBlock());
 			customOptions.add(player.getClanInviteSetting() ? 0 : 1);
 			customOptions.add(player.getVolumeFunction());
-			customOptions.add(player.getSwipeToRotate() ? 1 : 0);
-			customOptions.add(player.getSwipeToScroll() ? 1 : 0);
+			customOptions.add(player.getSwipeToRotateMode());
+			customOptions.add(player.getSwipeToScrollMode());
 			customOptions.add(player.getLongPressDelay());
 			customOptions.add(player.getFontSize());
 			customOptions.add(player.getHoldAndChoose() ? 1 : 0);
-			customOptions.add(player.getSwipeToZoom() ? 1 : 0);
+			customOptions.add(player.getSwipeToZoomMode());
 			customOptions.add(player.getLastZoom());
 			customOptions.add(player.getBatchProgressBar() ? 1 : 0);
 			customOptions.add(player.getExperienceDrops() ? 1 : 0);
@@ -612,6 +642,7 @@ public class ActionSender {
 			customOptions.add(player.getCustomUI() ? 1 : 0);
 			customOptions.add(player.getHideLoginBox() ? 1 : 0);
 			customOptions.add(player.getBlockGlobalFriend() ? 1 : 0);
+			customOptions.add(player.getHideUndergroundFlicker() ? 1 : 0);
 		}
 		struct.customOptions = customOptions;
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_GAME_SETTINGS, struct, player);
@@ -700,6 +731,11 @@ public class ActionSender {
 			LOGGER.info(server.getConfig().FEATURES_SLEEP + " 77");
 			LOGGER.info(server.getConfig().WANT_EXTENDED_CATS_BEHAVIOR + " 78");
 			LOGGER.info(server.getConfig().WANT_CERT_AS_NOTES + " 79");
+			LOGGER.info(server.getConfig().WANT_OPENPK_POINTS + " 80");
+			LOGGER.info(server.getConfig().OPENPK_POINTS_TO_GP_RATIO + " 81");
+			LOGGER.info(server.getConfig().WANT_OPENPK_PRESETS + " 82");
+			LOGGER.info(server.getConfig().SHOW_UNDERGROUND_FLICKER_TOGGLE + " 83");
+			LOGGER.info(server.getConfig().DISABLE_MINIMAP_ROTATION + " 84");
 		}
 		Packet p = prepareServerConfigs(server);
 		// ConnectionAttachment attachment = new ConnectionAttachment();
@@ -807,10 +843,42 @@ public class ActionSender {
 		configs.add((byte) (server.getConfig().WANT_CERT_AS_NOTES ? 1 : 0)); // 79
 		configs.add((byte) (server.getConfig().WANT_OPENPK_POINTS ? 1 : 0)); // 80
 		configs.add((byte) (server.getConfig().OPENPK_POINTS_TO_GP_RATIO)); // 81
+		configs.add((byte) (server.getConfig().WANT_OPENPK_PRESETS ? 1 : 0)); // 82
+		configs.add((byte) (server.getConfig().SHOW_UNDERGROUND_FLICKER_TOGGLE ? 1 : 0)); // 83
+		configs.add((byte) (server.getConfig().DISABLE_MINIMAP_ROTATION ? 1 : 0)); // 84
 
 		struct.configs = configs;
 		struct.setOpcode(OpcodeOut.SEND_SERVER_CONFIGS);
 		return generator.generate(struct, null);
+	}
+
+	/**
+	 * Updates the friends list of a player who is online when someone they like changes their name
+	 */
+	public static void updateFriendListBecauseNameChange(Player playerToUpdate, String oldFriendName, String newFriendName) {
+		ActionSender.sendFriendUpdate(playerToUpdate, DataConversions.usernameToHash(newFriendName), newFriendName, true, oldFriendName);
+		if (playerToUpdate.getClientVersion() < 233) {
+			// clients without support for name changes will be confused by the addition of a random person to their friends list.
+			playerToUpdate.message("@whi@Your friend @red@\"" + oldFriendName + "\"@whi@ was renamed to @cya@\"" + newFriendName + "\"");
+		}
+	}
+
+
+	/**
+	 * Updates the ignore list of a player who is online when someone they hate changes their name
+	 */
+	public static void sendUpdateIgnoreBecauseOfNameChange(Player player, String username, String formerName, boolean updateExisting) {
+		IgnoreListStruct struct = new IgnoreListStruct();
+		struct.name = new String[1];
+		struct.formerName = new String[1];
+		struct.name[0] = username;
+		struct.formerName[0] = formerName;
+		struct.updateExisting = updateExisting;
+		tryFinalizeAndSendPacket(OpcodeOut.SEND_UPDATE_IGNORE_LIST_BECAUSE_NAME_CHANGE, struct, player);
+		if (player.getClientVersion() < 233) {
+			// clients without support for name changes will be confused by the addition of a random person to their ignore list.
+			player.message("@red@\"" + formerName + "\"@whi@ on your ignore list was renamed to @red@\"" + username + "\"");
+		}
 	}
 
 	/**
@@ -826,7 +894,10 @@ public class ActionSender {
 		for (long usernameHash : player.getSocial().getIgnoreList()) {
 			String username = DataConversions.hashToUsername(usernameHash);
 			struct.name[i] = username;
-			struct.formerName[i] = "";
+			struct.formerName[i] = DataConversions.hashToUsername(player.getSocial().getIgnoreListFormerNames().get(usernameHash));
+			if (struct.formerName[i].equalsIgnoreCase(struct.name[i])) {
+				struct.formerName[i] = "";
+			}
 			i++;
 		}
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_IGNORE_LIST, struct, player);
@@ -846,6 +917,11 @@ public class ActionSender {
 	public static void sendInventory(Player player) {
 		if (player == null)
 			return; /* In this case, it is a trade offer */
+		if (player.isUsing69CompatibleClient()) {
+			// TODO: implement if user is Yoptin enabled
+			boolean yoptinEnabled = true;
+			sendMaxInventorySpaces(player, yoptinEnabled ? 35 : 30);
+		}
 		InventoryStruct struct = new InventoryStruct();
 		int inventorySize, i;
 		synchronized(player.getCarriedItems().getInventory().getItems()) {
@@ -1004,7 +1080,7 @@ public class ActionSender {
 	public static void sendLogoutRequestConfirm(final Player player) {
 		Packet p;
 		AbstractStruct<OpcodeOut> struct;
-		if (!player.isRetroClient()) {
+		if (!player.isUsing38CompatibleClient() && !player.isUsing39CompatibleClient() && !player.isUsing69CompatibleClient()) {
 			NoPayloadStruct npStruct = new NoPayloadStruct();
 			npStruct.setOpcode(OpcodeOut.SEND_LOGOUT_REQUEST_CONFIRM);
 			struct = npStruct;
@@ -1015,7 +1091,13 @@ public class ActionSender {
 			struct = mStruct;
 		}
 		p = getGenerator(player).generate(struct, player);
-		player.getChannel().writeAndFlush(p).addListener((ChannelFutureListener) arg0 -> arg0.channel().close());
+		if (p != null) {
+			player.getChannel().writeAndFlush(p).addListener((ChannelFutureListener) arg0 -> arg0.channel().close());
+		} else {
+			// Packet was not able to be generated
+			// Just proceed to close the channel
+			player.getChannel().close();
+		}
 	}
 
 	/**
@@ -1147,6 +1229,7 @@ public class ActionSender {
 		struct.blockPrivate = getPrivacySettingValue(player, PlayerSettings.PRIVACY_BLOCK_PRIVATE_MESSAGES, fromAuthentic);
 		struct.blockTrade = getPrivacySettingValue(player, PlayerSettings.PRIVACY_BLOCK_TRADE_REQUESTS, fromAuthentic);
 		struct.blockDuel = getPrivacySettingValue(player, PlayerSettings.PRIVACY_BLOCK_DUEL_REQUESTS, fromAuthentic);
+		struct.hideStatus = getPrivacySettingValue(player, PlayerSettings.PRIVACY_HIDE_ONLINE_STATUS, fromAuthentic);
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_PRIVACY_SETTINGS, struct, player);
 	}
 
@@ -1509,6 +1592,8 @@ public class ActionSender {
 
 		int questPoints = player.getQuestPoints();
 		struct.questPoints = questPoints;
+
+		struct.hasPrayDrain = !player.getConfig().LACKS_PRAYERS;
 
 		// computed for compat if retro client on modern world
 		struct.useInfluence = player.getConfig().INFLUENCE_INSTEAD_QP;
@@ -1935,8 +2020,15 @@ public class ActionSender {
                 sendLoginBox(player);
 
 				sendPlayerOnBlackHole(player);
+				sendUnlockedAppearances(player);
+
+				final boolean playerInTutorialLanding = player.getLocation().inTutorialLanding();
+
 				if (player.getLastLogin() == 0L) {
+					player.getCache().store("tutorial_appearance", false);
+
 					sendAppearanceScreen(player);
+
 					if (!player.getConfig().USES_CLASSES) {
 						if (player.getConfig().WANT_OPENPK_POINTS) {
 							for (Item item : player.getWorld().getServer().getConstants().OPENPK_STARTER_ITEMS) {
@@ -1976,16 +2068,10 @@ public class ActionSender {
 
 				sendWakeUp(player, false, true);
 
-				if (player.isMuted()) {
-					// doesn't seem authentic to have notified the player that they are muted after login
-					/*player.message("You have been " + (player.getMuteExpires() == -1 ? "permanently" : "temporarily") + " due to breaking a rule");
-					if (player.getMuteExpires() != -1) {
-						player.message("This mute will remain for a further " + DataConversions.formatTimeString(player.getMinutesMuteLeft()));
-					}
-					player.message("To prevent further mutes please read the rules");*/
+				if (!player.isChangingAppearance() && player.getCache().hasKey("tutorial_appearance")) {
+					sendAppearanceScreen(player);
 				}
-
-				if (player.getLocation().inTutorialLanding()) {
+				if (playerInTutorialLanding) {
 					sendBox(player, "@gre@Welcome to the " + player.getConfig().SERVER_NAME + " tutorial.% %Most actions are performed with the mouse. To walk around left click on the ground where you want to walk. To interact with something, first move your mouse pointer over it. Then left click or right click to perform different actions% %Try left clicking on one of the guides to talk to her. She will tell you more about how to play", true);
 				}
 
@@ -2022,23 +2108,74 @@ public class ActionSender {
 		}
 	}
 
-	public static void sendOnlineList(Player player, ArrayList<Player> players, ArrayList<String> locations, int online) {
+	public static void sendReleasedNameExplanation(Player player, UsernameChangeType changeType) {
+		if (changeType == UsernameChangeType.RELEASED) {
+			player.playerServerMessage(MessageType.QUEST, "@cya@Your account was deemed inactive and the name claimed by someone else.");
+			player.playerServerMessage(MessageType.QUEST, "@cya@Your username is now @ora@" + player.getUsername() + "@cya@ but can be changed with @mag@::rename");
+			player.playerServerMessage(MessageType.QUEST, "@cya@Log in with your new username to stop receiving this message.");
+		}
+		if (changeType == UsernameChangeType.INAPPROPRIATE) {
+			player.playerServerMessage(MessageType.QUEST, "@cya@Your account name was deemed inappropriate and has been changed.");
+			player.playerServerMessage(MessageType.QUEST, "@cya@Your username is now @ora@" + player.getUsername() + "@cya@ but can be changed with @mag@::rename");
+			player.playerServerMessage(MessageType.QUEST, "@cya@Log in with your new username to stop receiving this message.");
+		}
+	}
+
+	public static void sendOnlineList(Player player, ArrayList<Player> players, ArrayList<String> locations, int online, final boolean retroClientListsAll) {
 	    if (!player.isUsingCustomClient()) {
-	    	StringBuilder onlinePlayers = new StringBuilder(String.format("@lre@Players online @gre@(%d) %%", online));
-			for (int i = 0; i < players.size(); i++) {
-				onlinePlayers.append("@whi@");
-				onlinePlayers.append(players.get(i).getUsername());
-				if (locations.get(i).length() > 0) {
-					onlinePlayers.append(" @yel@(");
-					onlinePlayers.append(locations.get(i));
-					onlinePlayers.append(")");
+			if (player.getClientLimitations().supportsMessageBox) {
+				StringBuilder onlinePlayers = new StringBuilder(String.format("@lre@Players online @gre@(%d) %%", online));
+				for (int i = 0; i < players.size(); i++) {
+					onlinePlayers.append("@whi@");
+					onlinePlayers.append(players.get(i).getUsername());
+					if (locations.get(i).length() > 0) {
+						onlinePlayers.append(" @yel@(");
+						onlinePlayers.append(locations.get(i));
+						onlinePlayers.append(")");
+					}
+					if (i + 1 != players.size()) {
+						onlinePlayers.append(" @mag@; ");
+					}
 				}
-				if (i + 1 != players.size()) {
-					onlinePlayers.append(" @mag@; ");
+
+				ActionSender.sendBox(player, onlinePlayers.toString(), true);
+			} else {
+				// Client is older than 2002-01-29. Fallback to game messages.
+				player.playerServerMessage(MessageType.QUEST, "@lre@Players online @gre@(" +  online + ")");
+				int playerLimit = 20;
+				if (!retroClientListsAll && players.size() > playerLimit) {
+					player.playerServerMessage(MessageType.QUEST, "@red@Warning: @whi@Player list has been truncated due to too many players online.");
+					player.playerServerMessage(MessageType.QUEST, "Visit the onlinelist of your server on the web to see the full list,");
+					player.playerServerMessage(MessageType.QUEST, "or use the command @mag@::onlinelist all");
+				}
+				int playersToList = Math.min(players.size(), retroClientListsAll ? EntityList.DEFAULT_CAPACITY : playerLimit);
+				int messagesSent = 0;
+
+				StringBuilder onlinePlayers = new StringBuilder();
+				int colorLength = 0;
+				for (int i = 0; i < playersToList; i++) {
+					onlinePlayers.append("@whi@");
+					colorLength += 5;
+					onlinePlayers.append(players.get(i).getUsername());
+					if (i + 1 != players.size()) {
+						onlinePlayers.append(" @mag@; ");
+						colorLength += 5;
+					}
+					if (onlinePlayers.length() - colorLength > 70) {
+						player.playerServerMessage(MessageType.QUEST, onlinePlayers.toString());
+						colorLength = 0;
+						onlinePlayers = new StringBuilder();
+						messagesSent++;
+					}
+				}
+				if (onlinePlayers.length() > 0) {
+					player.playerServerMessage(MessageType.QUEST, onlinePlayers.toString());
+					messagesSent++;
+				}
+				if (messagesSent > 4) {
+					player.playerServerMessage(MessageType.QUEST, "@lre@Listed all @gre@(" +  online + ")@lre@ players online.");
 				}
 			}
-
-			ActionSender.sendBox(player, onlinePlayers.toString(), true);
         } else {
 			OnlineListStruct struct = new OnlineListStruct();
 			struct.numberOnline = online;
@@ -2257,6 +2394,20 @@ public class ActionSender {
 		struct.allowSetting0 = player.getParty().isAllowed(0, player) ? 1 : 0;
 		struct.allowSetting1 = player.getParty().isAllowed(1, player) ? 1 : 0;
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_PARTY_SETTINGS, struct, player);
+	}
+
+	public static void sendUnlockedAppearances(Player player) {
+		if (!player.supportsPlayerUnlockedAppearancesPacket()) {
+			return;
+		}
+		UnlockedAppearancesStruct struct = new UnlockedAppearancesStruct();
+		struct.unlockedHairStyles = new boolean[0];
+		struct.unlockedBodyTypes = new boolean[0];
+		struct.unlockedSkinColours = player.getUnlockedSkinColours();
+		struct.unlockedHairColours = new boolean[0];
+		struct.unlockedTopColours = new boolean[0];
+		struct.unlockedBottomColours = new boolean[0];
+		tryFinalizeAndSendPacket(OpcodeOut.SEND_UNLOCKED_APPEARANCES, struct, player);
 	}
 
 	public static void sendIronManMode(Player player) {

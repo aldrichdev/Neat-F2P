@@ -2,14 +2,15 @@ package com.openrsc.server.net;
 
 import com.openrsc.server.Server;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.util.EntityList;
 import io.netty.channel.Channel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.net.InetSocketAddress;
 import java.text.DateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class RSCPacketFilter {
 	/**
@@ -46,9 +47,9 @@ public class RSCPacketFilter {
 	 */
 	private final HashMap<String, Long> ipBans;
 	/**
-	 * Holds counts of logged in players per IP address
+	 * Holds track of logged in players per IP address
 	 */
-	private final HashMap<String, Integer> loggedInCount;
+	private final HashMap<String, Set<Long>> loggedInTracker;
 	/**
 	 * Holds host address and it's password guess attempt times
 	 */
@@ -62,7 +63,7 @@ public class RSCPacketFilter {
 		this.adminHosts = new ArrayList<>();
 		this.packets = new HashMap<>();
 		this.ipBans = new HashMap<>();
-		this.loggedInCount = new HashMap<>();
+		this.loggedInTracker = new HashMap<>();
 		this.passwordAttempts = new HashMap<>();
 	}
 
@@ -80,33 +81,33 @@ public class RSCPacketFilter {
 		}
 
 		synchronized (connections) {
-			loginAttempts.clear();
+			connections.clear();
 		}
 
 		synchronized (adminHosts) {
-			loginAttempts.clear();
+			adminHosts.clear();
 		}
 
 		synchronized (packets) {
-			loginAttempts.clear();
+			packets.clear();
 		}
 
 		synchronized (ipBans) {
-			loginAttempts.clear();
+			ipBans.clear();
 		}
 
-		synchronized (loggedInCount) {
-			loginAttempts.clear();
+		synchronized (loggedInTracker) {
+			loggedInTracker.clear();
 		}
 
 		synchronized (passwordAttempts) {
-			loginAttempts.clear();
+			passwordAttempts.clear();
 		}
 	}
 
 	public void ipBanHost(final String hostAddress, final long until, String reason) {
 		// Do not IP ban afmans!
-		if(isHostAdmin(hostAddress)) {
+		if(isHostAdmin(hostAddress) || hostAddress.equals("127.0.0.1")) {
 			String time = (until == -1) ? "permanently" : "until " + DateFormat.getInstance().format(until);
 			if (until != 0) {
 				LOGGER.info("Won't IP ban Afman " + hostAddress + ", would have been banned " + time + " for " + reason);
@@ -159,9 +160,9 @@ public class RSCPacketFilter {
 		//LOGGER.info("Channel Read: " + hostAddress + ", Allowed: " + allowPacket + ", PPS: " + pps);
 
 		if(!allowPacket) {
-			LOGGER.info(hostAddress + " (" + player + ") filtered for reaching the PPS limit: " + pps);
+			LOGGER.info(hostAddress + " (" + player + ") filtered for exceeding the PPS limit: " + pps + "/" + getServer().getConfig().MAX_PACKETS_PER_SECOND);
 			if(doIpBans) {
-				ipBanHost(hostAddress, System.currentTimeMillis() + getServer().getConfig().NETWORK_FLOOD_IP_BAN_MINUTES * 60 * 1000, "reaching the PPS limit");
+				ipBanHost(hostAddress, System.currentTimeMillis() + getServer().getConfig().NETWORK_FLOOD_IP_BAN_MINUTES * 60 * 1000, "packets per second limit");
 			}
 		}
 
@@ -186,17 +187,23 @@ public class RSCPacketFilter {
 
 		final int cps = getConnectionsPerSecond(hostAddress);
 		final int connectionCount = getConnectionCount(hostAddress);
-		final boolean allowConnection = isHostAdmin(hostAddress) || (
-			(connectionCount <= getServer().getConfig().MAX_CONNECTIONS_PER_IP) &&
-			(cps <= getServer().getConfig().MAX_CONNECTIONS_PER_SECOND)
+		final boolean connectionCountExceeds = connectionCount > getServer().getConfig().MAX_CONNECTIONS_PER_IP;
+		final boolean connectionRateExceeds = cps > getServer().getConfig().MAX_CONNECTIONS_PER_SECOND;
+		final boolean allowConnection = hostAddress.equals("127.0.0.1") || isHostAdmin(hostAddress) || (
+			(!connectionCountExceeds && !connectionRateExceeds)
 		);
 
 		//LOGGER.info("Channel Registered: " + hostAddress + ", Allowed: " + allowConnection + ", CPS: " + cps);
 
 		if(!allowConnection) {
-			LOGGER.info(hostAddress + " (" + player + ") filtered for reaching the connections per second limit: " + cps);
+			if (connectionRateExceeds) {
+				LOGGER.info(hostAddress + " (" + player + ") filtered for exceeding the connections per second limit: " + cps + "/" + getServer().getConfig().MAX_CONNECTIONS_PER_SECOND);
+			}
+			if (connectionCountExceeds) {
+				LOGGER.info(hostAddress + " (" + player + ") filtered for exceeding the connection count limit: " + connectionCount + "/" + getServer().getConfig().MAX_CONNECTIONS_PER_IP);
+			}
 			if(doIpBans) {
-				ipBanHost(hostAddress, System.currentTimeMillis() + getServer().getConfig().NETWORK_FLOOD_IP_BAN_MINUTES * 60 * 1000, "connections per second limit");
+				ipBanHost(hostAddress, System.currentTimeMillis() + getServer().getConfig().NETWORK_FLOOD_IP_BAN_MINUTES * 60 * 1000, "connections per second or connection count limit");
 			}
 		}
 
@@ -277,6 +284,45 @@ public class RSCPacketFilter {
 		}
 	}
 
+	public int cleanIdleConnections() {
+		synchronized (connections) {
+			int num = 0;
+			for (Map.Entry<String, ArrayList<Channel>> entry : connections.entrySet()) {
+				num += cleanIdleConnections(entry.getKey());
+			}
+			return num;
+		}
+	}
+
+	public int cleanIdleConnections(final String hostAddress) {
+		synchronized (connections) {
+			int initialLen, finalLen;
+			initialLen = finalLen = 0;
+			ArrayList<Channel> hostConnections = connections.get(hostAddress);
+			if (hostConnections != null && hostConnections.size() > 0) {
+				initialLen = hostConnections.size();
+				EntityList<Player> hostPlayers = getServer().getWorld().getPlayers(hostAddress);
+				List<Channel> loggedInConnections = hostPlayers.stream().map(Player::getChannel).collect(Collectors.toList());
+				Iterator<Channel> connIter = hostConnections.iterator();
+				while (connIter.hasNext()) {
+					Channel channel = connIter.next();
+					if (!loggedInConnections.contains(channel)) {
+						// Not good the below code since some may be logging out temporarily to seek better pid
+						// try {
+						//	channel.close().addListener((ChannelFutureListener) arg0 -> arg0.channel().deregister());
+						// } catch (Exception e) {
+						//	LOGGER.debug("An exception occurred while closing and de-registering the channel for " + channel.remoteAddress());
+						// }
+						connIter.remove();
+					}
+				}
+				finalLen = hostConnections.size();
+				connections.put(hostAddress, hostConnections);
+			}
+			return initialLen - finalLen;
+		}
+	}
+
 	private void addLoginAttempt(final String hostAddress) {
 		synchronized (loginAttempts) {
 			ArrayList<Long> loginTimes = loginAttempts.get(hostAddress);
@@ -294,20 +340,24 @@ public class RSCPacketFilter {
 		}
 	}
 
-	public void removeLoggedInPlayer(final String hostAddress) {
-		synchronized(loggedInCount) {
-			if(loggedInCount.containsKey(hostAddress)) {
-				loggedInCount.put(hostAddress, loggedInCount.get(hostAddress) - 1);
+	public void removeLoggedInPlayer(final String hostAddress, final Long playerHash) {
+		synchronized(loggedInTracker) {
+			if(loggedInTracker.containsKey(hostAddress)) {
+				Set<Long> players = loggedInTracker.get(hostAddress);
+				players.remove(playerHash);
+				loggedInTracker.put(hostAddress, players);
 			}
 		}
 	}
 
-	public void addLoggedInPlayer(final String hostAddress) {
-		synchronized(loggedInCount) {
-			if(!loggedInCount.containsKey(hostAddress)) {
-				loggedInCount.put(hostAddress, 1);
+	public void addLoggedInPlayer(final String hostAddress, final Long playerHash) {
+		synchronized(loggedInTracker) {
+			if(!loggedInTracker.containsKey(hostAddress)) {
+				loggedInTracker.put(hostAddress, new HashSet<Long>() {{ add(playerHash); }});
 			} else {
-				loggedInCount.put(hostAddress, loggedInCount.get(hostAddress) + 1);
+				Set<Long> players = loggedInTracker.get(hostAddress);
+				players.add(playerHash);
+				loggedInTracker.put(hostAddress, players);
 			}
 		}
 	}
@@ -334,7 +384,7 @@ public class RSCPacketFilter {
 		return pps;
 	}
 
-	private final int getConnectionsPerSecond(final String hostAddress) {
+	public final int getConnectionsPerSecond(final String hostAddress) {
 		final long now = System.currentTimeMillis();
 		int cps = 0;
 
@@ -379,7 +429,7 @@ public class RSCPacketFilter {
 		return countAttempts;
 	}
 
-	private final int getConnectionCount(final String hostAddress) {
+	public final int getConnectionCount(final String hostAddress) {
 		synchronized (connections) {
 			if(connections.containsKey(hostAddress)) {
 				ArrayList<Channel> hostConnections = connections.get(hostAddress);
@@ -419,9 +469,9 @@ public class RSCPacketFilter {
 	}
 
 	public final int getPlayersCount(final String hostAddress) {
-		synchronized(loggedInCount) {
-			if (loggedInCount.containsKey(hostAddress)) {
-				return loggedInCount.get(hostAddress);
+		synchronized(loggedInTracker) {
+			if (loggedInTracker.containsKey(hostAddress)) {
+				return loggedInTracker.get(hostAddress).size();
 			} else {
 				return 0;
 			}
@@ -444,19 +494,35 @@ public class RSCPacketFilter {
 	}
 
 	public int recalculateLoggedInCounts() {
-		int fixedIps = 0;
-		synchronized (loggedInCount) {
-			for (String hostAddress : loggedInCount.keySet()) {
-				int currentLoginCount = loggedInCount.get(hostAddress);
+		//int fixedIps = 0;
+		Set<String> fixedIPs = new HashSet<>();
+		synchronized (loggedInTracker) {
+			Iterator<Long> iter;
+			Long playerHash;
+			for (String hostAddress : loggedInTracker.keySet()) {
+				Set<Long> currentTrackedPlayers = loggedInTracker.get(hostAddress);
+				iter = currentTrackedPlayers.iterator();
+				while (iter.hasNext()) {
+					playerHash = iter.next();
+					if (getServer().getWorld().getPlayer(playerHash) == null
+						|| !getServer().getWorld().getPlayer(playerHash).getCurrentIP().equals(hostAddress)) {
+						iter.remove();
+						if (!fixedIPs.contains(hostAddress)) {
+							fixedIPs.add(hostAddress);
+						}
+					}
+				}
+				loggedInTracker.put(hostAddress, currentTrackedPlayers);
+				/*int currentLoginCount = loggedInTracker.get(hostAddress);
 				int currentConnectionCount = getConnectionCount(hostAddress);
 				if (currentLoginCount > currentConnectionCount) {
-					loggedInCount.put(hostAddress, currentConnectionCount);
+					loggedInTracker.put(hostAddress, currentConnectionCount);
 					++fixedIps;
 					LOGGER.warn("Impossible scenario of more logged in characters than connections corrected for IP: " + hostAddress);
-				}
+				}*/
 			}
 		}
-		return fixedIps;
+		return fixedIPs.size();
 	}
 
 	public final Server getServer() {

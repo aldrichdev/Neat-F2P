@@ -1,7 +1,6 @@
 package com.openrsc.server.model.container;
 
 import com.openrsc.server.constants.IronmanMode;
-import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Quests;
 import com.openrsc.server.database.impl.mysql.queries.logging.DeathLog;
 import com.openrsc.server.database.struct.PlayerInventory;
@@ -229,6 +228,10 @@ public class Inventory {
 	}
 
 	public int remove(Item item, boolean sendInventory) {
+		return remove(item, sendInventory, false);
+	}
+
+	public int remove(Item item, boolean sendInventory, boolean bypassItemId) {
 		synchronized (list) {
 			// Confirm items exist in the inventory
 			if (list.isEmpty())
@@ -244,10 +247,15 @@ public class Inventory {
 
 			int size = list.size();
 			ListIterator<Item> iterator = list.listIterator(size);
+			boolean continueRemoval = bypassItemId;
+			int amountToRemove = amount;
 			for (int index = size - 1; iterator.hasPrevious(); index--) {
 				Item inventoryItem = iterator.previous();
 				// Loop until we have the correct item.
-				if (inventoryItem.getItemId() != itemID)
+				// Works since desired itemid is commonly last that matches desired catalog id
+				// only case distinct is drop but that one is up to the stack of that position
+				if ((inventoryItem.getItemId() != itemID && !continueRemoval) || (continueRemoval &&
+					(inventoryItem.getCatalogId() != catalogId || inventoryItem.getNoted() != item.getNoted())))
 					continue;
 				// Confirm itemDef exists.
 				ItemDefinition inventoryDef = inventoryItem.getDef(player.getWorld());
@@ -256,12 +264,9 @@ public class Inventory {
 
 				if (inventoryDef.isStackable() || inventoryItem.getNoted()) {
 
-					// Make sure there's enough in the stack
-					if (inventoryItem.getAmount() < amount)
-						return -1;
-
-					// If we remove the entire stack, remove the item status.
-					if (inventoryItem.getAmount() == amount) {
+					// Start removing whichever amount is possible from current stack
+					if (inventoryItem.getAmount() < amountToRemove) {
+						amountToRemove -= inventoryItem.getAmount();
 
 						// Update the Server
 						iterator.remove();
@@ -270,15 +275,34 @@ public class Inventory {
 						if (sendInventory)
 							ActionSender.sendRemoveItem(player, index);
 
+						continueRemoval = true;
+					}
+
+					// If we remove the entire stack, remove the item status.
+					else if (inventoryItem.getAmount() == amountToRemove) {
+						amountToRemove -= inventoryItem.getAmount();
+
+						// Update the Server
+						iterator.remove();
+
+						// Update the client
+						if (sendInventory)
+							ActionSender.sendRemoveItem(player, index);
+
+						continueRemoval = amountToRemove > 0;
+
 					// Removing only part of the stack
 					} else {
 
 						// Update the Database and Server Bank
-						inventoryItem.changeAmount(-amount);
+						inventoryItem.changeAmount(-amountToRemove);
+						amountToRemove = 0;
 
 						// Update the client
 						if (sendInventory)
 							ActionSender.sendInventoryUpdateItem(player, index);
+
+						continueRemoval = false;
 					}
 
 				// Non-stacking items
@@ -292,15 +316,23 @@ public class Inventory {
 							new UnequipRequest(player, inventoryItem, UnequipRequest.RequestType.FROM_INVENTORY, false)
 						);
 
+					amountToRemove -= inventoryItem.getAmount();
+
 					// Update the Server Bank
 					iterator.remove();
 
 					// Update the client
 					if (sendInventory)
 						ActionSender.sendRemoveItem(player, index);
+
+					continueRemoval = amountToRemove > 0;
 				}
 
-				return inventoryItem.getItemId();
+				if (!continueRemoval) return inventoryItem.getItemId();
+			}
+			if (continueRemoval) {
+				// could not satisfy removal
+				return -1;
 			}
 			System.out.println("Item not found: " + item.getItemId() + " for player " + player.getUsername());
 		}
@@ -313,20 +345,27 @@ public class Inventory {
 
 	// Used in custom bank interface to swap items.
 	public void swap(int slot, int to) {
-		if (slot <= 0 && to <= 0 && to == slot) {
+		if (slot < 0 || to < 0 || to == slot) {
 			return;
 		}
-		int idx = list.size() - 1;
-		if (to > idx) {
+
+		final int invSize = list.size();
+
+		if (slot >= invSize || to >= invSize) {
 			return;
 		}
-		Item item = get(slot);
-		Item item2 = get(to);
-		if (item != null && item2 != null) {
-			list.set(slot, item2);
-			list.set(to, item);
-			ActionSender.sendInventory(player);
+
+		final Item item1 = get(slot);
+		final Item item2 = get(to);
+
+		if (item1 == null || item2 == null)
+		{
+			return;
 		}
+
+		list.set(slot, item2);
+		list.set(to, item1);
+		ActionSender.sendInventory(player);
 	}
 
 	// Used in custom bank interface to insert items.
@@ -334,16 +373,22 @@ public class Inventory {
 		if (slot < 0 || to < 0 || to == slot) {
 			return false;
 		}
-		int idx = list.size() - 1;
-		if (to > idx) {
+
+		final int invSize = list.size();
+
+		if (slot >= invSize || to >= invSize) {
 			return false;
 		}
-		Item from = list.get(slot);
-		Item[] array = list.toArray(new Item[list.size()]);
-		if (slot >= array.length || from == null || to >= array.length) {
+
+		final Item item = list.get(slot);
+
+		if (item == null) {
 			return false;
 		}
+
+		final Item[] array = list.toArray(new Item[0]);
 		array[slot] = null;
+
 		if (slot > to) {
 			int shiftFrom = to;
 			int shiftTo = slot;
@@ -369,125 +414,146 @@ public class Inventory {
 			System.arraycopy(array, sliceStart, slice, 0, slice.length);
 			System.arraycopy(slice, 0, array, sliceStart - 1, slice.length);
 		}
-		array[to] = from;
+
+		array[to] = item;
 		list = new ArrayList<Item>(Arrays.asList(array));
 		return true;
 	}
 
-	public void dropOnDeath(Mob opponent) {
-
+	public void dropOnDeath(final Mob mob) {
 		// deathItemsMap: Compiles a list of Value : Items
 		// Stacks receive a value of -1, as they are always removed.
-		TreeMap<Integer, ArrayList<Item>> deathItemsMap = new TreeMap<>(Collections.reverseOrder());
+		final TreeMap<Integer, ArrayList<Item>> deathItemsMap = new TreeMap<>(Collections.reverseOrder());
 
 		// A list of all the items a player has prior to death.
-		ArrayList<Item> deathItemsList = new ArrayList<>();
-		// A list of all items equipped prior to death.
-		ArrayList<Integer> oldEquippedList = new ArrayList<>();
+		final ArrayList<Item> deathItemsList = new ArrayList<>();
+
 		Integer key;
 		ArrayList<Item> value;
 		ItemDefinition def;
 
 		// Add equipment items and values to deathItemsMap (only if config is enabled).
 		if (player.getConfig().WANT_EQUIPMENT_TAB) {
+			final Equipment equipment = player.getCarriedItems().getEquipment();
+
 			for (int i = 0; i < Equipment.SLOT_COUNT; i++) {
-				Item equipped = player.getCarriedItems().getEquipment().get(i);
-				if (equipped != null) {
-					def = equipped.getDef(player.getWorld());
-					key = def.isStackable() || equipped.getNoted() ? -1 : def.getDefaultPrice(); // Stacks are always lost.
-					value = deathItemsMap.getOrDefault(key, new ArrayList<Item>());
-					value.add(equipped);
-					deathItemsMap.put(key, value);
-				}
+				final Item item = equipment.get(i);
+
+				if (item == null) continue;
+
+				def = item.getDef(player.getWorld());
+				key = def.isStackable() || item.getNoted() ? -1 : def.getDefaultPrice(); // Stacks are always lost.
+				value = deathItemsMap.getOrDefault(key, new ArrayList<>());
+				value.add(item);
+				deathItemsMap.put(key, value);
 			}
 		}
 
 		// Add inventory items and values to deathItemsMap
-		for (Item invItem : getItems()) {
-			def = invItem.getDef(player.getWorld());
-			key = def.isStackable() || invItem.getNoted() ? -1 : def.getDefaultPrice(); // Stacks are always lost.
-			value = deathItemsMap.getOrDefault(key, new ArrayList<Item>());
-			value.add(invItem);
+		for (final Item item : getItems()) {
+			def = item.getDef(player.getWorld());
+			key = def.isStackable() || item.getNoted() ? -1 : def.getDefaultPrice(); // Stacks are always lost.
+			value = deathItemsMap.getOrDefault(key, new ArrayList<>());
+			value.add(item);
 			deathItemsMap.put(key, value);
 		}
 
-		deathItemsMap.values().forEach(elem -> deathItemsList.addAll(elem));
+		deathItemsMap.values().forEach((list) -> {
+			list.sort((c1, c2) -> {
+				if (c1.getCatalogId() != c2.getCatalogId()) {
+					return c1.getCatalogId() - c2.getCatalogId();
+				}
+				return c1.getAmount() - c2.getAmount();
+			});
+			deathItemsList.addAll(list);
+		});
 		deathItemsMap.clear();
-		ListIterator<Item> iterator = deathItemsList.listIterator();
 
-		if (!player.isIronMan(IronmanMode.Ultimate.id())) {
-			if (!player.isSkulled()) {
-				for (int items = 1; items <= 3 && iterator.hasNext(); items++) {
-					if (iterator.next().getDef(player.getWorld()).isStackable()) {
-						iterator.previous();
-						break;
-					}
+		final ListIterator<Item> iterator = deathItemsList.listIterator();
+
+		// Save three most expensive items by ItemDef default price
+		if (!player.isSkulled() && !player.isIronMan(IronmanMode.Ultimate.id())) {
+			for (int items = 1; items <= 3 && iterator.hasNext(); items++) {
+				if (iterator.next().getDef(player.getWorld()).isStackable()) {
+					iterator.previous();
+					break;
 				}
 			}
 		}
+
+		// Save a fourth item if protect item prayer is enabled
 		if (player.getPrayers().isPrayerActivated(Prayers.PROTECT_ITEMS) && iterator.hasNext()) {
 			if (iterator.next().getDef(player.getWorld()).isStackable()) {
 				iterator.previous();
 			}
 		}
-		DeathLog log = new DeathLog(player, opponent, false);
-		for (; iterator.hasNext(); ) {
+
+		final DeathLog deathLog = new DeathLog(player, mob, false);
+
+		// Remove items from inventory and drop them to either: the player, the mob, or the world
+		while (iterator.hasNext()) {
 			Item item = iterator.next();
 			item = new Item(item.getCatalogId(), item.getAmount(), item.getNoted());
-			player.getCarriedItems().remove(item, false);
 
-			log.addDroppedItem(item);
-			Player dropOwner;
-			GroundItem groundItem;
+			// Try to remove the item from the player's inventory
+			if (player.getCarriedItems().remove(item, false) == -1) continue;
+
+			// Log the item removed
+			deathLog.addDroppedItem(item);
+
+			// Drop to the player if item is untradeable
 			if (item.getDef(player.getWorld()).isUntradable()) {
-				groundItem = new GroundItem(player.getWorld(), item.getCatalogId(), player.getX(), player.getY(), item.getAmount(), player, item.getNoted());
-			} else {
-				dropOwner = (opponent == null || !opponent.isPlayer()) ? player : (Player) opponent;
-				if (opponent != null) dropOwner = opponent.isPlayer() && ((Player)opponent).getIronMan() != IronmanMode.None.id() ? player : dropOwner;
-				groundItem = new GroundItem(player.getWorld(), item.getCatalogId(), player.getX(), player.getY(), item.getAmount(), dropOwner, item.getNoted());
-				groundItem.setAttribute("playerKill", true);
-				if (opponent != null && opponent.isPlayer()) {
-					// show loot to killer instantly
-					groundItem.setAttribute("killerHash", ((Player)opponent).getUsernameHash());
-				}
+				final GroundItem groundItem = new GroundItem(player.getWorld(), item.getCatalogId(), player.getX(),
+					player.getY(), item.getAmount(), player, item.getNoted());
+				player.getWorld().registerItem(groundItem, player.getConfig().GAME_TICK * 1000);
+				continue;
 			}
+
+			// Drop to the world if mob is null or npc
+			if (mob == null || mob.isNpc()) {
+				final GroundItem groundItem = new GroundItem(player.getWorld(), item.getCatalogId(), player.getX(),
+					player.getY(), item.getAmount(), null, item.getNoted());
+				player.getWorld().registerItem(groundItem, player.getConfig().GAME_TICK * 1000);
+				continue;
+			}
+
+			final Player playerMob = (Player) mob;
+
+			// Drop to the mob if they aren't an ironman, otherwise to the player
+			final Player dropOwner = playerMob.getIronMan() == IronmanMode.None.id() ? playerMob : player;
+
+			final GroundItem groundItem = new GroundItem(player.getWorld(), item.getCatalogId(), player.getX(),
+				player.getY(), item.getAmount(), dropOwner, item.getNoted());
+
+			groundItem.setAttribute("playerKill", true);
+			groundItem.setAttribute("killerHash", playerMob.getUsernameHash());
+
 			player.getWorld().registerItem(groundItem, player.getConfig().GAME_TICK * 1000);
-
 		}
 
-		//check for fam crest gloves in bank, if not present there give player
-		int fam_gloves;
-		Gauntlets enchantment;
-		try {
-			enchantment = Gauntlets.getById(player.getCache().getInt("famcrest_gauntlets"));
-		} catch (Exception e) {
-			enchantment = Gauntlets.STEEL;
-		}
-		switch (enchantment) {
-			case GOLDSMITHING:
-				fam_gloves = ItemId.GAUNTLETS_OF_GOLDSMITHING.id();
-				break;
-			case COOKING:
-				fam_gloves = ItemId.GAUNTLETS_OF_COOKING.id();
-				break;
-			case CHAOS:
-				fam_gloves = ItemId.GAUNTLETS_OF_CHAOS.id();
-				break;
-			default:
-				fam_gloves = ItemId.STEEL_GAUNTLETS.id();
-				break;
+		deathLog.build();
+		player.getWorld().getServer().getGameLogger().addQuery(deathLog);
+
+		// Give player Family Crest gauntlets if they completed the quest but don't have them in bank/inventory.
+		// This authentically duplicates them if they were just dropped on death
+		if (player.getQuestStage(Quests.FAMILY_CREST) == -1) {
+			if (player.getCache().hasKey("famcrest_gauntlets")) {
+				final int itemId = Gauntlets.getById(player.getCache().getInt("famcrest_gauntlets")).catalogId();
+
+				if (!player.getBank().hasItemId(itemId) && !player.getCarriedItems().hasCatalogID(itemId)) {
+					add(new Item(itemId, 1), false);
+				}
+			} else {
+				// This shouldn't be possible unless there is a bug
+				player.setSuspiciousPlayer(true, "Missing famcrest_gauntlets cache key but quest is completed.");
+			}
 		}
 
-		if (player.getQuestStage(Quests.FAMILY_CREST) == -1 && !player.getBank().hasItemId(fam_gloves)
-			&& !player.getCarriedItems().hasCatalogID(fam_gloves)) {
-			add(new Item(fam_gloves, 1), false);
-		}
 		ActionSender.sendInventory(player);
 		ActionSender.sendEquipmentStats(player);
 		ActionSender.sendUpdatedPlayer(player);
-		log.build();
-		player.getWorld().getServer().getGameLogger().addQuery(log);
 	}
+
 	//----------------------------------------------------------------
     //Methods that search the list------------------------------------
 	public Item get(int index) {
@@ -502,7 +568,7 @@ public class Inventory {
 	public Item get(Item item) {
 		synchronized (list) {
 			for (int index = list.size() - 1; index >= 0; index--) {
-				if (list.get(index).equals(item)) {
+				if (list.get(index).equals(item) && list.get(index).getAmount() >= item.getAmount()) {
 					return list.get(index);
 				}
 			}
@@ -526,7 +592,10 @@ public class Inventory {
 			int temp = 0;
 			for (Item i : list) {
 				if (i.getCatalogId() == id && (!noted.isPresent() || (i.getNoted() == noted.get()))) {
-					temp += i.getAmount();
+					final int amount = i.getAmount();
+					if (amount > Integer.MAX_VALUE - temp)
+						return Integer.MAX_VALUE;
+					temp += amount;
 				}
 			}
 			return temp;
@@ -641,49 +710,36 @@ public class Inventory {
 		return freedSlots;
 	}
 
-	public int getRequiredSlots(Item item) {
-		synchronized(list) {
-			// Check item definition
-			ItemDefinition itemDef = item.getDef(player.getWorld());
-			return getRequiredSlots(item.getCatalogId(), item.getAmount(), item.getNoted());
-		}
+	public int getRequiredSlots(final Item item) {
+		return this.getRequiredSlots(item.getCatalogId(), item.getAmount(), item.getNoted());
 	}
 
-	public int getRequiredSlots(int itemCatalogId, int amount, boolean isNoted) {
-		synchronized(list) {
-			final int MAXSTACK = !player.getConfig().SHORT_MAX_STACKS ? Integer.MAX_VALUE : (Short.MAX_VALUE - Short.MIN_VALUE);
+	public int getRequiredSlots(final int itemCatalogId, final int itemAmount, final boolean isNoted) {
+		synchronized (this.list) {
+			final int maxItemStack = this.player.getConfig().SHORT_MAX_STACKS ?
+				(Short.MAX_VALUE - Short.MIN_VALUE) :
+				Integer.MAX_VALUE;
 
-			// Check item definition
-			ItemDefinition itemDef =  player.getWorld().getServer().getEntityHandler().getItemDef(itemCatalogId);
-			if (itemDef == null)
-				return MAXSTACK;
+			final ItemDefinition itemDef = this.player.getWorld()
+				.getServer()
+				.getEntityHandler()
+				.getItemDef(itemCatalogId);
 
-			// Check if the item is a stackable
-			if (itemDef.isStackable() || isNoted) {
-				// Check if there's a stack that can be added to
-				for (Item inventoryItem : list) {
-					// Check for matching catalogID
-					if (inventoryItem.getCatalogId() != itemCatalogId)
-						continue;
+			// Handle error state by returning max value
+			if (itemDef == null) return maxItemStack;
 
-					// Check for matching noted status
-					if (inventoryItem.getNoted() != isNoted)
-						continue;
+			if (!itemDef.isStackable() && !isNoted) return itemAmount;
 
-					// Make sure there's room in the stack
-					if (inventoryItem.getAmount() == MAXSTACK)
-						continue;
-
-					// Check if all of the stack can fit in the existing stack
-					int remainingSize = MAXSTACK - inventoryItem.getAmount();
-					return remainingSize < amount ? 1 : 0;
-				}
-
-				// Theres no stack found
-				return 1;
-			} else {
-				return amount;
+			// Check for existing stack
+			for (final Item inventoryItem : this.list) {
+				if (inventoryItem.getCatalogId() == itemCatalogId &&
+					inventoryItem.getNoted() == isNoted &&
+					inventoryItem.getAmount() != maxItemStack)
+					return itemAmount > maxItemStack - inventoryItem.getAmount() ? 1 : 0;
 			}
+
+			// Require new stack
+			return 1;
 		}
 	}
 

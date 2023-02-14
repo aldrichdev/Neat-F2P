@@ -2,6 +2,7 @@ package com.openrsc.server.model.entity.player;
 
 import com.openrsc.server.constants.Skills;
 import com.openrsc.server.constants.*;
+import com.openrsc.server.content.EnchantedCrowns;
 import com.openrsc.server.content.achievement.Achievement;
 import com.openrsc.server.content.clan.Clan;
 import com.openrsc.server.content.clan.ClanInvite;
@@ -11,7 +12,10 @@ import com.openrsc.server.content.party.PartyInvite;
 import com.openrsc.server.content.party.PartyPlayer;
 import com.openrsc.server.database.impl.mysql.queries.logging.GenericLog;
 import com.openrsc.server.database.impl.mysql.queries.logging.LiveFeedLog;
+import com.openrsc.server.database.struct.PlayerInventory;
 import com.openrsc.server.event.DelayedEvent;
+import com.openrsc.server.event.rsc.DuplicationStrategy;
+import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.event.rsc.PluginTask;
 import com.openrsc.server.event.rsc.impl.PoisonEvent;
 import com.openrsc.server.event.rsc.impl.PrayerDrainEvent;
@@ -21,10 +25,7 @@ import com.openrsc.server.login.LoginRequest;
 import com.openrsc.server.login.PlayerSaveRequest;
 import com.openrsc.server.model.*;
 import com.openrsc.server.model.action.WalkToAction;
-import com.openrsc.server.model.container.Bank;
-import com.openrsc.server.model.container.CarriedItems;
-import com.openrsc.server.model.container.Equipment;
-import com.openrsc.server.model.container.Item;
+import com.openrsc.server.model.container.*;
 import com.openrsc.server.model.entity.*;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.struct.UnequipRequest;
@@ -36,11 +37,18 @@ import com.openrsc.server.net.rsc.PayloadProcessorManager;
 import com.openrsc.server.net.rsc.parsers.PayloadParser;
 import com.openrsc.server.net.rsc.parsers.impl.*;
 import com.openrsc.server.net.rsc.struct.AbstractStruct;
+import com.openrsc.server.plugins.Batch;
 import com.openrsc.server.plugins.QuestInterface;
 import com.openrsc.server.plugins.menu.Menu;
+import com.openrsc.server.plugins.triggers.CatGrowthTrigger;
+import com.openrsc.server.plugins.triggers.DropObjTrigger;
+import com.openrsc.server.plugins.triggers.WineFermentTrigger;
+import com.openrsc.server.util.UsernameChange;
+import com.openrsc.server.util.languages.PreferredLanguage;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
 import com.openrsc.server.util.rsc.MessageType;
+import com.openrsc.server.util.rsc.PrerenderedSleepword;
 import io.netty.channel.Channel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,6 +58,9 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static com.openrsc.server.plugins.Functions.changeloc;
+import static com.openrsc.server.plugins.Functions.inArray;
 
 /**
  * A single player.
@@ -68,7 +79,6 @@ public final class Player extends Mob {
 	public int sessionId;
 	private int totalLevel = 0;
 	private Queue<PrivateMessage> privateMessageQueue = new LinkedList<PrivateMessage>();
-	private long lastSave = System.currentTimeMillis();
 	private int actionsMouseStill = 0;
 	private long lastMouseMoved = 0;
 	private Map<Integer, Integer> achievements = new ConcurrentHashMap<>();
@@ -126,11 +136,25 @@ public final class Player extends Mob {
 	private boolean certOptOutWarned = false;
 	public boolean speakTongues = false;
 	private ClientLimitations clientLimitations;
+	public PreferredLanguage preferredLanguage = PreferredLanguage.NONE_SET;
+	public PrerenderedSleepword queuedSleepword = null;
+	public Player queuedSleepwordSender = null;
+	private int saveAttempts = 0;
+	private int sceneryMorph = -1;
+
+	public int desertHeatCounter = Integer.MIN_VALUE;
+	private boolean desertHeatMessaged = false;
+	public GameTickEvent desertHeatEvent = null;
+
+	public boolean canceledMenuHandler = false;
+
+	private Point lastTileClicked = null;
+
+	private final UUID uuid;
 
 	public int knownPlayersCount = 0;
 	public int[] knownPlayerPids = new int[500];
 	public int[] knownPlayerAppearanceIds = new int[500];
-
 	/**
 	 * An atomic reference to the players carried items.
 	 * Multiple threads access this and it never changes.
@@ -152,10 +176,6 @@ public final class Player extends Mob {
 	 * Current active packets - used on packets that should be rated to 1-per-player.
 	 */
 	private final ArrayList<Integer> activePackets = new ArrayList<>();
-	/**
-	 * Added by Zerratar: Correct sleepword we are looking for! Case SenSitIvE
-	 */
-	private String correctSleepword = "";
 	/**
 	 * The last menu reply this player gave in a quest
 	 */
@@ -253,6 +273,10 @@ public final class Player extends Mob {
 	 */
 	private boolean maleGender;
 	/**
+	 * The current active batch
+	 */
+	private Batch batch;
+	/**
 	 * The current active menu
 	 */
 	private Menu menu;
@@ -311,6 +335,14 @@ public final class Player extends Mob {
 	 */
 	private String username;
 	/**
+	 * The player's most recent former username
+	 */
+	private String formerName;
+	/**
+	 * Details about the player's pending username change, will be saved to database on logout
+	 */
+	private UsernameChange usernameChangePending = null;
+	/**
 	 * The player's username hash
 	 */
 	private long usernameHash;
@@ -332,6 +364,18 @@ public final class Player extends Mob {
 	 * Controls if were allowed to accept contact details updates
 	 */
 	private boolean changingDetails = false;
+	private boolean[] unlockedSkinColours;
+
+	/**
+	 * Holds information related to an unregistration (log-out) request event, to be processed end-of-tick.
+	 */
+	private UnregisterRequest unregisterRequest = null;
+
+	/**
+	 * Did the player have a multi menu end early in dialogue by forcefully having their multi menu closed by another player?
+	 */
+	private boolean multiEndedEarly = false;
+
 
 	/*
 	 * Restricts P2P stuff in F2P wilderness.
@@ -383,6 +427,7 @@ public final class Player extends Mob {
 		channel = request.getChannel();
 
 		currentIP = ((InetSocketAddress) request.getChannel().remoteAddress()).getAddress().getHostAddress();
+		clientVersion = request.getClientVersion();
 		currentLogin = System.currentTimeMillis();
 
 		setBusy(true);
@@ -393,6 +438,33 @@ public final class Player extends Mob {
 		playerSettings = new PlayerSettings(this);
 		social = new Social(this);
 		prayers = new Prayers(this);
+		this.uuid = new UUID(0, usernameHash);
+	}
+
+	/**
+	 *
+	 * Constructs a Player with given hash
+	 *
+	 * @param world
+	 * @param hash
+	 */
+	public Player(final World world, final long hash) {
+		super(world, EntityType.PLAYER);
+
+		password = "";
+		usernameHash = hash;
+		username = DataConversions.hashToUsername(usernameHash);
+		sessionStart = System.currentTimeMillis();
+
+		carriedItems.set(new CarriedItems(this));
+		this.getCarriedItems().setEquipment(new Equipment(this));
+		this.getCarriedItems().setInventory(new Inventory(this, new PlayerInventory[0]));
+		trade = new Trade(this);
+		duel = new Duel(this);
+		playerSettings = new PlayerSettings(this);
+		social = new Social(this);
+		prayers = new Prayers(this);
+		this.uuid = new UUID(0, usernameHash);
 	}
 
 	public int getIronMan() {
@@ -482,14 +554,42 @@ public final class Player extends Mob {
 	}
 
 	public int getPkChanges() {
-		return getCache().hasKey("pk_changes_left") ? getCache().getInt("pk_changes_left") : 0;
+		int changes_left;
+		if (!getCache().hasKey("pk_changes_left")) {
+			if (this.getConfig().USES_PK_MODE) {
+				changes_left = 2;
+				setPkChanges(changes_left);
+			} else {
+				changes_left = 0;
+			}
+		} else {
+			changes_left = getCache().getInt("pk_changes_left");
+		}
+
+		return changes_left;
+	}
+
+	public void setHideOnline(byte hideOnline) {
+		getCache().set("setting_hide_online", hideOnline);
+	}
+
+	public int getHideOnline() {
+		return getCache().hasKey("setting_hide_online") ? getCache().getInt("setting_hide_online") : 0;
+	}
+
+	public void setShowReceipts(boolean show) {
+		getCache().store("show_receipts", show);
+	}
+
+	public boolean getShowReceipts() {
+		return getCache().hasKey("show_receipts") ? getCache().getBoolean("show_receipts") : false;
 	}
 
 	public void resetCannonEvent() {
 		if (cannonEvent != null) {
 			cannonEvent.stop();
+			cannonEvent = null;
 		}
-		cannonEvent = null;
 	}
 
 	public boolean isCannonEventActive() {
@@ -522,6 +622,30 @@ public final class Player extends Mob {
 
 	public void setLastCommand(final long newTime) {
 		this.lastCommand = newTime;
+	}
+
+	public Point getLastTileClicked() {
+		return this.lastTileClicked;
+	}
+
+	public void setLastTileClicked(Point lastTileClicked) {
+		this.lastTileClicked = lastTileClicked;
+	}
+
+	public void setNextRegionLoad() {
+		int x = this.getLocation().getX();
+		int y = this.getLocation().getY();
+
+		int PLANE_WIDTH = 2304;
+		int PLANE_HEIGHT = 1776;
+
+		int lx = x + PLANE_WIDTH;
+		int ly = y + PLANE_HEIGHT;
+
+		int sectionx = (lx + 24) / 48;
+		int sectiony = (ly + 24) / 48;
+
+		this.setAttribute("midpointRegion", new Point((sectionx * 48) - PLANE_WIDTH, (sectiony * 48) - PLANE_HEIGHT));
 	}
 
 	public boolean requiresAppearanceUpdateFor(final Player player) {
@@ -628,19 +752,22 @@ public final class Player extends Mob {
 	}
 
 	public void addCharge(final long timeLeft) {
-		if (chargeEvent == null) {
-			chargeEvent = new DelayedEvent(getWorld(), this, timeLeft, "Charge Spell Removal") {
-				// 6 minutes taken from RS2.
-				// the charge spell in RSC seem to be bugged, but 10 minutes most of the times.
-				// sometimes you are charged for 1 hour lol.
-				@Override
-				public void run() {
-					removeCharge();
-					getOwner().message("@red@Your magic charge fades");
-				}
-			};
-			getWorld().getServer().getGameEventHandler().add(chargeEvent);
+		if (chargeEvent != null) {
+			chargeEvent.resetCountdown();
+			return;
 		}
+
+		chargeEvent = new DelayedEvent(getWorld(), this, timeLeft, "Charge Spell Removal") {
+			// 6 minutes taken from RS2.
+			// the charge spell in RSC seem to be bugged, but 10 minutes most of the times.
+			// sometimes you are charged for 1 hour lol.
+			@Override
+			public void run() {
+				removeCharge();
+				getOwner().message("@red@Your magic charge fades");
+			}
+		};
+		getWorld().getServer().getGameEventHandler().add(chargeEvent);
 	}
 
 	public void close() {
@@ -664,7 +791,7 @@ public final class Player extends Mob {
 	}
 
 	public boolean castTimer(boolean allowRapid) {
-		final int holdTimer = allowRapid ? 0 : 1250;
+		final int holdTimer = allowRapid ? 0 : getConfig().MILLISECONDS_BETWEEN_CASTS;
 		return System.currentTimeMillis() - lastSpellCast > holdTimer;
 	}
 
@@ -680,6 +807,10 @@ public final class Player extends Mob {
 		try {
 			for (final PluginTask ownedPlugin : ownedPlugins) {
 				ownedPlugin.getScriptContext().setInterrupted(true);
+				final Npc npc = ownedPlugin.getScriptContext().getInteractingNpc();
+				if (npc != null) {
+					npc.setBusy(false);
+				}
 			}
 		} catch (ConcurrentModificationException e) {
 			LOGGER.error(e);
@@ -781,55 +912,32 @@ public final class Player extends Mob {
 	}
 
 	/**
-	 * Unregisters this player instance from the server
+	 * Sets a request to unregister this player instance from the server at the end of the tick.
 	 *
 	 * @param force  - if false wait until combat is over
 	 * @param reason - reason why the player was unregistered.
 	 */
 	public void unregister(final boolean force, final String reason) {
-		if (unregistering) {
+		if (this.isUnregistering() || this.hasUnregisterRequest()) {
 			return;
 		}
-		if (force || canLogout()) {
-			updateTotalPlayed();
-			if (isSkulled())
-				updateSkullRemaining();
-			if (isCharged())
-				updateChargeRemaining();
-			if (getConfig().WANT_OPENPK_POINTS) {
-				getCache().store("openpk_points", getOpenPkPoints());
-			}
-			getCache().store("last_spell_cast", lastSpellCast);
-			LOGGER.info("Requesting unregistration for " + getUsername() + ": " + reason);
-			unregistering = true;
-		} else {
-			if (unregisterEvent != null) {
-				return;
-			}
-			final long startDestroy = System.currentTimeMillis();
-			unregisterEvent = new DelayedEvent(getWorld(), this, 500, "Unregister Player") {
-				@Override
-				public void run() {
-					if (getOwner().canLogout() || (!(getOwner().inCombat() && getOwner().getDuel().isDuelActive())
-						&& System.currentTimeMillis() - startDestroy > 60000)) {
-						getOwner().unregister(true, reason);
-					}
-					running = false;
-				}
-			};
-			getWorld().getServer().getGameEventHandler().add(unregisterEvent);
-		}
+
+		this.setUnregisterRequest(new UnregisterRequest(this, force, reason));
 	}
 
 	public void updateTotalPlayed() {
 		if (cache.hasKey("total_played")) {
 			long oldTotal = cache.getLong("total_played");
-			long sessionLength = oldTotal + (System.currentTimeMillis() - sessionStart);
-			cache.store("total_played", sessionLength);
+			long newTotal = oldTotal + getSessionPlay();
+			cache.store("total_played", newTotal);
 		} else {
-			cache.store("total_played", System.currentTimeMillis() - sessionStart);
+			cache.store("total_played", getSessionPlay());
 		}
 		sessionStart = System.currentTimeMillis();
+	}
+
+	public long getSessionPlay() {
+		return System.currentTimeMillis() - sessionStart;
 	}
 
 	private void updateSkullRemaining() {
@@ -845,6 +953,26 @@ public final class Player extends Mob {
 			cache.remove("charge_remaining");
 		} else if (getChargeTime() - System.currentTimeMillis() > 0) {
 			cache.store("charge_remaining", (getChargeTime() - System.currentTimeMillis()));
+		}
+	}
+
+	public void updateCacheTimersForLogout() {
+		updateTotalPlayed();
+		if (isSkulled())
+			updateSkullRemaining();
+		if (isCharged())
+			updateChargeRemaining();
+		if (getConfig().WANT_OPENPK_POINTS) {
+			getCache().store("openpk_points", getOpenPkPoints());
+		}
+		getCache().store("last_spell_cast", lastSpellCast);
+	}
+
+	public void alertQueuedSleepwordCancelledByLogout() {
+		if (null != queuedSleepword) {
+			try {
+				queuedSleepwordSender.playerServerMessage(MessageType.QUEST, getUsername() + " logged out!!");
+			} catch (Exception ex) {} // moderator may have logged out as well
 		}
 	}
 
@@ -920,7 +1048,7 @@ public final class Player extends Mob {
 				//it might not have if they have a full inventory.
 				if (getCarriedItems().getEquipment().get(slot) != null) {
 					// TODO: Second argument to the plugin should NOT be null here as the Equipped Equipment for Cabbage server should still have an inventory index.
-					getWorld().getServer().getPluginHandler().handlePlugin(this, "DropObj", new Object[]{this, null, item, false});
+					getWorld().getServer().getPluginHandler().handlePlugin(DropObjTrigger.class, this, new Object[]{this, null, item, false});
 				}
 			}
 
@@ -1046,14 +1174,6 @@ public final class Player extends Mob {
 		ActionSender.sendCombatStyle(this);
 	}
 
-	public String getCorrectSleepword() {
-		return correctSleepword;
-	}
-
-	public void setCorrectSleepword(final String correctSleepword) {
-		this.correctSleepword = correctSleepword;
-	}
-
 	public String getCurrentIP() {
 		return currentIP;
 	}
@@ -1137,6 +1257,14 @@ public final class Player extends Mob {
 		return lastClientActivity;
 	}
 
+	public Batch getBatch() {
+		return batch;
+	}
+
+	public void setBatch(final Batch batch) {
+		this.batch = batch;
+	}
+
 	public Menu getMenu() {
 		return menu;
 	}
@@ -1170,6 +1298,10 @@ public final class Player extends Mob {
 
 	public void setMuteExpires(final long l) {
 		getCache().store("mute_expires", l);
+		getCache().store("global_mute", l);
+	}
+
+	public void setGlobalMuteExpires(final long l) {
 		getCache().store("global_mute", l);
 	}
 
@@ -1288,11 +1420,7 @@ public final class Player extends Mob {
 	}
 
 	public void setRangeEvent(final RangeEvent event) {
-		if (rangeEvent != null) {
-			rangeEvent.stop();
-		}
 		rangeEvent = event;
-		getWorld().getServer().getGameEventHandler().add(rangeEvent);
 	}
 
 	public ThrowingEvent getThrowingEvent() {
@@ -1300,11 +1428,7 @@ public final class Player extends Mob {
 	}
 
 	public void setThrowingEvent(final ThrowingEvent event) {
-		if (throwingEvent != null) {
-			throwingEvent.stop();
-		}
 		throwingEvent = event;
-		getWorld().getServer().getGameEventHandler().add(throwingEvent);
 	}
 
 	public String getStaffName() {
@@ -1390,7 +1514,7 @@ public final class Player extends Mob {
 	}
 
 	public int getSpellWait() {
-		return Math.min(DataConversions.roundUp((1600 - (System.currentTimeMillis() - lastSpellCast)) / 1000D), 20);
+		return Math.max((int)(((getConfig().MILLISECONDS_BETWEEN_CASTS - (System.currentTimeMillis() - lastSpellCast)) / 1000D)), 1);
 	}
 
 	public boolean hasNoTradeConfirm() {
@@ -1412,8 +1536,16 @@ public final class Player extends Mob {
 		return username;
 	}
 
+	public String getFormerName() {
+		return formerName;
+	}
+
 	public void setUsername(final String username) {
 		this.username = username;
+	}
+
+	public void setFormerName(final String formerName) {
+		this.formerName = formerName;
 	}
 
 	public long getUsernameHash() {
@@ -1487,13 +1619,13 @@ public final class Player extends Mob {
 	public void incQuestExp(final int i, final int amount, final boolean useFatigue) {
 		int appliedAmount = amount;
 		if (!isOneXp())
-			appliedAmount = (int) Math.round(getWorld().getServer().getConfig().SKILLING_EXP_RATE * amount);
+			appliedAmount = (int) Math.round(getExperienceMultiplier(i) * amount);
 		if (isExperienceFrozen()) {
 			ActionSender.sendMessage(this, "You passed on " + appliedAmount / 4 + " " +
 				getWorld().getServer().getConstants().getSkills().getSkill(i).getLongName() + " experience because your exp is frozen.");
 			return;
 		}
-		incExp(i, appliedAmount, useFatigue);
+		incExp(i, amount, useFatigue, true);
 	}
 
 	/**
@@ -1554,12 +1686,16 @@ public final class Player extends Mob {
 			for (int i = 0; i < skillDist.length; i++) {
 				xp = skillXP * skillDist[i];
 				if (xp == 0) continue;
-				incExp(i, xp, useFatigue);
+				incExp(i, xp, useFatigue, false);
 			}
 		}
 	}
 
-	public void incExp(final int skill, int skillXP, final boolean useFatigue) {
+	public void incExp(final int skill, int origSkillXP, final boolean useFatigue) {
+		incExp(skill, origSkillXP, useFatigue, false);
+	}
+
+	public void incExp(final int skill, int origSkillXP, final boolean useFatigue, final boolean fromQuest) {
 		// Warn the player that they currently cannot gain XP.
 		if (isExperienceFrozen()) {
 			if (getWorld().getServer().getConfig().WANT_FATIGUE) {
@@ -1575,6 +1711,17 @@ public final class Player extends Mob {
 				this.setAttribute("warned_xp_off", true);
 			}
 			return;
+		}
+
+		int skillXP = origSkillXP;
+		boolean doubledXp = false;
+
+		if (useFatigue && !fromQuest
+			&& !inArray(skill, Skill.ATTACK.id(), Skill.DEFENSE.id(), Skill.STRENGTH.id(), Skill.HITS.id(), Skill.RANGED.id(),
+			Skill.MAGIC.id(), Skill.EVILMAGIC.id(), Skill.GOODMAGIC.id(), Skill.PRAYER.id(), Skill.PRAYEVIL.id(), Skill.PRAYGOOD.id())
+			&& EnchantedCrowns.shouldActivate(this, ItemId.CROWN_OF_THE_ARTISAN)) {
+			skillXP *= 2;
+			doubledXp = true;
 		}
 
 		if (getWorld().getServer().getConfig().WANT_FATIGUE) {
@@ -1607,6 +1754,11 @@ public final class Player extends Mob {
 			}
 		}
 
+		if (doubledXp) {
+			this.playerServerMessage(MessageType.QUEST, "Your crown shines and you become more experienced");
+			EnchantedCrowns.useCharge(this, ItemId.CROWN_OF_THE_ARTISAN);
+		}
+
 		// Player cannot gain more than 200 fishing xp on tutorial island
 		if (getLocation().onTutorialIsland()) {
 			if (getSkills().getExperience(skill) + skillXP > 200) {
@@ -1633,7 +1785,7 @@ public final class Player extends Mob {
 
 				// Make sure the player is in range.
 				final boolean inRange = getConfig().PARTY_SHARE_INFINITE_RANGE
-					|| (Math.abs(this.getX() - partyMemberPlayer.getX()) <= getConfig().PARTY_SHARE_MAX_X
+					|| (Formulae.getHeight(this.getLocation()) == Formulae.getHeight(partyMemberPlayer.getLocation()) && Math.abs(this.getX() - partyMemberPlayer.getX()) <= getConfig().PARTY_SHARE_MAX_X
 					&& Math.abs(normalizeFloor(this.getY()) - normalizeFloor(partyMemberPlayer.getY())) <= getConfig().PARTY_SHARE_MAX_Y);
 
 				// Make sure the player isn't on the same IP
@@ -1643,7 +1795,7 @@ public final class Player extends Mob {
 				final boolean isntIronMan = getConfig().PARTY_IRON_MAN_CAN_SHARE || !partyMemberPlayer.isIronMan();
 
 				// Make sure the party member isn't this!!
-				final boolean notMe = this != partyMemberPlayer;
+				final boolean notMe = !this.equals(partyMemberPlayer);
 
 				if (inRange && notSameIp && isntIronMan && notMe) {
 					sharers.add(partyMember);
@@ -1741,11 +1893,11 @@ public final class Player extends Mob {
 	}
 
 	private void incrementActivity(final int amount) {
-		if (getWorld().getServer().getConfig().WANT_FATIGUE) {
+		if (!(getWorld().getServer().getConfig().RESTRICT_ITEM_ID >= 0 && getWorld().getServer().getConfig().RESTRICT_ITEM_ID < ItemId.CAT.id())) {
 			activity += amount;
 			if (activity >= KITTEN_ACTIVITY_THRESHOLD) {
 				activity -= KITTEN_ACTIVITY_THRESHOLD;
-				getWorld().getServer().getPluginHandler().handlePlugin(this, "CatGrowth", new Object[]{this});
+				getWorld().getServer().getPluginHandler().handlePlugin(CatGrowthTrigger.class, this, new Object[]{this});
 			}
 		}
 	}
@@ -1762,6 +1914,13 @@ public final class Player extends Mob {
 	 */
 	public void stepIncrementActivity() {
 		incrementActivity(2);
+	}
+
+	public void changeZone() {
+		if (getConfig().FERMENTED_WINE ||
+			(getConfig().RESTRICT_ITEM_ID >= 0 && getConfig().RESTRICT_ITEM_ID < ItemId.CHEESE.id())) {
+			getWorld().getServer().getPluginHandler().handlePlugin(WineFermentTrigger.class, this, new Object[]{this});
+		}
 	}
 
 	public int getGroupID() {
@@ -1870,7 +2029,7 @@ public final class Player extends Mob {
 			}
 			if (!getConfig().LACKS_PRAYERS) {
 				prayerStatePoints = getSkills().getLevel(Skill.PRAYER.id()) * 120;
-				prayerDrainEvent = new PrayerDrainEvent(getWorld(), this, Integer.MAX_VALUE);
+				prayerDrainEvent = new PrayerDrainEvent(getWorld(), this);
 				getWorld().getServer().getGameEventHandler().add(prayerDrainEvent);
 			}
 			getWorld().getServer().getGameEventHandler().add(getStatRestorationEvent());
@@ -1904,12 +2063,21 @@ public final class Player extends Mob {
 	}
 
 	public boolean isMuted() {
-		if (getMuteExpires() == 0)
+		final long muteExpires = getMuteExpires();
+		if (muteExpires == 0)
 			return false;
-		if (getMuteExpires() == -1)
+		if (muteExpires == -1)
 			return true;
 
-		return getMuteExpires() - System.currentTimeMillis() > 0;
+		return muteExpires - System.currentTimeMillis() > 0;
+	}
+
+	public boolean isGlobalMuted() {
+		if (getCache().hasKey("global_mute")) {
+			final long globalMute = getCache().getLong("global_mute");
+			return globalMute - System.currentTimeMillis() > 0 || globalMute == -1;
+		}
+		return false;
 	}
 
 	public boolean isRanging() {
@@ -1970,54 +2138,67 @@ public final class Player extends Mob {
 
 	@Override
 	public void killedBy(final Mob mob) {
-		if (!loggedIn) {
-			return;
-		}
-		if (this.killed) return;
-		this.killed = true;
+		if (!isLoggedIn()) return;
+		if (killed) return;
+		killed = true;
 
 		ActionSender.sendSound(this, "death");
 		ActionSender.sendDied(this);
 
-		ProjectileEvent projectileEvent = getAttribute("projectile");
-		if (projectileEvent != null)
-			projectileEvent.setCanceled(true);
-		getSettings().getAttackedBy().clear();
+		// Seems to never be set
+		final ProjectileEvent projectileEvent = getAttribute("projectile");
+		if (projectileEvent != null) projectileEvent.setCanceled(true);
 
+		getSettings().getAttackedBy().clear();
 		getCache().store("last_death", System.currentTimeMillis());
 
-		Player player = mob instanceof Player ? (Player) mob : null;
-		boolean stake = getDuel().isDuelActive() || (player != null && player.getDuel().isDuelActive());
+		final Player player = mob instanceof Player ? (Player) mob : null;
 
 		if (player != null) {
-			player.message("You have defeated " + getUsername() + "!");
+			player.message(String.format("You have defeated %s!", getUsername()));
 			ActionSender.sendSound(player, "victory");
+
 			if (player.getLocation().inWilderness()) {
-				int id = -1;
-				if (player.getKillType() == KillType.COMBAT) {
-					id = player.getEquippedWeaponID();
-					if (id == -1 || id == 59 || id == 60)
-						id = 16;
-				} else if (player.getKillType() == KillType.MAGIC) {
-					id = -1;
-				} else if (player.getKillType() == KillType.RANGED) {
-					id = -2;
+				final int killTypeId;
+
+				switch (player.getKillType()) {
+					case COMBAT:
+						final int weaponId = player.getEquippedWeaponID();
+
+						if (weaponId == ItemId.NOTHING.id() || weaponId == ItemId.PHOENIX_CROSSBOW.id() ||
+							weaponId == ItemId.CROSSBOW.id()) {
+							killTypeId = 16;
+						} else {
+							killTypeId = weaponId;
+						}
+						break;
+					case RANGED:
+						killTypeId = -2;
+						break;
+					case MAGIC:
+					default:
+						killTypeId = -1;
+						break;
 				}
-				getWorld().sendKilledUpdate(this.getUsernameHash(), player.getUsernameHash(), id);
+
+				getWorld().sendKilledUpdate(getUsernameHash(), player.getUsernameHash(), killTypeId);
 				player.incKills();
-				this.incDeaths();
-				getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(player, "has PKed " + this.getUsername()));
-			}/* else if (stake) { // disables duel spam in activity feed
-				getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(player,
-					"has just won a stake against <strong>" + this.getUsername() + "</strong>"));
-			}*/
+				incDeaths();
+				getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(player, String.format("has PKed %s", getUsername())));
+			}
 		}
-		if (stake) {
+
+		// Drops to world if player is null
+		getWorld().registerItem(new GroundItem(getWorld(), ItemId.BONES.id(), getX(), getY(), 1, player));
+
+		if (getDuel().isDuelActive() || (player != null && player.getDuel().isDuelActive())) {
 			getDuel().dropOnDeath();
-		} else {
-			if (!hasElevatedPriveledges())
-				getCarriedItems().getInventory().dropOnDeath(mob);
+			 // disables duel spam in activity feed
+			 // if (player != null) getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(player, String.format("has just won a stake against <strong>%s</strong>", username)));
+		} else if (!hasElevatedPriveledges()) {
+			getCarriedItems().getInventory().dropOnDeath(mob);
 		}
+
 		if (isIronMan(IronmanMode.Hardcore.id())) {
 			updateHCIronman(IronmanMode.Ironman.id());
 			ActionSender.sendIronManMode(this);
@@ -2025,38 +2206,37 @@ public final class Player extends Mob {
 		}
 
 		resetCombatEvent();
-		this.setLastOpponent(null);
-		getWorld().registerItem(new GroundItem(getWorld(), ItemId.BONES.id(), getX(), getY(), 1, player));
-		if ((!getCache().hasKey("death_location_x") && !getCache().hasKey("death_location_y"))) {
-			setLocation(Point.location(getConfig().RESPAWN_LOCATION_X, getConfig().RESPAWN_LOCATION_Y), true);
-		} else {
+		setLastOpponent(null);
+
+		if (getCache().hasKey("death_location_x") || getCache().hasKey("death_location_y")) {
+			// Seems to never be set
 			setLocation(Point.location(getCache().getInt("death_location_x"), getCache().getInt("death_location_y")), true);
+		} else {
+			setLocation(Point.location(getConfig().RESPAWN_LOCATION_X, getConfig().RESPAWN_LOCATION_Y), true);
 		}
+
 		ActionSender.sendWorldInfo(this);
 		ActionSender.sendEquipmentStats(this);
 		ActionSender.sendInventory(this);
 
 		resetPath();
-		if (getWorld().getServer().getConfig().WANT_PARTIES) {
-			if (this.getParty() != null) {
-				this.getParty().sendParty();
-			}
-		}
-		this.cure();
+
+		final boolean party = getWorld().getServer().getConfig().WANT_PARTIES && getParty() != null;
+		if (party) getParty().sendParty();
+
+		cure();
+
 		// OG RSC did not reset active prayers after death
 		// prayers.resetPrayers();
 		getSkills().normalize();
-		if (getWorld().getServer().getConfig().WANT_PARTIES) {
-			if (getParty() != null) {
-				this.getParty().sendParty();
-			}
-		}
+
+		if (party) getParty().sendParty();
 
 		getUpdateFlags().reset();
 		removeSkull();
 
 		getWorld().getServer().getGameEventHandler().add(
-			new DelayedEvent(getWorld(), this, getConfig().GAME_TICK * 5, "Reset Killed") {
+			new DelayedEvent(getWorld(), this, getConfig().GAME_TICK * 5L, "Reset Killed") {
 				@Override
 				public void run() {
 					getOwner().killed = false;
@@ -2137,13 +2317,6 @@ public final class Player extends Mob {
 		}
 	}
 
-	public void process() {
-		if (System.currentTimeMillis() - lastSave >= 300000) {
-			save();
-			lastSave = System.currentTimeMillis();
-		}
-	}
-
 	public void addToPacketQueue(final Packet packet) {
 		updateClientActivity();
 		int packetID = packet.getID();
@@ -2161,11 +2334,25 @@ public final class Player extends Mob {
 		getWorld().getServer().incrementLastExecuteWalkToActionsDuration(
 			getWorld().getServer().getGameUpdater().executeWalkToActions(this));
 		getWorld().getServer().incrementLastEventsDuration(
-			getWorld().getServer().getGameEventHandler().runGameEvents(this));
+			getWorld().getServer().getGameEventHandler().runPlayerEvents(this));
 		getWorld().getServer().incrementLastProcessPlayersDuration(
 			getWorld().getServer().getGameUpdater().movePlayer(this));
 		getWorld().getServer().incrementLastProcessMessageQueuesDuration(
 			getWorld().getServer().getGameUpdater().processMessageQueue(this));
+	}
+
+	public void processLogout() {
+		// any time that `Player.unregister(force, reason)` was called throughout a tick,
+		// now is the time to process the logic for if they are allowed to log out.
+		if (hasUnregisterRequest()) {
+			getUnregisterRequest().executeUnregisterRequest();
+			unsetUnregisterRequest();
+		}
+
+		// Check isLoggedIn() because we don't want to unregister more than once
+		if (this.isUnregistering() && this.isLoggedIn()) {
+			this.getWorld().unregisterPlayer(this);
+		}
 	}
 
 	public void sendUpdates() {
@@ -2188,14 +2375,18 @@ public final class Player extends Mob {
 						() -> {
 							activePackets.remove(activePackets.indexOf(curPacket.getID()));
 							PayloadParser<com.openrsc.server.net.rsc.enums.OpcodeIn> parser;
-							if (isRetroClient()) {
+							if (isUsing38CompatibleClient() || isUsing39CompatibleClient()) {
 								parser = new Payload38Parser();
+							} else if (isUsing69CompatibleClient()) {
+								parser = new Payload69Parser();
 							} else if (isUsing233CompatibleClient()) {
 								parser = new Payload235Parser();
 							} else if (isUsing177CompatibleClient()) {
 								parser = new Payload177Parser();
 							} else if (isUsing140CompatibleClient()) {
 								parser = new Payload140Parser();
+							} else if (isUsing115CompatibleClient()) {
+								parser = new Payload115Parser();
 							} else {
 								parser = new PayloadCustomParser();
 							}
@@ -2338,10 +2529,23 @@ public final class Player extends Mob {
 	}
 
 	public void resetMenuHandler() {
+		resetMenuHandler(true);
+	}
+
+	public void resetMenuHandler(boolean hideMenu) {
 		setOption(-1);
 		menu = null;
 		menuHandler = null;
-		ActionSender.hideMenu(this);
+		if (hideMenu)
+			ActionSender.hideMenu(this);
+	}
+
+	public void cancelMenuHandler() {
+		if (menuHandler != null) {
+			canceledMenuHandler = true;
+			resetMenuHandler(false);
+			setBusy(false);
+		}
 	}
 
 	public void resetRange() {
@@ -2376,7 +2580,12 @@ public final class Player extends Mob {
 	}
 
 	public void logout() {
-		ActionSender.sendLogoutRequestConfirm(this);
+		LOGGER.info("Player logout requested for " + this.getUsername());
+		try {
+			ActionSender.sendLogoutRequestConfirm(this);
+		} catch (NullPointerException ex) {
+			LOGGER.info("Connection closed quickly for " + this.getUsername());
+		}
 
 		FishingTrawler trawlerInstance = getWorld().getFishingTrawler(this);
 
@@ -2409,6 +2618,7 @@ public final class Player extends Mob {
 		getCache().set("gnomeball_npc", getAttribute("gnomeball_npc", 0));
 
 		save(true);
+		LOGGER.info("Player save & logout request queued for " + this.getUsername());
 	}
 
 	public void sendMemberErrorMessage() {
@@ -2526,7 +2736,7 @@ public final class Player extends Mob {
 	}
 
 	public void startSleepEvent(final boolean bed) {
-		DelayedEvent sleepEvent = new DelayedEvent(getWorld(), this, getWorld().getServer().getConfig().GAME_TICK, "Start Sleep Event") {
+		DelayedEvent sleepEvent = new DelayedEvent(getWorld(), this, getWorld().getServer().getConfig().GAME_TICK, "Start Sleep Event", DuplicationStrategy.ONE_PER_MOB) {
 			@Override
 			public void run() {
 				if (getOwner().isRemoved() || sleepStateFatigue == 0 || !sleeping) {
@@ -2580,8 +2790,21 @@ public final class Player extends Mob {
 				setTeleporting(true);
 		}
 
+		if (sceneryMorph >= 0) {
+			doSceneryMorphWalk(point);
+		}
+
 		super.setLocation(point, teleported);
 
+	}
+
+	private void doSceneryMorphWalk(Point point) {
+		final GameObject morphObject = getViewArea().getGameObject(getLocation());
+		if (morphObject != null) {
+			resetScenery(morphObject);
+		}
+		final GameObject newObject = new GameObject(getWorld(), point, sceneryMorph, 0, 0);
+		getWorld().registerGameObject(newObject);
 	}
 
 	public void produceUnderAttack() {
@@ -2808,25 +3031,25 @@ public final class Player extends Mob {
 		return 0;
 	}
 
-	public Boolean getSwipeToRotate() {
-		if (getCache().hasKey("setting_swipe_rotate")) {
-			return getCache().getBoolean("setting_swipe_rotate");
+	public int getSwipeToRotateMode() {
+		if (getCache().hasKey("setting_swipe_rotate_mode")) {
+			return getCache().getInt("setting_swipe_rotate_mode");
 		}
-		return true;
+		return 1;
 	}
 
-	public Boolean getSwipeToScroll() {
-		if (getCache().hasKey("setting_swipe_scroll")) {
-			return getCache().getBoolean("setting_swipe_scroll");
+	public int getSwipeToScrollMode() {
+		if (getCache().hasKey("setting_swipe_scroll_mode")) {
+			return getCache().getInt("setting_swipe_scroll_mode");
 		}
-		return true;
+		return 1;
 	}
 
-	public Boolean getSwipeToZoom() {
-		if (getCache().hasKey("setting_swipe_zoom")) {
-			return getCache().getBoolean("setting_swipe_zoom");
+	public int getSwipeToZoomMode() {
+		if (getCache().hasKey("setting_swipe_zoom_mode")) {
+			return getCache().getInt("setting_swipe_zoom_mode");
 		}
-		return true;
+		return 1;
 	}
 
 	public Boolean getBatchProgressBar() {
@@ -2951,6 +3174,17 @@ public final class Player extends Mob {
 		if (getWorld().getServer().getConfig().SHOW_ROOF_TOGGLE) {
 			if (getCache().hasKey("setting_showroof")) {
 				return getCache().getBoolean("setting_showroof");
+			}
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	public Boolean getHideUndergroundFlicker() {
+		if (getWorld().getServer().getConfig().SHOW_ROOF_TOGGLE) {
+			if (getCache().hasKey("setting_showunderground_flicker")) {
+				return getCache().getBoolean("setting_showunderground_flicker");
 			}
 			return true;
 		} else {
@@ -3466,13 +3700,11 @@ public final class Player extends Mob {
 		return this.carriedItems.get();
 	}
 
-	// Ensures crossbows and shortbows have a shorter radius of 4 instead of the default 5 (see Mob and AttackHandler classes for default of 5)
-	public int getProjectileRadius(int radius) {
-		if (getRangeEquip() == ItemId.PHOENIX_CROSSBOW.id() || getRangeEquip() == ItemId.CROSSBOW.id() || getRangeEquip() == ItemId.DRAGON_CROSSBOW.id())
-			radius = 4;
-		if (getRangeEquip() == ItemId.SHORTBOW.id())
-			radius = 4;
-		return radius;
+	// Ensures crossbows and shortbows have a shorter radius of 4 instead of the default 5
+	public int getProjectileRadius() {
+		final int weaponId = getRangeEquip();
+		final boolean shortRadius = RangeUtils.isCrossbow(weaponId) || RangeUtils.isShortBow(weaponId);
+		return shortRadius ? DEFAULT_PROJECTILE_RADIUS - 1 : DEFAULT_PROJECTILE_RADIUS;
 	}
 
 	public boolean wantUnholySymbols() {
@@ -3512,22 +3744,26 @@ public final class Player extends Mob {
 		return this.clientVersion;
 	}
 
-	// TODO: needs to be redefined
-	public boolean isRetroClient() {
-		// temporary for setversion command to not break if player enters in range
-		return this.clientVersion >= 14 && this.clientVersion < 93;
-	}
-
 	public boolean isUsingClientBeforeQP() {
 		return this.clientVersion >= 14 && this.clientVersion <= 38;
 	}
 
-	public boolean isUsing177CompatibleClient() {
-		return this.clientVersion == 177;
+	public boolean isUsing38CompatibleClient() { return this.clientVersion == 38; }
+
+	public boolean isUsing39CompatibleClient() { return this.clientVersion == 39 || this.clientVersion == 40; }
+
+	public boolean isUsing69CompatibleClient() { return this.clientVersion == 69; }
+
+	public boolean isUsing115CompatibleClient() {
+		return this.clientVersion == 115;
 	}
 
 	public boolean isUsing140CompatibleClient() {
 		return this.clientVersion == 140;
+	}
+
+	public boolean isUsing177CompatibleClient() {
+		return this.clientVersion == 177;
 	}
 
 	public boolean isUsing233CompatibleClient() {
@@ -3535,7 +3771,11 @@ public final class Player extends Mob {
 	}
 
 	public boolean isUsingCustomClient() {
-		return this.clientVersion > 10000;
+		return this.clientVersion > 10000 && this.clientVersion < 20000;
+	}
+
+	public boolean supportsPlayerUnlockedAppearancesPacket() {
+		return this.clientVersion >= 10009 && this.clientVersion < 20000;
 	}
 
 	public boolean getQolOptOutWarned() {
@@ -3568,6 +3808,11 @@ public final class Player extends Mob {
 
 	public boolean getCertOptOut() {
 		return getCache().hasKey("cert_optout");
+	}
+
+	@Override
+	public UUID getUUID() {
+		return uuid;
 	}
 
 	private void enterMorph(int appearanceId) {
@@ -3603,6 +3848,7 @@ public final class Player extends Mob {
 				}
 			}
 		}
+		getUpdateFlags().setAppearanceChanged(true);
 	}
 
 	public void setClientLimitations(ClientLimitations cl) {
@@ -3646,9 +3892,6 @@ public final class Player extends Mob {
 		Npc closestNpc = null;
 		for (int next = 0; next < radius; next++) {
 			for (final Npc n : npcsInView) {
-				if (n.getID() == npcId) {
-
-				}
 				if (n.getID() == npcId && n.withinRange(player.getLocation(), next) && !n.isBusy()) {
 					closestNpc = n;
 				}
@@ -3660,4 +3903,451 @@ public final class Player extends Mob {
 	public void tellCoordinates() {
 		playerServerMessage(MessageType.QUEST, "@whi@You are at @cya@" + getLocation() + "@whi@ or in Jagex notation: @cya@" + getLocation().pointToJagexPoint());
 	}
+
+	public boolean getBankPinOptOut() {
+		return getCache().hasKey("bankpin_optout");
+	}
+
+	public boolean isUsingAndroidClient() {
+		return getClientLimitations().isAndroidClient;
+	}
+
+	public PreferredLanguage getPreferredLanguage() {
+		return preferredLanguage;
+	}
+
+	public void setPreferredLanguage(PreferredLanguage language) {
+		getCache().store("preferredLanguage", language.getLocaleName());
+		preferredLanguage = language;
+	}
+
+	public String getText(String key) {
+		return getWorld().getServer().getI18nService().getText(key, this);
+	}
+
+	public String getMez(String key) {
+		return getWorld().getServer().getI18nService().getMez(key, this);
+	}
+
+	public boolean checkAndIncrementSaveAttempts() {
+		return saveAttempts++ > 3;
+	}
+
+	public void resetSaveAttempts() {
+		saveAttempts = 0;
+	}
+
+    public boolean[] getUnlockedSkinColours() {
+		return this.unlockedSkinColours;
+    }
+
+	public void setUnlockedSkinColours(boolean[] colours) {
+		this.unlockedSkinColours = colours;
+		if (loggedIn)
+			ActionSender.sendUnlockedAppearances(this);
+	}
+
+	//Calculate how many ticks until the player has a "heat stroke"
+	private int calculateHeatDelay() {
+		//Default tick delay of 140
+		//On base tick rate (0.64) this is 89.6 seconds
+		//On cabbage tick rate (0.43) this is 60.2 seconds
+
+		//Possible tick delay range depending on equipped items: 40-190
+		int tickDelay = 140;
+
+		Item item = this.getEquippedChest();
+		if (item != null) {
+			if (item.getCatalogId() == ItemId.DESERT_SHIRT.id())
+				tickDelay += 20;
+			else if (item.getDef(getWorld()).getArmourBonus() > 0)
+				tickDelay -= 40;
+		}
+
+		item = this.getEquippedLegs();
+		if (item != null) {
+			if (item.getCatalogId() == ItemId.DESERT_ROBE.id())
+				tickDelay += 20;
+			else if (item.getDef(getWorld()).getArmourBonus() > 0)
+				tickDelay -= 30;
+		}
+
+		item = this.getEquippedBoots();
+		if (item != null) {
+			if (item.getCatalogId() == ItemId.DESERT_BOOTS.id())
+				tickDelay += 10;
+			else if (item.getDef(getWorld()).getArmourBonus() > 0)
+				tickDelay -= 10;
+		}
+
+		item = this.getEquippedGloves();
+		if (item != null) {
+			if (item.getDef(getWorld()).getArmourBonus() > 0)
+				tickDelay -= 10;
+		}
+
+		item = this.getEquippedHelmet();
+		if (item != null) {
+			if (item.getDef(getWorld()).getArmourBonus() > 0)
+				tickDelay -= 10;
+		}
+
+		return tickDelay;
+	}
+
+	//Check if the player is in a location that experiences the desert heat effect
+	private boolean inDesert() {
+		Point loc = this.getLocation();
+		int x = loc.getX();
+		int y = loc.getY();
+
+		//Check if they could be in the desert
+		if (loc.inBounds(48, 721, 189, 815)) {
+
+			//Check if they are standing in Shantay pass
+			if (loc.inBounds(59, 721, 67, 732))
+				return false;
+
+			//Check if they are along the dunes of Al Kharid
+			else if (y <= 722 && x <= 82)
+				return false;
+
+			//Check if they are in the mining camp
+			else if (loc.inBounds(80, 799, 91, 812))
+				return false;
+
+			//Check if they are in Bedabin camp
+			else if (x >= 160 && y >= 784)
+				return false;
+
+			return true;
+		}
+
+		return false;
+	}
+
+	//The desert heat has ticked. Look for water or cause damage.
+	private void doHeatStroke() {
+		CarriedItems ci = this.getCarriedItems();
+
+		if (ci.remove(new Item(ItemId.WATER_SKIN_MOUTHFUL_LEFT.id(), 1)) >= 0)
+			ci.getInventory().add(new Item(ItemId.EMPTY_WATER_SKIN.id(), 1));
+		else if (ci.remove(new Item(ItemId.WATER_SKIN_MOSTLY_EMPTY.id(), 1)) >= 0)
+			ci.getInventory().add(new Item(ItemId.WATER_SKIN_MOUTHFUL_LEFT.id(), 1));
+		else if (ci.remove(new Item(ItemId.WATER_SKIN_MOSTLY_FULL.id(), 1)) >= 0)
+			ci.getInventory().add(new Item(ItemId.WATER_SKIN_MOSTLY_EMPTY.id(), 1));
+		else if (ci.remove(new Item(ItemId.FULL_WATER_SKIN.id(), 1)) >= 0)
+			ci.getInventory().add(new Item(ItemId.WATER_SKIN_MOSTLY_FULL.id(), 1));
+		else {
+			if (!this.desertHeatMessaged) {
+				this.message("You start dying of thirst while you're in the desert.");
+				this.desertHeatMessaged = true;
+			}
+
+			int damage = DataConversions.getRandom().nextInt(10);
+			this.damage(damage + 1);
+			return;
+		}
+
+		this.desertHeatMessaged = false;
+	}
+
+	public void doEvaporate() {
+		CarriedItems ci = this.getCarriedItems();
+		int jugCount = 0;
+		int bowlCount = 0;
+		int bucketCount = 0;
+		//Jugs
+		while (ci.remove(new Item(ItemId.JUG_OF_WATER.id(), 1), false) >= 0) {
+			++jugCount;
+			ci.getInventory().add(new Item(ItemId.JUG.id(), 1), false);
+		}
+
+		//Bowls
+		while (ci.remove(new Item(ItemId.BOWL_OF_WATER.id(), 1), false) >= 0) {
+			++bowlCount;
+			ci.getInventory().add(new Item(ItemId.BOWL.id(), 1), false);
+		}
+
+		//Buckets
+		while (ci.remove(new Item(ItemId.BUCKET_OF_WATER.id(), 1), false) >= 0) {
+			++bucketCount;
+			ci.getInventory().add(new Item(ItemId.BUCKET.id(), 1), false);
+		}
+
+		if (jugCount > 1)
+			this.message("The water in your jugs evaporates in the desert heat.");
+		else if (jugCount > 0)
+			this.message("The water in your jug evaporates in the desert heat.");
+
+		if (bowlCount > 1)
+			this.message("The water in your bowls evaporates in the desert heat.");
+		else if (bowlCount > 0)
+			this.message("The water in your bowl evaporates in the desert heat.");
+
+		if (bucketCount > 1)
+			this.message("The water in your buckets evaporates in the desert heat.");
+		else if (bucketCount > 0)
+			this.message("The water in your bucket evaporates in the desert heat.");
+
+		if (jugCount > 0 || bowlCount > 0 || bucketCount > 0)
+			ActionSender.sendInventory(this);
+	}
+	public void desertHeatInit() {
+		if (getWorld().getServer().getConfig().WANT_FIXED_BROKEN_MECHANICS) {
+			if (!this.hasElevatedPriveledges()) {
+				if (this.getCache().hasKey("desert_heat_counter")) {
+					this.desertHeatCounter = (int)this.getCache().getLong("desert_heat_counter");
+					this.getCache().remove("desert_heat_counter");
+				}
+
+				this.desertHeatEvent = new GameTickEvent(getWorld(), this, 0, "Desert Heat", DuplicationStrategy.ONE_PER_MOB) {
+					public void run() {	getPlayerOwner().doDesertHeat(); }
+				};
+				getWorld().getServer().getGameEventHandler().add(this.desertHeatEvent);
+			}
+		}
+	}
+	public void doDesertHeat() {
+		if (this.inDesert()) {
+			if (this.desertHeatCounter == Integer.MIN_VALUE) {
+				this.desertHeatCounter = calculateHeatDelay();
+				this.doEvaporate();
+			}
+
+			this.desertHeatCounter -= 1;
+
+			if (this.desertHeatCounter <= 0) {
+				this.doHeatStroke();
+				this.desertHeatCounter = calculateHeatDelay();
+			}
+		} else if (this.desertHeatCounter != Integer.MIN_VALUE) {
+			this.desertHeatCounter = Integer.MIN_VALUE;
+			this.desertHeatMessaged = false;
+		}
+	}
+
+	public Item getEquippedChest() {
+		if (this.getWorld().getServer().getConfig().WANT_EQUIPMENT_TAB) {
+			Item platebody = this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_PLATE_BODY.getIndex());
+			if (platebody == null)
+				return this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_CHAIN_BODY.getIndex());
+
+			return platebody;
+		}
+
+		Inventory inv = this.getCarriedItems().getInventory();
+		for (Item item : inv.getItems()) {
+			if (item.isWielded()) {
+				ItemDefinition def = item.getDef(this.getWorld());
+				if (def.isWieldable()) {
+					if (def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_PLATE_BODY.getIndex()
+						|| def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_CHAIN_BODY.getIndex())
+						return item;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	public Item getEquippedLegs() {
+		if (this.getWorld().getServer().getConfig().WANT_EQUIPMENT_TAB) {
+			Item platelegs = this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_PLATE_LEGS.getIndex());
+			if (platelegs == null)
+				return this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_SKIRT.getIndex());
+
+			return platelegs;
+		}
+
+		Inventory inv = this.getCarriedItems().getInventory();
+		for (Item item : inv.getItems()) {
+			if (item.isWielded()) {
+				ItemDefinition def = item.getDef(this.getWorld());
+				if (def.isWieldable()) {
+					if (def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_PLATE_LEGS.getIndex()
+						|| def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_SKIRT.getIndex())
+						return item;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	public Item getEquippedBoots() {
+		if (this.getWorld().getServer().getConfig().WANT_EQUIPMENT_TAB)
+			return this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_BOOTS.getIndex());
+
+
+		Inventory inv = this.getCarriedItems().getInventory();
+		for (Item item : inv.getItems()) {
+			if (item.isWielded()) {
+				ItemDefinition def = item.getDef(this.getWorld());
+				if (def.isWieldable()) {
+					if (def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_BOOTS.getIndex())
+						return item;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	public Item getEquippedGloves() {
+		if (this.getWorld().getServer().getConfig().WANT_EQUIPMENT_TAB)
+			return this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_GLOVES.getIndex());
+
+
+		Inventory inv = this.getCarriedItems().getInventory();
+		for (Item item : inv.getItems()) {
+			if (item.isWielded()) {
+				ItemDefinition def = item.getDef(this.getWorld());
+				if (def.isWieldable()) {
+					if (def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_GLOVES.getIndex())
+						return item;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	public Item getEquippedHelmet() {
+		if (this.getWorld().getServer().getConfig().WANT_EQUIPMENT_TAB) {
+			Item fullhelm = this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_LARGE_HELMET.getIndex());
+			if (fullhelm == null)
+				return this.getCarriedItems().getEquipment().get(Equipment.EquipmentSlot.SLOT_MEDIUM_HELMET.getIndex());
+
+			return fullhelm;
+		}
+
+		Inventory inv = this.getCarriedItems().getInventory();
+		for (Item item : inv.getItems()) {
+			if (item.isWielded()) {
+				ItemDefinition def = item.getDef(this.getWorld());
+				if (def.isWieldable()) {
+					if (def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_LARGE_HELMET.getIndex()
+						|| def.getWieldPosition() == Equipment.EquipmentSlot.SLOT_MEDIUM_HELMET.getIndex())
+						return item;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	public void setSceneryMorph(int id) {
+		this.sceneryMorph = id;
+		if (id < 0) { // leaving morph
+			final GameObject existingObject = getViewArea().getGameObject(getLocation());
+			if (existingObject != null && existingObject.getType() != 1) {
+				resetScenery(existingObject);
+			}
+		}
+	}
+	public void resetSceneryMorph() {
+		if (this.sceneryMorph >= 0)
+			setSceneryMorph(-1);
+	}
+
+	public void resetScenery(GameObject gameObject) {
+		Point objectCoordinates = Point.location(gameObject.getLoc().getX(), gameObject.getLoc().getY());
+		final int initialObjectID = gameObject.getWorld().getSceneryLoc(objectCoordinates);
+		if (initialObjectID != gameObject.getID()) {
+			if (initialObjectID != -1) {
+				// world object from initial json
+				final GameObject replaceObj = new GameObject(gameObject.getWorld(), gameObject.getLocation(), initialObjectID, gameObject.getDirection(), gameObject.getType());
+				changeloc(gameObject, replaceObj);
+			} else {
+				// dynamic stuck object
+				// unregister
+				gameObject.getWorld().unregisterGameObject(gameObject);
+			}
+		}
+	}
+
+	public void setUsernameChangePending(UsernameChange usernameChangePending) {
+		this.usernameChangePending = usernameChangePending;
+	}
+
+	public UsernameChange getUsernameChangePending() {
+		return this.usernameChangePending;
+	}
+
+	public boolean isElligibleToGlobalChat() {
+		final String messagePrefix = getConfig().MESSAGE_PREFIX;
+		if (isMuted()) {
+			if (getMuteNotify()) {
+				message(messagePrefix + "You are muted, you cannot send messages");
+			}
+			return false;
+		}
+		if (isGlobalMuted()) {
+			final long globalMuteDelay = getCache().getLong("global_mute");
+			message(messagePrefix + "You are " + (globalMuteDelay == -1 ? "permanently muted" : "temporary muted for " + (int) ((globalMuteDelay - System.currentTimeMillis()) / 1000 / 60) + " minutes") + " from global chat.");
+			return false;
+		}
+		long sayDelay = 0;
+		if (getCache().hasKey("say_delay")) {
+			sayDelay = getCache().getLong("say_delay");
+		}
+
+		long waitTime = getConfig().GLOBAL_MESSAGE_COOLDOWN;
+
+		if (isPlayerMod()) {
+			waitTime = 0;
+		}
+
+		if (System.currentTimeMillis() - sayDelay < waitTime) {
+			message(messagePrefix + "You can only send a message to global every " + (waitTime / 1000) + " seconds");
+			return false;
+		}
+
+		if (getTotalLevel() < getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ && !isPlayerMod()) {
+			message(messagePrefix + "You can only send a message to global chat if you have at least " + getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ + " total level.");
+			return false;
+		}
+
+		if (getLocation().onTutorialIsland() && !isMod()) {
+			message("@cya@Once you finish the tutorial, this lets you send messages to everyone on the server");
+			return false;
+		}
+
+		getCache().store("say_delay", System.currentTimeMillis());
+		return true;
+	}
+
+	public UnregisterRequest getUnregisterRequest() {
+		return this.unregisterRequest;
+	}
+
+	public DelayedEvent getUnregisterEvent() {
+		return unregisterEvent;
+	}
+
+	public void setUnregisterEvent(DelayedEvent unregisterEvent) {
+		this.unregisterEvent = unregisterEvent;
+	}
+
+	public void setUnregisterRequest(UnregisterRequest unregisterRequest) {
+		this.unregisterRequest = unregisterRequest;
+	}
+
+	public void unsetUnregisterRequest() {
+		this.unregisterRequest = null;
+	}
+
+	public boolean hasUnregisterRequest() {
+		return this.unregisterRequest != null;
+	}
+
+	public boolean getMultiEndedEarly() {
+		return multiEndedEarly;
+	}
+
+	public void setMultiEndedEarly(boolean endedEarly) {
+		this.multiEndedEarly = endedEarly;
+	}
+
 }

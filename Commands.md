@@ -14,6 +14,13 @@ Admin Commands
 - saveall
   - Usage: `::saveall`
   - Saves all users currently logged in.
+- winterholidayevent
+  - Usage: `::winterholidayevent`
+  - Turns on the winter holiday event (spawns tree objects). Note: this is only functional on custom feature worlds, such as Cabbage and Coleslaw.	
+  - Alias: `::toggleholiday`
+- resetevent
+  - Usage: `resetevent [hours] [minute]`
+  - Performs an hourly scenery reset on the server for objects. Example: this resets stuck objects. Not recommended to be used in production servers as long respawn scenery like runite ore rocks would reset at the same time hourly.
 - cabbagehalloweendrop
   - Usage: `::cabbagehalloweendrop [total hours] [minute of hour to drop scythes] [drop delay in minutes after scythes to drop halloween crackers]`
   - Drops scythes and halloween crackers at the specified times. 
@@ -32,7 +39,7 @@ Admin Commands
   - Gets information about the currently running holiday drop.
 - restart
   - Usage: `::restart`
-  - Restarts the server.
+  - Restarts the server using a five minute timer.
 - grounditem
   - Usage: `::grounditem [id] (respawn_time) (amount) (x) (y)`
   - Alias: `::gi` or `::gitem`
@@ -46,7 +53,7 @@ Admin Commands
   - Removes from the database a ground item spawn entry.
   - If no coordinates are supplied, then the current player's coordinates are used.
 - shutdown
-  - Usage: `::shutdown 
+  - Usage: `::shutdown`
   - Shuts down the server immediately.
 - update
   - Usage: `::update (reason)`
@@ -57,6 +64,16 @@ Admin Commands
   - If no amount is specified, then 1 is used.
   - If no player is specified, then it spawns the item to the current player.
   - For non-stackable items, only up to 30 may be spawned at one time.
+- ritem
+  - Usage: `::ritem [id or ItemId name] (amount) (player)"`
+  - Removes an item for the specified player.
+  - If no amount is specified, then 1 is used.
+  - If no player is specified, then it spawns the item to the current player.
+  - Partial stacks of items can be removed by amount parameter
+- swapitem
+  - Usage: `::swapitem [Inventory Slot # OR ItemId name] [Item Id OR ItemID name] [player]`
+  - Inventory Slot # is zero-indexed, i.e. the first inventory slot is # 0, and the last inventory slot is typically # 29.
+  - Cannot swap out stackable or currently equipped items. Use `::ritem` or `::item` commands instead.
 - certeditem
   - Usage: `::certeditem [id or ItemID name] (amount) (player)`
   - Alias: `::noteditem`
@@ -110,9 +127,7 @@ Admin Commands
   - Usage: `::massnpc [id] [amount] (duration_minutes)`
   - Spawn the specified amount of the specified NPCs for the specified amount of time.
   - If no duration is supplied, then 10 minutes is used.
-- npckills
-  - Usage: `::npckills [name]`
-  - Shows kill counts for name.
+  - Functionality is restricted on non-custom worlds.
 - playertalk
   - Usage: `::playertalk [name] [msg]`
   - Causes the specified player to say the specified message to all players in the area.
@@ -129,11 +144,13 @@ Admin Commands
   - If no item amount is supplied, then 1 is used.
   - If no duration is specified, then 10 minutes is used.
   - NOTE that this only happens one time immediately and is not an HourlyNpcLootEvent.
+  - Functionality is restricted on non-custom worlds.
 - chickenevent
   - Usage: `::chickenevent (hours) (chicken_amount) (item_amount) (chicken_lifetime)`
   - Starts an hourly chicken holiday event.
   - Behaves like npcevent, but this is run every hour on the hour for the specified number of hours.
   - The NPC is chickens and the loot is coins.
+  - Functionality is restricted on non-custom worlds.
 - stopnpcevent
   - Usage: `::stopnpcevent`
   - Alias: `::cancelnpcevent`
@@ -159,17 +176,16 @@ Admin Commands
   - Freezes the specified player's experience such that they can not gain anymore experience until the freeze is lifted.
   - If no boolean is supplied, then this command works as a toggle.
 - skull
-  - Usage: `::skull [player] (boolean)`
-  - Gives or removes the PK skull for the specified player.
-  - If no boolean is supplied, then this command works as a toggle.
+  - Usage: `::skull [player]`
+  - Gives a PK skull or renews its duration for the specified player.
+- unskull
+  - Usage: `::unskull [player]`
+  - Alias: `::rskull`
+  - Removes a PK skull for the specified player.
 - ip
   - Usage: `::ip (name)`
   - Shows the IP address of the specified player.
   - If no player is specified, then the current player's IP is shown.
-- appearance
-  - Usage: `::appearance (player)`
-  - Shows the appearance change screen to the specified player.
-  - If no player is specified, then it shows the appearance change screen to the current player.
 - spawnnpc
   - Usage: `::spawnnpc [id] (radius) (time in minutes)`
   - Spawns the specified NPC with the specified walking radius for the specified amount of time.
@@ -205,15 +221,50 @@ Admin Commands
 - setnpcstats
   - Usage: `::setnpcstats [npc_id] [att lvl] [def lvl] [str lvl] [hits lvl]`
   - Sets npc's combat stats.
-- winterholidayevent
-  - Usage: `::winterholidayevent`
-  - Turns on the winter holiday event (spawns tree objects).
 - givemodtools
   - Usage: `::givemodtools`
   - Gives you info document, resetcrystal, superchisel, ball of wool, fluffs, and digsite info, if you don't already have the item.
 - givetools
   - Usage: `::givetools`
   - Gives you rune pick, rune axe, harpoon, and sleeping bag, if you don't already have the item.
+- setstats
+  - Usage: `::setstats [player] [level]` to set all of the specified player's stats to the specified level.
+  - Usage: `::setstats [player]` to set all of your stats to the specified level
+  - Usage: `::setstats [player] [level] [stat]` to set the specified player's specified stat to the specified level.
+  - Usage: `::setstats [level] [stat]` to set your specified stat to the specified level
+  - Alias: `::stats` or `::stat` or `::setstat` or `::setstats`
+  - Set the specified stats of the specified player to the specified level.
+  - Accepts name or stat id of the specified stat.
+  - If no player is specified, then the current player is targeted.
+  - If no stat is specified, then all stats are modified.
+- setxpstats
+  - Usage: `::setxpstats [player] [experience]` to set all of the specified player's stats to the specified experience.
+  - Usage: `::setxpstats [player]` to set all of your stats to the specified experience
+  - Usage: `::setxpstats [player] [experience] [stat]` to set the specified player's specified stat to the specified experience.
+  - Usage: `::setxpstats [experience] [stat]` to set your specified stat to the specified experience
+  - Alias: `::xpstats` or `::xpstat` or `::setxpstat` or `::setxpstats` or `::setxp`
+  - Set the specified current stats of the specified player to the specified experience.
+  - Accepts name or stat id of the specified stat.
+  - If no player is specified, then the current player is targeted.
+  - If no stat is specified, then all stats are modified.
+- reloadworld
+  - Usage: `::reloadworld`
+  - Alias: `::reloadland`
+  - Reloads landscape.
+- hash
+  - Usage: `::hash [username]`
+  - Converts username into a username "hash", for development purposes.
+- unhash
+  - Usage: `::unhash [long number]`
+  - Converts username "hash" into username, for development purposes.
+- setglobalcooldown
+  - Usage: `::setglobalcooldown [time in milliseconds]`
+  - Example: `::setglobalcooldown 20000` sets cooldown to 20 seconds.
+  - Sets the minimum amount of time a user must wait before sending another message to global chat.
+- setgloballevelreq
+  - Usage: `::setgloballevelreq [total level required to chat]`
+  - Example: `::setgloballevelreq 150` sets total level requirement to 150.
+  - Sets the minimum amount of total levels a user must have in order to participate in global chat.
 ------------------------
 Developer Commands
 ------------------------
@@ -262,6 +313,15 @@ Developer Commands
 - error
   - Usage: `::error (output to stdout)`
   - Causes an ArrayOutOfBounds exception to occur if not passed an argument. Otherwise prints the first argument to stdout.
+- cyclescenery
+  - Usage: `::cyclescenery`
+  - Shows all scenery in game in order.
+- cycleclothing
+  - Usage: `::cycleclothing`
+  - Shows all animations that the player's current client supports. 
+- abort
+  - Usage: `::abort`
+  - Aborts `cyclescenery` or `cycleclothing` before it finishes.
 ------------------------
 Super/Senior Moderator Commands
 ------------------------
@@ -269,11 +329,6 @@ Super/Senior Moderator Commands
   - Usage: `::setcache (name) [cache_key] [cache_value]`
   - Alias: `::scache` or `::storecache`
   - Sets a cache value for the specified player.
-  - If no player is specified, then the current player's cache is modified.
-- getcache
-  - Usage: `::getcache (name) [cache_key]`
-  - Alias: `::gcache` or `::checkcache`
-  - Display the cache contents for the specified player.
   - If no player is specified, then the current player's cache is modified.
 - deletecache
   - Usage: `::getcache (name) [cache_key]`
@@ -289,50 +344,13 @@ Super/Senior Moderator Commands
   - Usage: `::setquest [player] [questId]`
   - Alias: `::questcom`
   - Sets the specified quest to completed for the specified player.
-- quest
-  - Usage: `::quest  [player] [questId]`
-  - Alias: `::getquest` or `::checkquest`
-  - Display the quest stage for the specified user for the specified quest.
 - reloaddrops
   - Usage: `::reloaddrops`
   - Reloads NPC drop tables.
-- reloadworld
-  - Usage: `::reloadworld`
-  - Alias: `::reloadland`
-  - Reloads landscape.
-- summonall
-  - Usage: `::summonall (width) (height)`
-  - Summons all currently logged in players to the current player.
-  - Clears any previous summon flag.
-  - Width and height define a rectangle that the summon players will be placed into.
-  - If width and height is not supplied then all players are summoned to the same square as the current player.
-- returnall
-  - Usage: `::returnall`
-  - Returns all non-staff members who have been summoned.
-- fatigue
-  - Usage: `::fatigue [player] (percentage)`
-  - Sets fatigue of the specified player to the specified percentage.
-  - If no percentage is specified, then 100 is used.
-- jail
-  - Usage: `::jail [name]`
-  - Puts the specified player in Runescape Jail.
-  - You can not jail a player who has already been jailed.
-  - You can not jail a staff member.
-- release
-  - Usage: `::release [name]`
-  - Releases the specified player from Runescape Jail to the location they were before being jailed.
 - ipcount
   - Usage: `::ipcount (name)`
   - Shows the number of players connected with the same IP address as the specified player.
   - If no player is specified, then the current player's information is shown.
-- ban
-  - Usage: `::ban [name] [time in minutes, -1 for permanent, 0 to unban]`
-  - Bans the specified player.
-  - You can not ban a staff member of equal or greater rank.
-- renameplayer
-  - Usage: '::renameplayer [old_name] [new_name]'
-  - Renames a specified player. Please note that ALL underscores will be replaced with spaces
-  - Also note that renaming a player will mess up anyone's friend list that has them added, so it's best to only use this command to rename Mod players.
 ------------------------
 Moderator Commands
 ------------------------
@@ -345,6 +363,10 @@ Moderator Commands
   - Usage: `::inventory (player) (want catalog ids)`
   - Shows inventory information about the specified player.
   - If no player is specified, then it show inventory info about the current player.
+- ban
+  - Usage: `::ban [name] [time in minutes, -1 for permanent, 0 to unban]`
+  - Bans the specified player.
+  - You can not ban a staff member of equal or greater rank.
 - bank
   - Usage: `::bank (player) (want box) (want catalog ids)`
   - Shows bank information for the specified player.
@@ -367,10 +389,84 @@ Moderator Commands
 - kick
   - Usage: `::kick [player]`
   - Kicks the specified player from the server.
-  - You can not kick a staff member of equal or greater rank.
+- queuesleepword
+  - Usage: `::queuesleepword [player] [index] (special)`
+  - Alias: `::qs` or if special is true, then `::queuesleepwordspecial` or `::qss`
+  - Selects a specific sleepword to show to player next time they sleep.
+  - `[index]` is a number between 0 and however many prerendered sleepwords are installed on the server.
+  - if `(special)` is true, then it selects from the specialsleepwords folder instead.
+- queuesleepwordspecial
+  - Usage: `::queuesleepwordspecial [player] [index]`
+  - Alias: `::qss`
+  - Selects a specific sleepword to show to player next time they sleep.
+  - `[index]` is a number between 0 and however many prerendered sleepwords are installed on the server.
+- listspecialsleepwords
+  - Usage: `::listspecialsleepwords`
+  - Alias: `::qssls` or `::lsqss`
+  - Shows all the special sleepwords available and their names.
+- forcesleep
+  - Usage: `::forcesleep [player]`
+  - Puts a user to sleep immediately.
 - wilderness
   - Usage: `::wilderness`
   - Shows how many players are in the wilderness and where they are.
+- appearance
+  - Usage: `::appearance (player)`
+  - Shows the appearance change screen to the specified player.
+  - If no player is specified, then it shows the appearance change screen to the current player.
+  - If the user is not an administrator, can only set appearance for players up to total level 150
+- summonall
+  - Usage: `::summonall (width) (height)`
+  - Summons all currently logged in players to the current player.
+  - Clears any previous summon flag.
+  - Width and height define a rectangle that the summon players will be placed into.
+  - If width and height is not supplied then all players are summoned to the same square as the current player.
+  - Limited by the `summon_all_player_limit` config setting, default 15. 
+- returnall
+  - Usage: `::returnall`
+  - Returns all non-staff members who have been summoned.
+- fatigue
+  - Usage: `::fatigue [player] (percentage)`
+  - Sets fatigue of the specified player to the specified percentage.
+  - If no percentage is specified, then 100 is used.
+- jail
+  - Usage: `::jail [name]`
+  - Puts the specified player in RuneScape Jail, upstairs of Al Kharid palace.
+  - You can not jail a player who has already been jailed.
+  - You can not jail a staff member.
+- release
+  - Usage: `::release [name]`
+  - Releases the specified player from RuneScape Jail to the location they were before being jailed.
+- getcache
+  - Usage: `::getcache (name) [cache_key]`
+  - Alias: `::gcache` or `::checkcache`
+  - Display the cache contents for the specified player.
+  - If no player is specified, then the current player's cache is checked.
+- quest
+  - Usage: `::quest  [player] [questId]`
+  - Alias: `::getquest` or `::checkquest`
+  - Display the quest stage for the specified user for the specified quest.
+- renameplayer
+  - Usage: `::renameplayer [current name] [new name] [inappropriate (yes/no)] [reason]`
+  - Alias: `::renameuser`
+  - Renames a specified player. Please note that ALL underscores will be replaced with spaces
+  - For "Inappropriate", you may type "1" for yes or "0" for no as well.
+  - Reason must be specified.
+  - Cannot use this command to rename players that have not logged in in the past 2 weeks unless it is an inappropriate name.
+- badname
+  - Usage: `::badname [unacceptable username] [reason]`
+  - Alias: `::offensivename` or `inappropriatename`
+  - Unlike `::renameplayer`, this command chooses a random name to replace the offensive name with.
+  - Users who have been renamed with this command will be able to log in with their old username.
+- freename
+  - Usage: `::freename [username to free]`
+  - Alias: `::releasename` or `::freeusername`
+  - If the player is determined to be inactive, their username will be randomly reassigned so that the name is free again.
+  - Users who have been renamed with this command will be able to log in with their old username, should they return.
+- removeformername
+  - Usage: `::removeformername [username to remove former name from]`
+  - Hides the former name of the user. Useful if it contained sensitive information such as their real last name.
+  - Record of the former name remains in the database, but is no longer shown to players.
 ------------------------
 Event Commands
 ------------------------
@@ -398,6 +494,12 @@ Event Commands
   - Turn the specified player invisinble.
   - If no player is specified, then the current player is turned invisible.
   - If no boolean is supplied, then this command works as a toggle.
+- norender
+  - Usage `::norender`
+  - Alias: `::renderself`
+  - Makes the player completely un-rendered, but still transmits position of player to those around, so don't use as a substitute for `::invis`.
+  - Useful for taking pictures or for talking to players while "invisible".
+  - Return to normal with `::resetappearance`
 - invulnerable
   - Usage: `::invulnerable (player) (boolean)`
   - Alias: `::invul`
@@ -422,9 +524,6 @@ Event Commands
   - Causes the specified NPC to say the specified message to all players in the area.
   - Can use `::possessnpc` & then just chat normally for longer conversations
   - Alias: `::npcsay`
-- check
-  - Usage: `::check (player)`
-  - Shows all of the characters that were created by the same IP address.
 - togglepartyhall
   - Usage: `::togglepartyhall (time_in_minutes)`
   - Alias: `::seers` or `::toggleseers` or `::partyhall`
@@ -447,16 +546,6 @@ Event Commands
   - Only users of the rank Admin or above may change a player's rank.
   - You may never change a players rank to be equal to or greater than your own.
   - If no player is specified, then the current player is targeted.
-- setstats
-  - Usage: `::setstats [player] [level]` to set all of the specified player's stats to the specified level.
-  - Usage: `::setstats [player]` to set all of your stats to the specified level
-  - Usage: `::setstats [player] [level] [stat]` to set the specified player's specified stat to the specified level.
-  - Usage: `::setstats [level] [stat]` to set your specified stat to the specified level
-  - Alias: `::stats` or `::stat` or `::setstat` or `::setstats`
-  - Set the specified stats of the specified player to the specified level.
-  - Accepts name or stat id of the specified stat.
-  - If no player is specified, then the current player is targeted.
-  - If no stat is specified, then all stats are modified.
 - setcurrentstats
   - Usage: `::setcurrentstats [player] [level]` to set all of the specified player's stats to the specified level.
   - Usage: `::setcurrentstats [player]` to set all of your stats to the specified level
@@ -467,24 +556,20 @@ Event Commands
   - Accepts name or stat id of the specified stat.
   - If no player is specified, then the current player is targeted.
   - If no stat is specified, then all stats are modified.
-- setxpstats
-  - Usage: `::setxpstats [player] [experience]` to set all of the specified player's stats to the specified experience.
-  - Usage: `::setxpstats [player]` to set all of your stats to the specified experience
-  - Usage: `::setxpstats [player] [experience] [stat]` to set the specified player's specified stat to the specified experience.
-  - Usage: `::setxpstats [experience] [stat]` to set your specified stat to the specified experience
-  - Alias: `::xpstats` or `::xpstat` or `::setxpstat` or `::setxpstats` or `::setxp`
-  - Set the specified current stats of the specified player to the specified experience.
-  - Accepts name or stat id of the specified stat.
-  - If no player is specified, then the current player is targeted.
-  - If no stat is specified, then all stats are modified.
+- npckills
+  - Usage: `::npckills [name]`
+  - Shows kill counts for name.
+- shufflepid
+  - Usage: `::shufflepid [on/off]`
+  - Alias: `::pidshuffle`
+  - Changes the order that players are processed in. If an administrator runs this command, PID_SHUFFLING on the server can be toggled.
+  - Useful for drop parties, so that the same player doesn't get all the loot.
 ------------------------
 Player Moderator Commands
 ------------------------
 - gmute
   - Usage: `::gmute [name] (time in minutes, -1 or exclude for permanent)`
   - Mutes the specified player from global chat.
-  - Moderators are only allowed to mute for up to 2 hours.
-  - Player Moderators are only allowed to mute for up to 1 hour.
   - You can not mute a staff member of equal or greater rank.
 - ungmute
   - Usage: `::ungmute [name]`
@@ -492,8 +577,6 @@ Player Moderator Commands
   - You can not unmute a staff member of equal or greater rank.
 - mute
   - Usage: `::mute [name] (time in minutes, -1 or exclude for permanent)`
-  - Moderators are only allowed to mute for up to 2 hours.
-  - Player Moderators are only allowed to mute for up to 1 hour.
   - Mutes the specified player from both in game and global chat.
   - You can not mute a staff member of equal or greater rank.
 - unmute
@@ -531,6 +614,10 @@ Player Moderator Commands
 - speakTongues
   - Usage: `::speaktongues`
   - Translates player chat messages to random characters while enabled
+- check
+  - Usage: `::check (player)`
+  - Shows all of the characters that were created by the same IP address.
+  - Administrator accounts are able to actually see the IP address.
 ------------------------
 Regular Player Commands
 ------------------------
@@ -538,7 +625,7 @@ Regular Player Commands
   - Usage: `::gang`
   - Shows which gang you are in: Black Arm, Phoneix, or none.
 - c
-  - Usage: `::c [message]
+  - Usage: `::c [message]`
   - Send message to clan chat.
   - Clans must be enabled to use this command.
   - You must be in a clan to use this command.
@@ -592,6 +679,7 @@ Regular Player Commands
 - uniqueonline
   - Usage: `::uniqueonline`
   - Shows the number of players with a unique IP address currently online.
+  - Assumes that local ip addresses are "web client" users, as is currently the case on our live server.
 - onlinelist
   - Usage: `::onlinelist`
   - Shows a list of online players.
@@ -645,3 +733,19 @@ Regular Player Commands
 - certoptoutconfirm
   - Usage: `::certoptoutconfirm`
   - Confirms permanent opt out of being able to use item certs.
+- maxplayersperip
+  - Usage: `::maxplayersperip`
+  - Alias: `::mppi`
+  - Shows the maximum amount of multilogged accounts a single ip address is allowed
+- globalprivate
+  - Usage `::globalprivate`
+  - Alias: `::gp`
+  - Switches Global Chat to output in the Private history tab.
+- globalquest
+  - Usage `::globalquest`
+  - Alias: `::gq`
+  - Switches Global Chat to output in the Quest history tab (default).
+- setglobalmessagecolor
+  - Usage `::setglobalmessagecolor (colorcode)]`
+  - Example: `::setglobalmessagecolor @dre@`
+  - If run with no parameter, resets the color to default.

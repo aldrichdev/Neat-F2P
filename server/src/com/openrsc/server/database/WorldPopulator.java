@@ -1,6 +1,5 @@
 package com.openrsc.server.database;
 
-import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.external.GameObjectLoc;
 import com.openrsc.server.external.ItemLoc;
@@ -32,11 +31,11 @@ public final class WorldPopulator {
 
 	private final World world;
 
-	private ArrayList<GameObjectLoc> gameobjlocs = new ArrayList<>();
+	private final ArrayList<GameObjectLoc> gameobjlocs = new ArrayList<>();
 
-	private ArrayList<NPCLoc> npclocs = new ArrayList<>();
+	private final ArrayList<NPCLoc> npclocs = new ArrayList<>();
 
-	private ArrayList<ItemLoc> itemlocs = new ArrayList<>();
+	private final ArrayList<ItemLoc> itemlocs = new ArrayList<>();
 
 	public WorldPopulator(final World world) {
 		this.world = world;
@@ -44,6 +43,9 @@ public final class WorldPopulator {
 
 	@SuppressWarnings("unchecked")
 	public void populateWorld() {
+		gameobjlocs.clear();
+		npclocs.clear();
+		itemlocs.clear();
 		try {
 			// LOAD OBJECTS //
 			int countOBJ = 0;
@@ -53,6 +55,11 @@ public final class WorldPopulator {
 				authenticBoundaryFile = "/defs/locs/BoundaryLocs14.json";
 				authenticGroundItemsFile = "/defs/locs/GroundItems14.json";
 				authenticMobFile = "/defs/locs/NpcLocs14.json";
+			} else if (getWorld().getServer().getConfig().BASED_MAP_DATA == 27) {
+				authenticSceneryFile = "/defs/locs/SceneryLocs27.json";
+				authenticBoundaryFile = "/defs/locs/BoundaryLocs27.json";
+				authenticGroundItemsFile = "/defs/locs/GroundItems27.json";
+				authenticMobFile = "/defs/locs/NpcLocs27.json";
 			} else {
 				authenticSceneryFile = "/defs/locs/SceneryLocs.json";
 				authenticBoundaryFile = "/defs/locs/BoundaryLocs.json";
@@ -78,7 +85,9 @@ public final class WorldPopulator {
 					object.direction, object.type);
 
 				getWorld().registerGameObject(obj);
-				getWorld().addSceneryLoc(obj.getLocation(), obj.getID());
+				if (obj.getType() == 0) { // no wall objects allowed
+					getWorld().addSceneryLoc(obj.getLocation(), obj.getID());
+				}
 				countOBJ++;
 			}
 			LOGGER.info("Loaded {}", box(countOBJ) + " Objects.");
@@ -121,7 +130,7 @@ public final class WorldPopulator {
 				// // }
 
 				// Don't load rats if the Mice to Meet You Event is active
-				if (getWorld().getServer().getConfig().MICE_TO_MEET_YOU_EVENT
+				if (getWorld().getServer().getConfig().MICE_TO_MEET_YOU_EVENT && getWorld().getServer().getConfig().WANT_MICE_TO_MEET_YOU_NO_RATS
 					&& (n.getId() == NpcId.RAT_LVL8.id()
 					|| n.getId() == NpcId.RAT_WITCHES_POTION.id()
 					|| n.getId() == NpcId.RAT_LVL13.id()
@@ -186,6 +195,7 @@ public final class WorldPopulator {
 				if (getWorld().getServer().getConfig().LOCATION_DATA == 2) {
 					if (getWorld().getServer().getConfig().WANT_CUSTOM_QUESTS || getWorld().getServer().getConfig().DEATH_ISLAND) {
 						loadGameObjLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/BoundaryLocsCustomQuest.json", type);
+						//loadGameObjLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/BoundaryLocsExpansion.json", type);
 					}
 				}
 				return;
@@ -212,6 +222,10 @@ public final class WorldPopulator {
 					}
 					if (getWorld().getServer().getConfig().WANT_CUSTOM_QUESTS) {
 						loadGameObjLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/SceneryLocsCustomQuest.json", type);
+						loadGameObjLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/SceneryLocsExpansion.json", type);
+					}
+					if (getWorld().getServer().getConfig().MICE_TO_MEET_YOU_EVENT) {
+						loadGameObjLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/SceneryLocsMiceToMeetYou.json", type);
 					}
 					loadGameObjLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/SceneryLocsOther.json", type);
 				}
@@ -245,6 +259,7 @@ public final class WorldPopulator {
 					}
 					if (getWorld().getServer().getConfig().WANT_CUSTOM_QUESTS) {
 						loadNpcLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/NpcLocsCustomQuest.json");
+						//loadNpcLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/NpcLocsExpansion.json");
 						// If the Ester's Bunnies event isn't active, move all the bunnies to the top floor of Ester's house.
 						if (!getWorld().getServer().getConfig().ESTERS_BUNNIES_EVENT) {
 							for (NPCLoc loc : npclocs) {
@@ -259,10 +274,9 @@ public final class WorldPopulator {
 							}
 						}
 
-						// This should be removed once IdleRSC gets sorted.
-						// Death should stick around even after the event is over
+						// Remove the Death in Varrock, keep the one on Death Island
 						if (!getWorld().getServer().getConfig().MICE_TO_MEET_YOU_EVENT) {
-							npclocs.removeIf(npcLoc -> npcLoc.getId() == NpcId.DEATH.id());
+							npclocs.removeIf(npcLoc -> npcLoc.getId() == NpcId.DEATH.id() && npcLoc.startX < 600);
 						}
 					}
 					loadNpcLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/NpcLocsOther.json");
@@ -276,18 +290,13 @@ public final class WorldPopulator {
 					}
 					if (getWorld().getServer().getConfig().WANT_CUSTOM_QUESTS) {
 						loadItemLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/GroundItemsCustomQuest.json");
+						//loadItemLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/GroundItemsExpansion.json");
 					}
 				}
 
-				// Add a red key so you can do Dragon Slayer
+				// Adds Pumpkins to Varrock & a red key so you can do Dragon Slayer
 				if (getWorld().getServer().getConfig().MICE_TO_MEET_YOU_EVENT) {
-					ItemLoc loc = new ItemLoc();
-					loc.id = ItemId.RED_KEY.id();
-					loc.x = 344;
-					loc.y = 631;
-					loc.amount = 1;
-					loc.respawnTime = 30;
-					itemlocs.add(loc);
+					loadItemLocs(getWorld().getServer().getConfig().CONFIG_DIR + "/defs/locs/GroundItemsMiceToMeetYou.json");
 				}
 
 				return;
@@ -313,8 +322,17 @@ public final class WorldPopulator {
 				max = locObj.getJSONObject("max");
 				loc.maxX = max.getInt("X");
 				loc.maxY = max.getInt("Y");
+				// npcs should initially be only max one per tile
+				if (npclocs.stream().anyMatch(x -> x.startX == loc.startX && x.startY == loc.startY)) {
+					// sometimes may be desired to replace a base npc,
+					// in which case the start X and start Y should match
+					// commented out since there are about ~ 22 digsite workmen that need to be corrected
+					// to not be all same tile
+					// npclocs.removeIf(npc -> npc.startX == loc.startX && npc.startY == loc.startY);
+				}
 				npclocs.add(loc);
 			}
+			LOGGER.info("Loaded " + locDefs.length() + " npc locations from " + filename);
 		}
 		catch (Exception e) {
 			LOGGER.error(e);
@@ -335,8 +353,14 @@ public final class WorldPopulator {
 				loc.y = pos.getInt("Y");
 				loc.amount = locObj.getInt("amount");
 				loc.respawnTime = locObj.getInt("respawn");
+				if (itemlocs.stream().anyMatch(it -> it.x == loc.x && it.y == loc.y)) {
+					// sometimes may be desired to replace a base grounditem,
+					// in which case x and y should match
+					itemlocs.removeIf(it -> it.x == loc.x && it.y == loc.y);
+				}
 				itemlocs.add(loc);
 			}
+			LOGGER.info("Loaded " + locDefs.length() + " grounditem locations from " + filename);
 		}
 		catch (Exception e) {
 			LOGGER.error(e);
@@ -362,6 +386,7 @@ public final class WorldPopulator {
 				}
 				gameobjlocs.add(loc);
 			}
+			LOGGER.info("Loaded " + locDefs.length() + " scenery locations from " + filename);
 		}
 		catch (Exception e) {
 			LOGGER.error(e);

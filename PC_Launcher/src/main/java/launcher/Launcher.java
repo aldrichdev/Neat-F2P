@@ -22,7 +22,11 @@ public class Launcher extends Component {
         // Add progress bar
         m_progressBar = new JProgressBar();
 
-        if (Settings.firstRun) {
+        if (Main.disabledUpdate) {
+            Settings.autoUpdate = false;
+            Settings.saveSettings();
+        }
+        else if (Settings.firstRun) {
             int response =
                     JOptionPane.showConfirmDialog(
                             this,
@@ -115,7 +119,7 @@ public class Launcher extends Component {
 		frame.build();
 
         // Fetch OpenRSC client jar and cache updates; also init progress bar
-        updater = new Updater(Defaults._DEFAULT_CONFIG_DIR, Defaults._CURRENT_VERSION.toString());
+        updater = new Updater(Main.configFileLocation, Defaults._CURRENT_VERSION.toString());
         updater.updateOpenRSCClient();
     }
 

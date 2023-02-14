@@ -5,6 +5,7 @@ import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.constants.Quests;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.event.SingleEvent;
+import com.openrsc.server.event.rsc.DuplicationStrategy;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.GroundItem;
@@ -59,6 +60,9 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 	public void handleReward(Player player) {
 		player.message("Well done you have completed the hero guild entry quest");
 		player.getCache().remove("talked_grip");
+		player.getCache().remove("killed_grip"); //phoenix gang did their part to kill grip
+		player.getCache().remove("looted_grip"); //black arm gang did their part to loot grip's chest
+		player.getCache().remove("grip_keys");
 		player.getCache().remove("hq_impersonate");
 		player.getCache().remove("talked_alf");
 		player.getCache().remove("talked_grubor");
@@ -434,6 +438,14 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 				int damage = (int) Math.round((player.getSkills().getLevel(Skill.HITS.id())) * 0.15D);
 				player.damage(damage);
 			}
+		} else if (i.getID() == ItemId.BUNCH_OF_KEYS.id()) {
+			if (i.getAttribute("fromGrip", false)) {
+				if (!player.getCache().hasKey("grip_keys") && player.getQuestStage(this) >= 1) {
+					player.getCache().store("grip_keys", true);
+				}
+			}
+			player.getWorld().unregisterItem(i);
+			give(player, ItemId.BUNCH_OF_KEYS.id(), 1);
 		}
 	}
 
@@ -443,6 +455,9 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 			if (player.getQuestStage(this) <= 0 || !player.getCarriedItems().getEquipment().hasEquipped(ItemId.ICE_GLOVES.id())) {
 				return true;
 			}
+		}
+		else if (i.getID() == ItemId.BUNCH_OF_KEYS.id()) {
+			return true;
 		}
 		return false;
 	}
@@ -561,7 +576,7 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 					player.getWorld().getServer().getGameEventHandler().add(
 						new SingleEvent(player.getWorld(), null,
 							config().GAME_TICK * 2,
-							"Heroes Quest Grip through door", true) {
+							"Heroes Quest Grip through door", DuplicationStrategy.ALLOW_MULTIPLE) {
 							@Override
 							public void action() {
 							grip.teleport(463, 676);
@@ -642,7 +657,7 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 								// delayed event to prevent grip being trapped if player had invoked him
 								gripReturnEvent.set(new SingleEvent(player.getWorld(), null,
 									config().GAME_TICK * 1000,
-									"Heroes Quest Delayed Return Grip", true) {
+									"Heroes Quest Delayed Return Grip", DuplicationStrategy.ALLOW_MULTIPLE) {
 									@Override
 									public void action() {
 										if (grip != null && grip.getY() <= 675)
@@ -675,7 +690,8 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 			} else if (command.equalsIgnoreCase("close")) {
 				closeGenericObject(obj, player, CANDLESTICK_CHEST_CLOSED, "You close the chest");
 			} else {
-				if (!player.getCarriedItems().hasCatalogID(ItemId.CANDLESTICK.id(), Optional.empty())) {
+				if (!player.getCarriedItems().hasCatalogID(ItemId.CANDLESTICK.id(), Optional.empty())
+					&& (player.getCache().hasKey("grip_keys") || player.getQuestStage(this) == -1)) {
 					give(player, ItemId.CANDLESTICK.id(), 2);
 					mes("You find two candlesticks in the chest");
 					delay(3);
@@ -685,6 +701,9 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 					delay(3);
 					if (player.getQuestStage(this) == 1) {
 						player.updateQuestStage(this, 2);
+					}
+					if (!player.getCache().hasKey("looted_grip") && player.getQuestStage(this) >= 1) {
+						player.getCache().store("looted_grip", true);
 					}
 				} else {
 					player.message("The chest is empty");
@@ -704,8 +723,12 @@ public class HerosQuest implements QuestInterface, TalkNpcTrigger,
 	@Override
 	public void onKillNpc(Player player, Npc n) {
 		if (n.getID() == NpcId.GRIP.id()) {
-			player.getWorld().registerItem(
-					new GroundItem(player.getWorld(), ItemId.BUNCH_OF_KEYS.id(), n.getX(), n.getY(), 1, (Player) null));
+			GroundItem keys = new GroundItem(player.getWorld(), ItemId.BUNCH_OF_KEYS.id(), n.getX(), n.getY(), 1, null);
+			keys.setAttribute("fromGrip", true);
+			player.getWorld().registerItem(keys);
+			if (!player.getCache().hasKey("killed_grip") && player.getQuestStage(this) >= 1) {
+				player.getCache().store("killed_grip", true);
+			}
 			removeReturnEventIfPresent(player);
 		}
 	}

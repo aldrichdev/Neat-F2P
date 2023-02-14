@@ -9,7 +9,6 @@ import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
-import com.openrsc.server.model.entity.update.ChatMessage;
 import com.openrsc.server.plugins.triggers.UseLocTrigger;
 import com.openrsc.server.util.rsc.Formulae;
 import com.openrsc.server.util.rsc.MathUtil;
@@ -69,11 +68,12 @@ public class Smithing implements UseLocTrigger {
 
 	private boolean allowDorics(Player player) {
 		if (player.getQuestStage(Quests.DORICS_QUEST) > -1) {
-			Npc doric = player.getWorld().getNpc(NpcId.DORIC.id(), 323, 327, 487, 492,
-				true);
-			doric.getUpdateFlags().setChatMessage(new ChatMessage(doric,
-				"Heh who said you could use that?", player));
-			player.message("You need to finish Doric's quest to use this anvil");
+			Npc doric = ifnearvisnpc(player, NpcId.DORIC.id(), 20);
+			if (doric != null) {
+				npcsay(player, doric, "Heh who said you could use that?");
+			}
+			//message likely not given out, see https://classic.runescape.wiki/w/Transcript:Doric?diff=79647&oldid=79230
+			//player.message("You need to finish Doric's quest to use this anvil");
 			return false;
 		}
 		return true;
@@ -102,10 +102,24 @@ public class Smithing implements UseLocTrigger {
 			return false;
 		}
 
+		int maxItemId = player.getConfig().RESTRICT_ITEM_ID;
+		boolean worldSupportsGoldSmithing = !player.getConfig().LACKS_GOLD_SMITHING && MathUtil.maxUnsigned(maxItemId, ItemId.GOLDEN_BOWL.id()) == maxItemId;
+		if (item.getCatalogId() == ItemId.GOLD_BAR.id() && !worldSupportsGoldSmithing) {
+			player.message("Nothing interesting happens");
+			return false;
+		}
+
 		if (player.getSkills().getLevel(Skill.SMITHING.id()) < minSmithingLevel) {
-			player.message("You need at least level "
-				+ minSmithingLevel + " smithing to work with "
-				+ item.getDef(player.getWorld()).getName().toLowerCase().replaceAll("bar", ""));
+			if (item.getCatalogId() != ItemId.GOLD_BAR.id()) {
+				player.message("You need at least level "
+					+ minSmithingLevel + " smithing to work with "
+					+ item.getDef(player.getWorld()).getName().toLowerCase().replaceAll("bar", ""));
+			} else {
+				// not entirely sure should give message here or this one is once Legends started
+				// on OSRS the advice is to try to use furnace
+				// Logg tested before legends but with level past 50 and was "You're not quite sure what to make from the gold.."
+				player.message("You need at least level 50 smithing to work gold...");
+			}
 			return false;
 		}
 
@@ -125,16 +139,17 @@ public class Smithing implements UseLocTrigger {
 			return;
 		}
 
+		int maxItemId = player.getConfig().RESTRICT_ITEM_ID;
+		boolean worldSupportsGoldSmithing = !player.getConfig().LACKS_GOLD_SMITHING && MathUtil.maxUnsigned(maxItemId, ItemId.GOLDEN_BOWL.id()) == maxItemId;
 		// Failure to make a gold bowl without Legend's Quest.
-		if (item.getCatalogId() == ItemId.GOLD_BAR.id() && player.getQuestStage(Quests.LEGENDS_QUEST) >= 0 && player.getQuestStage(Quests.LEGENDS_QUEST) <= 2) {
+		if (item.getCatalogId() == ItemId.GOLD_BAR.id() && worldSupportsGoldSmithing && player.getQuestStage(Quests.LEGENDS_QUEST) >= 0 && player.getQuestStage(Quests.LEGENDS_QUEST) <= 2) {
 			player.message("You're not quite sure what to make from the gold..");
 			return;
 		}
 
 		// Gold
-		int maxItemId = player.getConfig().RESTRICT_ITEM_ID;
 		if (item.getCatalogId() == ItemId.GOLD_BAR.id()) {
-			if (MathUtil.maxUnsigned(maxItemId, ItemId.GOLDEN_BOWL.id()) == maxItemId) {
+			if (worldSupportsGoldSmithing) {
 				player.message("What would you like to make?");
 				handleGoldSmithing(player);
 			} else {
@@ -166,10 +181,11 @@ public class Smithing implements UseLocTrigger {
 			delay(2);
 			mes("You have repaired the Dragon Square Shield.");
 			delay(2);
-			player.getCarriedItems().remove(new Item(ItemId.RIGHT_HALF_DRAGON_SQUARE_SHIELD.id()));
-			player.getCarriedItems().remove(new Item(ItemId.LEFT_HALF_DRAGON_SQUARE_SHIELD.id()));
-			player.getCarriedItems().getInventory().add(new Item(ItemId.DRAGON_SQUARE_SHIELD.id()));
-			player.incExp(Skill.SMITHING.id(), 300, true);
+			if (player.getCarriedItems().remove(new Item(ItemId.RIGHT_HALF_DRAGON_SQUARE_SHIELD.id()),
+				new Item(ItemId.LEFT_HALF_DRAGON_SQUARE_SHIELD.id()))) {
+				player.getCarriedItems().getInventory().add(new Item(ItemId.DRAGON_SQUARE_SHIELD.id()));
+				player.incExp(Skill.SMITHING.id(), 300, true);
+			}
 		}
 	}
 

@@ -2,9 +2,11 @@ package com.openrsc.server.plugins.authentic.skills.woodcutting;
 
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Skill;
+import com.openrsc.server.content.EnchantedCrowns;
 import com.openrsc.server.external.ObjectWoodcuttingDef;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
+import com.openrsc.server.model.entity.GroundItem;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.plugins.triggers.OpLocTrigger;
 import com.openrsc.server.plugins.triggers.UseLocTrigger;
@@ -94,16 +96,26 @@ public class Woodcutting implements OpLocTrigger, UseLocTrigger {
 			return;
 		}
 
-		if (getLog(def, player.getSkills().getLevel(Skill.WOODCUTTING.id()), axeId)) {
+		// New trees update; map32 introduced new trees & made woodcut xp no longer be scaled
+		boolean isOldWoodcut = (player.getConfig().SCALED_WOODCUT_XP || player.getConfig().BASED_MAP_DATA < 32) && def.getLogId() == ItemId.LOGS.id();
+		if ((!isOldWoodcut && getLog(def, player.getSkills().getLevel(Skill.WOODCUTTING.id()), axeId))
+			|| (isOldWoodcut && Formulae.chopLogs(player.getSkills().getLevel(Skill.WOODCUTTING.id())))) {
 			//check if the tree is still up
 			GameObject obj = player.getViewArea().getGameObject(object.getID(), object.getX(), object.getY());
 			if (!player.getConfig().SHARED_GATHERING_RESOURCES || obj != null) {
 				player.getCarriedItems().getInventory().add(log);
 				player.playerServerMessage(MessageType.QUEST, "You get some wood");
-				if (player.getConfig().SCALED_WOODCUT_XP && def.getLogId() == ItemId.LOGS.id()) {
+				if (isOldWoodcut) {
 					player.incExp(Skill.WOODCUTTING.id(), getExpRetro(player.getSkills().getMaxStat(Skill.WOODCUTTING.id()), 25), true);
 				} else {
 					player.incExp(Skill.WOODCUTTING.id(), def.getExp(), true);
+				}
+
+				if (EnchantedCrowns.shouldActivate(player, ItemId.CROWN_OF_THE_ITEMS)) {
+					player.playerServerMessage(MessageType.QUEST, "Your crown shines and an extra item appears on the ground");
+					player.getWorld().registerItem(
+						new GroundItem(player.getWorld(), log.getCatalogId(), player.getX(), player.getY(), 1, player), player.getConfig().GAME_TICK * 50);
+					EnchantedCrowns.useCharge(player, ItemId.CROWN_OF_THE_ITEMS);
 				}
 			} else {
 				player.playerServerMessage(MessageType.QUEST, "You slip and fail to hit the tree");

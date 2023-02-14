@@ -99,7 +99,7 @@ public class Region {
 	 *
 	 * @return The list of players.
 	 */
-	protected Collection<Player> getPlayers() {
+	public Collection<Player> getPlayers() {
 		return players.values();
 	}
 
@@ -229,7 +229,7 @@ public class Region {
 		return players.get(new Point(x, y))
 			.stream()
 			.filter(player -> observer == null || !player.isInvisibleTo(observer))
-			.filter(player -> observer == null || (includeSelf && player.equals(observer)))
+			.filter(player -> observer == null || (!includeSelf || player.equals(observer)))
 			.findFirst()
 			.orElse(null);
 	}

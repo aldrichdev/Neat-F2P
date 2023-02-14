@@ -5,10 +5,13 @@ import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.database.struct.PlayerLoginData;
 import com.openrsc.server.net.PacketBuilder;
 import com.openrsc.server.util.rsc.DataConversions;
+import com.openrsc.server.util.rsc.LoginResponse;
 import com.openrsc.server.util.rsc.RegisterLoginResponse;
 import io.netty.channel.Channel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.net.InetSocketAddress;
 
 /**
  * Used to create a Character on the Login thread
@@ -28,6 +31,7 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 	private int clientVersion;
 	private boolean authenticClient;
 	private Channel channel;
+	private boolean isSimRegister;
 
 	public CharacterCreateRequest(final Server server, final Channel channel, final String username, final String password, final boolean isAuthenticClient, final int clientVersion) {
 		this.server = server;
@@ -36,19 +40,32 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 		this.setPassword(password);
 		this.setAuthenticClient(isAuthenticClient);
 		this.setChannel(channel);
-		this.setIpAddress(getChannel().remoteAddress().toString());
+		this.setIpAddress(((InetSocketAddress) getChannel().remoteAddress()).getAddress().getHostAddress());
 		this.setClientVersion(clientVersion);
+		this.isSimRegister = false;
 	}
 
-	public CharacterCreateRequest(final Server server, final Channel channel, final String username, final String password, final String email, final int clientVersion) {
+	public CharacterCreateRequest(final Server server, final Channel channel, final String username, final String password, final String email, final boolean isAuthenticClient, final int clientVersion) {
 		this.server = server;
 		this.setEmail(email);
 		this.setUsername(DataConversions.sanitizeUsername(username));
 		this.setPassword(password);
-		this.setAuthenticClient(false);
+		this.setAuthenticClient(isAuthenticClient);
 		this.setChannel(channel);
-		this.setIpAddress(getChannel().remoteAddress().toString());
+		this.setIpAddress(((InetSocketAddress) getChannel().remoteAddress()).getAddress().getHostAddress());
 		this.setClientVersion(clientVersion);
+		this.isSimRegister = false;
+	}
+
+	public CharacterCreateRequest(final Server server, final String username, final String ip, final int clientVersion) {
+		this.server = server;
+		this.setEmail("");
+		this.setUsername(DataConversions.sanitizeUsername(username));
+		this.setAuthenticClient(clientVersion <= 235);
+		this.setChannel(null);
+		this.setIpAddress(ip);
+		this.setClientVersion(clientVersion);
+		this.isSimRegister = true;
 	}
 
 	public String getIpAddress() {
@@ -113,7 +130,10 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 
 	protected void processInternal() {
 		if (getAuthenticClient()) {
-			final int registerResponse = validateRegister();
+			int registerResponse = validateRegister();
+			if (clientVersion <= 204) {
+				registerResponse = RegisterLoginResponse.translateNewToOld(registerResponse, clientVersion, true);
+			}
 			getChannel().writeAndFlush(new PacketBuilder().writeByte((byte) registerResponse).toPacket());
 			if (registerResponse != RegisterLoginResponse.REGISTER_SUCCESSFUL) {
 				getChannel().close();
@@ -121,6 +141,8 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 			LOGGER.info("Processed register request for " + getUsername() + " response: " + registerResponse);
 		} else {
 			try {
+				boolean applyHarshRegistration = false; // could potentially fall in config?
+
 				if (getUsername().length() < 2 || getUsername().length() > 12) {
 					getChannel().writeAndFlush(new PacketBuilder().writeByte((byte) 7).toPacket());
 					getChannel().close();
@@ -148,7 +170,8 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 				}
 
 				if (getServer().getConfig().WANT_REGISTRATION_LIMIT) {
-					boolean recentlyRegistered = getServer().getDatabase().checkRecentlyRegistered(getIpAddress());
+					int registerTimeout = applyHarshRegistration ? 720 : 1; //time in minutes
+					boolean recentlyRegistered = getIpAddress().equals("127.0.0.1") || getServer().getDatabase().checkRecentlyRegistered(getIpAddress(), registerTimeout);
 					if (recentlyRegistered) {
 						LOGGER.info(getIpAddress() + " - Registration failed: Registered recently.");
 						getChannel().writeAndFlush(new PacketBuilder().writeByte((byte) 5).toPacket());
@@ -190,11 +213,14 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 	public byte validateRegister() {
 		PlayerLoginData playerData;
 		try {
+			boolean applyHarshRegistration = false; // could potentially fall in config?
+
 			playerData = getServer().getDatabase().getPlayerLoginData(username);
 
 			boolean isAdmin = getServer().getPacketFilter().isHostAdmin(getIpAddress());
 
-			if (getServer().getPacketFilter().getPasswordAttemptsCount(getIpAddress()) >= getServer().getConfig().MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES && !isAdmin) {
+			// TODO: check threshold for webclients, since they get associated IP 127.0.0.1
+			if (!getIpAddress().equals("127.0.0.1") && getServer().getPacketFilter().getPasswordAttemptsCount(getIpAddress()) >= getServer().getConfig().MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES && !isAdmin) {
 				return (byte) RegisterLoginResponse.LOGIN_ATTEMPTS_EXCEEDED;
 			}
 
@@ -202,11 +228,19 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 				return (byte) RegisterLoginResponse.ACCOUNT_TEMP_DISABLED;
 			}
 
-			if (getClientVersion() != getServer().getConfig().CLIENT_VERSION && !isAdmin && getClientVersion() > 235) {
-				return (byte) RegisterLoginResponse.CLIENT_UPDATED;
+			if (getClientVersion() != getServer().getConfig().CLIENT_VERSION && !isAdmin) {
+				if (getClientVersion() > 10000) {
+					if (getServer().getConfig().ENFORCE_CUSTOM_CLIENT_VERSION) {
+						return (byte) RegisterLoginResponse.CLIENT_UPDATED;
+					}
+				} else {
+					if (getServer().getConfig().WANT_CUSTOM_SPRITES) {
+						return (byte) RegisterLoginResponse.CLIENT_UPDATED;
+					}
+				}
 			}
 
-			if(getServer().getWorld().getPlayers().size() >= getServer().getConfig().MAX_PLAYERS && !isAdmin) {
+			if (getServer().getWorld().getPlayers().size() >= getServer().getConfig().MAX_PLAYERS && !isAdmin) {
 				return (byte) RegisterLoginResponse.WORLD_IS_FULL;
 			}
 
@@ -218,7 +252,9 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 				return (byte) RegisterLoginResponse.ACCOUNT_LOGGEDIN;
 			}
 
-			if(getServer().getPacketFilter().getPlayersCount(getIpAddress()) >= getServer().getConfig().MAX_PLAYERS_PER_IP && !isAdmin) {
+			// Disabled 127.0.0.1 since can't be tracked of abuse
+			if (((getServer().getConfig().IS_LOCALHOST_RESTRICTED && getIpAddress().equals("127.0.0.1"))
+				|| (!getIpAddress().equals("127.0.0.1") && getServer().getPacketFilter().getPlayersCount(getIpAddress()) >= getServer().getConfig().MAX_PLAYERS_PER_IP) && !isAdmin)) {
 				return (byte) RegisterLoginResponse.IP_IN_USE;
 			}
 
@@ -237,7 +273,9 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 			}
 
 			if (getServer().getConfig().WANT_REGISTRATION_LIMIT) {
-				boolean recentlyRegistered = getServer().getDatabase().checkRecentlyRegistered(getIpAddress());
+				int registerTimeout = applyHarshRegistration ? 720 : 1; //time in minutes
+				boolean recentlyRegistered = (getServer().getConfig().IS_LOCALHOST_RESTRICTED && getIpAddress().equals("127.0.0.1"))
+					|| (!getIpAddress().equals("127.0.0.1") && getServer().getDatabase().checkRecentlyRegistered(getIpAddress(), registerTimeout));
 				if (recentlyRegistered) {
 					LOGGER.info(getIpAddress() + " - Registration failed: Registered recently.");
 					return (byte) RegisterLoginResponse.LOGIN_ATTEMPTS_EXCEEDED; // closest match for authentic client
@@ -245,9 +283,14 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 			}
 
 			/* Create the game character */
-			final int playerId = getServer().getDatabase().createPlayer(getUsername(), getEmail(),
-				DataConversions.hashPassword(getPassword(), null),
-				System.currentTimeMillis() / 1000, getIpAddress());
+			int playerId;
+			if (!isSimRegister) {
+				playerId = getServer().getDatabase().createPlayer(getUsername(), getEmail(),
+					DataConversions.hashPassword(getPassword(), null),
+					System.currentTimeMillis() / 1000, getIpAddress());
+			} else {
+				playerId = 1;
+			}
 
 			if (playerId == -1) {
 				LOGGER.info(getIpAddress() + " - Registration failed: Player id not found.");
@@ -256,6 +299,10 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 		} catch (GameDatabaseException e) {
 			LOGGER.catching(e);
 			return (byte) RegisterLoginResponse.UNSUCCESSFUL;
+		}
+
+		if (!isSimRegister) {
+			System.out.println("Register was successful!");
 		}
 		return (byte) RegisterLoginResponse.REGISTER_SUCCESSFUL;
 	}

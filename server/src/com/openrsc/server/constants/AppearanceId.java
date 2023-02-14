@@ -6,26 +6,6 @@ import java.util.Map;
 import static com.openrsc.server.constants.AppearanceSlots.*;
 
 // Normally you should just do ItemDefinition.getAppearanceId(), but not all animations have items associated with them.
-
-class AppearanceSlots {
-	static final int NPC = -2;
-	static final int ANY = -1;
-	static final int HEAD = 0;
-	static final int SHIRT = 1;
-	static final int PANTS = 2;
-	static final int SHIELD = 3;
-	static final int WEAPON = 4;
-	static final int HAT = 5;
-	static final int BODY = 6;
-	static final int LEGS = 7;
-	static final int GLOVES = 8;
-	static final int BOOTS = 9;
-	static final int AMULET = 10;
-	static final int CAPE = 11;
-	static final int ARROW = 12;
-	static final int MORPHING_RING = 13;
-}
-
 public enum AppearanceId {
 	NOTHING(0, ANY),
 	SHORT_HAIR(1, HEAD),
@@ -229,8 +209,8 @@ public enum AppearanceId {
 	PASTEL_BLUE_GNOME_TOP(199, BODY),
 	PASTEL_YELLOW_GNOME_TOP(200, BODY),
 	PASTEL_CYAN_GNOME_TOP(201, BODY),
-	GREEN_ROBE(202, BODY), // NO ITEM (Unused, perhaps planned for Brimstail?)
-	GREEN_SKIRT(203, LEGS), // NO ITEM (Unused, perhaps planned for Brimstail?)
+	GREEN_ROBE(202, BODY), // NO ITEM (Used for Rashiliyia)
+	GREEN_SKIRT(203, LEGS), // NO ITEM (Used for Rashiliyia)
 	PASTEL_PINK_GNOME_BOOTS(204, BOOTS),
 	PASTEL_GREEN_GNOME_BOOTS(205, BOOTS),
 	PASTEL_BLUE_GNOME_BOOTS(206, BOOTS),
@@ -260,7 +240,28 @@ public enum AppearanceId {
 	BUNNY(473, NPC),
 	DUCK(474, NPC),
 	BUNNY_MORPH(475, MORPHING_RING),
-	EGG_MORPH(476, MORPHING_RING);
+	EGG_MORPH(476, MORPHING_RING),
+
+	DEATH_MASK(484, HAT),
+	YOYO_IN_HAND(485, WEAPON),
+	YOYO_UP_DOWN_ANIM1(486, WEAPON),
+	YOYO_UP_DOWN_ANIM2(487, WEAPON),
+	YOYO_UP_DOWN_ANIM3(488, WEAPON),
+	YOYO_UP_DOWN_ANIM4(489, WEAPON),
+	YOYO_CRAZY_1_OCLOCK(490, WEAPON),
+	YOYO_CRAZY_2_OCLOCK(491, WEAPON),
+	YOYO_CRAZY_3_OCLOCK(492, WEAPON),
+	YOYO_CRAZY_4_OCLOCK(493, WEAPON),
+	YOYO_CRAZY_5_OCLOCK(494, WEAPON),
+	YOYO_CRAZY_7_OCLOCK(495, WEAPON),
+	YOYO_CRAZY_8_OCLOCK(496, WEAPON),
+	YOYO_CRAZY_9_OCLOCK(497, WEAPON),
+	YOYO_CRAZY_10_OCLOCK(498, WEAPON),
+	YOYO_CRAZY_11_OCLOCK(499, WEAPON),
+	YOYO_CRAZY_12_OCLOCK(500, WEAPON),
+
+	OGRE_EARS(501, HAT),
+	LEATHER_VEST(502, BODY);
 
 	private int appearanceId;
 	private int wieldPosition;

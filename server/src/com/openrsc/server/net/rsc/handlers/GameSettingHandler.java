@@ -35,9 +35,9 @@ public final class GameSettingHandler implements PayloadProcessor<GameSettingStr
 			} else if (idx == 16) {
 				player.getCache().set("setting_volume_function", value);
 			} else if (idx == 17) {
-				player.getCache().store("setting_swipe_rotate", value == 1);
+				player.getCache().set("setting_swipe_rotate_mode", value);
 			} else if (idx == 18) {
-				player.getCache().store("setting_swipe_scroll", value == 1);
+				player.getCache().set("setting_swipe_scroll_mode", value);
 			} else if (idx == 19) {
 				player.getCache().set("setting_press_delay", value);
 			} else if (idx == 20) {
@@ -45,7 +45,7 @@ public final class GameSettingHandler implements PayloadProcessor<GameSettingStr
 			} else if (idx == 21) {
 				player.getCache().store("setting_hold_choose", value == 1);
 			} else if (idx == 22) {
-				player.getCache().store("setting_swipe_zoom", value == 1);
+				player.getCache().set("setting_swipe_zoom_mode", value);
 			} else if (idx == 23) {
 				player.getCache().set("setting_last_zoom", value);
 			} else if (idx == 24) {
@@ -84,6 +84,8 @@ public final class GameSettingHandler implements PayloadProcessor<GameSettingStr
 				player.getCache().store("setting_hide_login_box", value == 1);
 			} else if (idx == 41) {
 				player.getCache().store("setting_block_global_friend", value == 1);
+			} else if (idx == 42) {
+				player.getCache().store("setting_showunderground_flicker", value == 1);
 			}
 			return;
 		}
@@ -96,6 +98,7 @@ public final class GameSettingHandler implements PayloadProcessor<GameSettingStr
 				if (changesLeft > 0) {
 					player.setPkMode(payload.playerKiller);
 					player.setPkChanges(changesLeft - 1);
+					player.getUpdateFlags().setAppearanceChanged(true);
 				}
 			} else if (idx == 2) { // 2: Number of Mouse Buttons
 				player.getSettings().setGameSetting(PlayerSettings.GAME_SETTING_MOUSE_BUTTONS, payload.mouseButtonOne == 1);

@@ -4,6 +4,7 @@ import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.constants.Quests;
 import com.openrsc.server.event.SingleEvent;
+import com.openrsc.server.event.rsc.DuplicationStrategy;
 import com.openrsc.server.model.Cache;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
@@ -53,7 +54,11 @@ public class ErnestTheChicken implements QuestInterface,
 	@Override
 	public void handleReward(Player player) {
 		player.getCarriedItems().getInventory().add(new Item(ItemId.COINS.id(), 300));
-		player.message("Well done. You have completed the Ernest the chicken quest");
+		if (player.getConfig().INFLUENCE_INSTEAD_QP) {
+			player.message("Well done. You have completed the machine quest");
+		} else {
+			player.message("Well done. You have completed the Ernest the chicken quest");
+		}
 		final QuestReward reward = Quest.ERNEST_THE_CHICKEN.reward();
 		for (XPReward xpReward : reward.getXpRewards()) {
 			incStat(player, xpReward.getSkill().id(), xpReward.getBaseXP(), xpReward.getVarXP());
@@ -421,7 +426,7 @@ public class ErnestTheChicken implements QuestInterface,
 			player.getWorld().getServer().getGameEventHandler().add(
 				new SingleEvent(player.getWorld(), null,
 					config().GAME_TICK * 98,
-					"Ernest Chicken Delayed Change Ernest", true) {
+					"Ernest Chicken Delayed Change Ernest", DuplicationStrategy.ALLOW_MULTIPLE) {
 					@Override
 					public void action() {
 						changenpc(n, NpcId.ERNEST_CHICKEN.id(), true);

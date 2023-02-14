@@ -36,7 +36,7 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 	public void onTalkNpc(Player player, final Npc npc) {
 		if (npc.getID() == NpcId.GNOME_BANKER.id()) {
 			say(player, npc, "hello");
-			npcsay(player, npc, "good day to you sir");
+			npcsay(player, npc, player.getText("BankersGnomeBankerGoodDay"));
 		} else {
 			npcsay(player, npc, "Good day" + (npc.getID() == NpcId.JUNGLE_BANKER.id() ? " Bwana" : "") + ", how may I help you?");
 		}
@@ -49,7 +49,7 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				"What is this place?",
 				"I'd like to talk about bank pin",
 				"I'd like to collect my items from auction");
-		else if (config().WANT_BANK_PINS)
+		else if (config().WANT_BANK_PINS && !player.getBankPinOptOut())
 			menu = multi(player, npc,
 				"I'd like to access my bank account please",
 				"What is this place?",
@@ -70,11 +70,17 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				return;
 			}
 
+			// bankers outside of bank should not allow you to open bank.
+			if (!npc.getLocation().isInBank(config().BASED_MAP_DATA)) {
+				npc.walkToRespawn(); // not known to be authentic.
+				return;
+			}
+
 			if(validatebankpin(player, npc)) {
 				if (npc.getID() == NpcId.GNOME_BANKER.id()) {
-					npcsay(player, npc, "absolutely sir");
+					npcsay(player, npc, player.getText("BankersGnomeBankerAbsolutely"));
 				} else {
-					npcsay(player, npc, "Certainly " + (player.isMale() ? "Sir" : "Miss"));
+					npcsay(player, npc, player.getText("BankersRegularCertainly"));
 				}
 
 				if (!config().COIN_BANK && player.getClientLimitations().supportsItemBank) {
@@ -89,23 +95,43 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				npcsay(player, npc, "well it's the tree gnome bank off course", "a lot of custom passes through here",
 					"so a bank is essential in encouraging visitors");
 			} else {
-				npcsay(player, npc, "This is a branch of the bank of Runescape", "We have branches in many towns");
+				boolean isBankOfVarrock = config().COIN_BANK || player.getClientVersion() < 119;
+				if (isBankOfVarrock) {
+					npcsay(player, npc, "This is the bank of Varrock");
+				} else {
+					npcsay(player, npc, "This is a branch of the bank of Runescape", "We have branches in many towns");
+				}
+				ArrayList<String> options = new ArrayList<>();
+				options.add("And what do you do?");
+				if (!isBankOfVarrock) {
+					options.add("Didn't you used to be called the bank of Varrock");
+				}
+				String[] finalOptions = new String[options.size()];
 				int branchMenu = multi(player, npc, false, //do not send over
-					"And what do you do?",
-					"Didn't you used to be called the bank of Varrock");
+					options.toArray(finalOptions));
 				if (branchMenu == 0) {
 					say(player, npc, "And what do you do?");
-					npcsay(player, npc, "We will look after your items and money for you",
-						"So leave your valuables with us if you want to keep them safe");
-				} else if (branchMenu == 1) {
+					if (!config().COIN_BANK && player.getClientLimitations().supportsItemBank) {
+						npcsay(player, npc, "We will look after your items and money for you",
+							"So leave your valuables with us if you want to keep them safe");
+					} else {
+						npcsay(player, npc, "We will look after your money for you",
+							"So leave your valuable with us if you want to keep it safe");
+					}
+				} else if (branchMenu == 1 && !isBankOfVarrock) {
 					say(player, npc, "Didn't you used to be called the bank of Varrock?");
 					npcsay(player, npc, "Yes we did, but people kept on coming into our branches outside of varrock",
 						"And telling us our signs were wrong",
 						"As if we didn't know what town we were in or something!");
 				}
 			}
-		} else if (menu == 2 && config().WANT_BANK_PINS) {
-			int bankPinMenu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin");
+		} else if (menu == 2 && config().WANT_BANK_PINS && !player.getBankPinOptOut()) {
+			int bankPinMenu;
+			if (config().WANT_CUSTOM_SPRITES) {
+				bankPinMenu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin");
+			} else {
+				bankPinMenu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin", "Can you please never mention bank pins to me again?");
+			}
 			if (bankPinMenu == 0) {
 				if (!player.isUsingCustomClient()) {
 					npcsay(player, npc, "ok but i have to warn you that this is going to be pretty annoying.");
@@ -115,6 +141,10 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				changebankpin(player, npc);
 			} else if (bankPinMenu == 2) {
 				removebankpin(player, npc);
+			} else if (bankPinMenu == 3 && !config().WANT_CUSTOM_SPRITES) {
+				if (bankpinoptout(player, npc, true)) {
+					player.playerServerMessage(MessageType.QUEST, "You have successfully opted out of even THE MENTION of a bank pin.");
+				}
 			}
 		} else if ((menu == 2 || menu == 3) && config().SPAWN_AUCTION_NPCS) {
 			if(validatebankpin(player, npc)) {
@@ -135,7 +165,7 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 					quickFeature(n, player, false);
 				} else {
 					player.playerServerMessage(MessageType.QUEST, "Right click banking is a QoL feature which you are opted out of.");
-					player.playerServerMessage(MessageType.QUEST, "Consider using RSC+ so that you don't see the option.");
+					player.playerServerMessage(MessageType.QUEST, "Consider using an original RSC client so that you don't see the option.");
 				}
 			} else if (command.equalsIgnoreCase("Collect") && config().SPAWN_AUCTION_NPCS) {
 				quickFeature(n, player, true);
@@ -158,7 +188,8 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 	public boolean blockUseNpc(Player player, Npc npc, Item item) {
 		return (!player.isUsingCustomClient() && inArray(npc.getID(), BANKERS) && item.getNoted())
 			|| (inArray(npc.getID(), BANKERS) && player.getWorld().getServer().getConfig().RIGHT_CLICK_BANK
-			&& !item.getDef(player.getWorld()).getName().toLowerCase().endsWith("cracker"));
+				&& !item.getDef(player.getWorld()).getName().toLowerCase().endsWith("cracker"))
+			|| (inArray(npc.getID(), BANKERS) && item.getDef(player.getWorld()).getName().toLowerCase().contains("key"));
 	}
 
 	@Override
@@ -212,6 +243,21 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				Certer.exchangeMarketForBankCerts(player, npc, item);
 			}
 
+		} else if (item.getDef(player.getWorld()).getName().toLowerCase().contains("key") && player.getBankPinOptOut()) {
+			if (!npc.getDef().getName().toLowerCase().contains("gundai")) {
+				player.playerServerMessage(MessageType.QUEST, "There is a twinkle in the banker's eye");
+				delay(3);
+				npcsay(player, npc, "Ah, you want to re-enable bank pins!");
+				npcsay(player, npc, "I knew you had good common sense!");
+				npcsay(player, npc, "We're very glad at the Bank of Runescape to offer this enhanced security feature to you.");
+			}
+			player.getCache().remove("bankpin_optout");
+			if (!player.getBankPinOptOut()) {
+				player.playerServerMessage(MessageType.QUEST, "You can now talk to the banker about bank pins again!");
+			} else {
+				player.playerServerMessage(MessageType.QUEST, "Something went wrong opting-in to bankpins.");
+				player.playerServerMessage(MessageType.QUEST, "Please try opting-in again.");
+			}
 		} else if (player.getWorld().getServer().getConfig().RIGHT_CLICK_BANK) {
 			if (!player.getQolOptOut()) {
 				quickFeature(npc, player, false);
@@ -240,22 +286,37 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 	private void showCoinBank(Player player, Npc npc) {
 		// Transaction Menu
 		int transactionType = transactionMenu(player, npc);
+		boolean canDoTransaction = true;
 		if (transactionType == 0) {
-			player.message("How much would you like to withdraw?");
+			int maxBank = player.getBank().countId(ItemId.COINS.id());
+			if (maxBank > 0) {
+				player.message("How much would you like to withdraw?");
+			} else {
+				canDoTransaction = false;
+				player.message("There are no coins in your bank");
+				delay(2);
+			}
 		} else if (transactionType == 1) {
-			player.message("How much would you like to deposit?");
+			int maxHeld = player.getCarriedItems().getInventory().countId(ItemId.COINS.id());
+			if (maxHeld > 0) {
+				player.message("How much would you like to deposit?");
+			} else {
+				canDoTransaction = false;
+				player.message("You do not have coins in your inventory");
+				delay(2);
+			}
 		}
 
 		int amountChoice;
 		int requestedAmount = 0;
 
 		// Amount
-		if (transactionType != 2) {
+		if (transactionType != 2 && canDoTransaction) {
 			amountChoice = amountMenu(player, npc, transactionType);
 			if (amountChoice < 0)
 				return;
 
-			final int[] possibleAmounts = new int[]{1, 10, 100, 1000, 2500};
+			final int[] possibleAmounts = new int[]{1, 10, 50, 250, 2500};
 			requestedAmount = possibleAmounts[amountChoice];
 		}
 
@@ -289,38 +350,56 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 			return -1;
 
 		ArrayList<String> options = new ArrayList<>();
-		Collections.addAll(options,
-			"1 gp",
-			"10 gp",
-			"100 gp"); // early on there was no 1000 nor 2500 options. 1000 option added in 12 June 2001, 2500 unmentioned hidden update
-		// We will allow those options as well if world is item bank
-		// per Leclerc the amounts were like they were
-		if (!player.getConfig().COIN_BANK) {
-			Collections.addAll(options,
-				"1000 gp",
-				"2500 gp");
+
+		// early on there was no 1000 / 2500 option. 1000 option added in 12 June 2001, possible change to 2500 unmentioned hidden update
+		// We will allow that option if world is item bank
+		// per "thehate" the amounts of coin bank initially were 1/10/50
+		Collections.addAll(options, "1 gp");
+		switch(transactionType) {
+			case 0: // withdraw
+				int maxBank = player.getBank().countId(ItemId.COINS.id());
+				if (maxBank >= 10) Collections.addAll(options, "10 gp");
+				if (maxBank >= 50) Collections.addAll(options, "50 gp");
+				if (maxBank >= 250) Collections.addAll(options, "250 gp");
+				if (maxBank >= 2500 && !player.getConfig().COIN_BANK) Collections.addAll(options, "2500 gp");
+				break;
+			case 1: // deposit
+				int maxHeld = player.getCarriedItems().getInventory().countId(ItemId.COINS.id());
+				if (maxHeld >= 10) Collections.addAll(options, "10 gp");
+				if (maxHeld >= 50) Collections.addAll(options, "50 gp");
+				if (maxHeld >= 250) Collections.addAll(options, "250 gp");
+				if (maxHeld >= 2500 && !player.getConfig().COIN_BANK) Collections.addAll(options, "2500 gp");
+				break;
 		}
+
 		String[] finalOptions = new String[options.size()];
 
-		return multi(player, options.toArray(finalOptions));
+		int selection = multi(player, options.toArray(finalOptions));
+
+		return selection >= 0 && selection < finalOptions.length ? selection : -1;
 	}
 
 	private void withdraw(Player player, Npc npc, int amount) {
-		if (player.getBank().countId(ItemId.COINS.id()) >= amount) {
-			player.getBank().remove(ItemId.COINS.id(), amount, false);
-			give(player, ItemId.COINS.id(), amount);
-		} else {
-			player.message("Sorry you don't have enough balance to complete the transaction");
+		if (amount > 0) {
+			if (player.getBank().countId(ItemId.COINS.id()) >= amount) {
+				player.getBank().remove(ItemId.COINS.id(), amount, false);
+				give(player, ItemId.COINS.id(), amount);
+			} else {
+				player.message("Sorry you don't have enough balance to complete the transaction");
+			}
 		}
 		askAnotherTransaction(player, npc);
 	}
 
 	private void deposit(Player player, Npc npc, int amount) {
-		if (ifheld(player, ItemId.COINS.id(), amount)) {
-			player.getCarriedItems().remove(new Item(ItemId.COINS.id(), amount));
-			player.getBank().add(new Item(ItemId.COINS.id(), amount));
-		} else {
-			player.message("Sorry you don't have enough gold to complete the transaction");
+		if (amount > 0) {
+			if (ifheld(player, ItemId.COINS.id(), amount)) {
+				if (player.getCarriedItems().remove(new Item(ItemId.COINS.id(), amount)) != -1) {
+					player.getBank().add(new Item(ItemId.COINS.id(), amount));
+				}
+			} else {
+				player.message("Sorry you don't have enough gold to complete the transaction");
+			}
 		}
 		askAnotherTransaction(player, npc);
 	}

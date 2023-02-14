@@ -111,6 +111,7 @@ public class PayloadCustomGenerator implements PayloadGenerator<OpcodeOut> {
 		put(OpcodeOut.SEND_SLEEP_FATIGUE, 244);
 		put(OpcodeOut.SEND_OPTIONS_MENU_OPEN, 245);
 		put(OpcodeOut.SEND_BANK_UPDATE, 249);
+		put(OpcodeOut.SEND_UNLOCKED_APPEARANCES, 250);
 		put(OpcodeOut.SEND_OPTIONS_MENU_CLOSE, 252);
 		put(OpcodeOut.SEND_DUEL_OTHER_ACCEPTED, 253);
 		put(OpcodeOut.SEND_EQUIPMENT, 254); // custom
@@ -137,7 +138,6 @@ public class PayloadCustomGenerator implements PayloadGenerator<OpcodeOut> {
 			switch (payload.getOpcode()) {
 				// not currently implemented
 				case SEND_28_BYTES_UNUSED:
-				case SEND_UPDATE_IGNORE_LIST_BECAUSE_NAME_CHANGE:
 					break;
 
 				// no payload opcodes
@@ -359,7 +359,8 @@ public class PayloadCustomGenerator implements PayloadGenerator<OpcodeOut> {
 				case SEND_FATIGUE:
 				case SEND_SLEEP_FATIGUE:
 					FatigueStruct fs = (FatigueStruct) payload;
-					builder.writeShort(fs.serverFatigue / (player.MAX_FATIGUE / 100));
+					builder.writeShort(fs.serverFatigue / (player.MAX_FATIGUE / 100)); // backwards compatible with old custom clients
+					builder.writeShort(fs.serverFatigue / (player.MAX_FATIGUE / 750)); // authentic higher precision, if client wants to read it
 					break;
 
 				case SEND_PLAY_SOUND:
@@ -535,9 +536,18 @@ public class PayloadCustomGenerator implements PayloadGenerator<OpcodeOut> {
 					for (int i = 0; i < ignoreSize; i++) {
 						builder.writeString(il.name[i]);
 						builder.writeString(il.name[i]);
-						builder.writeString(il.name[i]); // TODO: check if can be former name
-						builder.writeString(il.name[i]);
+						builder.writeString(il.formerName[i]);
+						builder.writeString(il.formerName[i]);
 					}
+					break;
+
+				case SEND_UPDATE_IGNORE_LIST_BECAUSE_NAME_CHANGE:
+					IgnoreListStruct uil = (IgnoreListStruct) payload;
+					builder.writeString(uil.name[0]);
+					builder.writeString(uil.name[0]);
+					builder.writeString(uil.formerName[0]);
+					builder.writeString(uil.formerName[0]);
+					builder.writeByte((byte)(uil.updateExisting ? 1 : 0));
 					break;
 
 				case SEND_INVENTORY:
@@ -953,6 +963,38 @@ public class PayloadCustomGenerator implements PayloadGenerator<OpcodeOut> {
 					builder.writeByte((byte) pss.allowSearchJoin);
 					builder.writeByte((byte) pss.allowSetting0);
 					builder.writeByte((byte) pss.allowSetting1);
+					break;
+
+				case SEND_UNLOCKED_APPEARANCES:
+					UnlockedAppearancesStruct uas = (UnlockedAppearancesStruct) payload;
+
+					builder.writeInt(uas.unlockedHairStyles.length);
+					builder.writeInt(uas.unlockedBodyTypes.length);
+					builder.writeInt(uas.unlockedSkinColours.length);
+					builder.writeInt(uas.unlockedHairColours.length);
+					builder.writeInt(uas.unlockedTopColours.length);
+					builder.writeInt(uas.unlockedBottomColours.length);
+
+					builder.startBitAccess();
+					for (int i = 0; i < uas.unlockedHairStyles.length; i++) {
+						builder.writeBits(uas.unlockedHairStyles[i] ? 1 : 0, 1);
+					}
+					for (int i = 0; i < uas.unlockedBodyTypes.length; i++) {
+						builder.writeBits(uas.unlockedBodyTypes[i] ? 1 : 0, 1);
+					}
+					for (int i = 0; i < uas.unlockedSkinColours.length; i++) {
+						builder.writeBits(uas.unlockedSkinColours[i] ? 1 : 0, 1);
+					}
+					for (int i = 0; i < uas.unlockedHairColours.length; i++) {
+						builder.writeBits(uas.unlockedHairColours[i] ? 1 : 0, 1);
+					}
+					for (int i = 0; i < uas.unlockedTopColours.length; i++) {
+						builder.writeBits(uas.unlockedTopColours[i] ? 1 : 0, 1);
+					}
+					for (int i = 0; i < uas.unlockedBottomColours.length; i++) {
+						builder.writeBits(uas.unlockedBottomColours[i] ? 1 : 0, 1);
+					}
+					builder.finishBitAccess();
 					break;
 			}
 		}

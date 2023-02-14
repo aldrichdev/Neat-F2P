@@ -132,7 +132,58 @@ public final class mudclient implements Runnable {
 		16728064, 0xFFFFFF, '\uff00', '\uffff'};
 	private final ORSCharacter[] players = new ORSCharacter[500];
 	private final ORSCharacter[] playerServer = new ORSCharacter[4000];
-	private final int[] playerSkinColors = new int[]{15523536, 13415270, 11766848, 10056486, 9461792};
+	private final int[] playerSkinColors = new int[]{
+		// original player skin colours
+		0xECDED0, 0xCCB366, 0xB38C40, 0x997326, 0x906020,
+
+		// authentic npc skin colours (with previously used colours removed)
+		0x000000, 0x000004, 0x0066FF, 0x009000, 0x3CB371,
+		0x55BFEE, 0x55CFFF, 0x604020, 0x663300, 0x6F5737,
+		0x705010, 0x804000, 0x996633, 0x999999, 0xAC9E90,
+		0xDCC399, 0xDCCEA0, 0xDCFFD0, 0xDD3040, 0xEADED2,
+		0xECEED0, 0xECFED0, 0xECFFD0, 0xFCEEE0, 0xFF3333,
+		0xFF9F55, 0xFFDED2, 0xFFFEF0, 0xFFFFFF,
+
+		0x00A0A0, // teal
+		0xFFFF00, // yellow
+		0xFF69B4, // hot pink
+		0x0180A2, // rsc zombie
+		0x86668e, // evequill purple
+		0x663399, // rebecca purple
+		0xB5FF1D, // easter ogre
+		0xA0C0C0, // silver man
+		0x608080, // coal woman
+	};
+	public boolean[] unlockedSkinColours = new boolean[] {
+		// original player skin colours
+		// 0xECDED0, 0xCCB366, 0xB38C40, 0x997326, 0x906020, 4
+		true, true, true, true, true,
+
+		// authentic npc skin colours (with previously used colours removed)
+		// 0x000000, 0x000004, 0x0066FF, 0x009000, 0x3CB371, 9
+		false, false, false, false, false,
+		// 0x55BFEE, 0x55CFFF, 0x604020, 0x663300, 0x6F5737, 14
+		false, false, false, false, false,
+		// 0x705010, 0x804000, 0x996633, 0x999999, 0xAC9E90, 19
+		false, false, false, false, false,
+		// 0xDCC399, 0xDCCEA0, 0xDCFFD0, 0xDD3040, 0xEADED2, 24
+		false, false, false, false, false,
+		// 0xECEED0, 0xECFED0, 0xECFFD0, 0xFCEEE0, 0xFF3333, 29
+		false, false, false, false, false,
+		// 0xFF9F55, 0xFFDED2, 0xFFFEF0, 0xFFFFFF, // 33
+		false, false, false, false,
+
+		false, // 0x00A0A0, // teal 34
+		false, // 0xFFFF00, // yellow 35
+		false, // 0xFF69B4, // hot pink 36
+		false, // 0x0180A2, // rsc zombie 37
+		false, // 0x86668e, // evequill purple 38
+		false, // 0x663399, // rebecca purple 39
+		false, // 0xB5FF1D, // easter ogre 40
+		false, // 0xA0C0C0, // silver man 41
+		false, // 0x608080, // coal woman 42
+	};
+
 	private final boolean[] prayerOn = new boolean[50];
 	private final int projectileMaxRange = 40;
 	private final int[] shopItemCount = new int[256];
@@ -213,7 +264,7 @@ public final class mudclient implements Runnable {
 			|| S_FOG_TOGGLE || S_GROUND_ITEM_TOGGLE
 			|| S_AUTO_MESSAGE_SWITCH_TOGGLE || S_BATCH_PROGRESSION
 			|| S_SIDE_MENU_TOGGLE || S_INVENTORY_COUNT_TOGGLE
-			|| S_MENU_COMBAT_STYLE_TOGGLE
+			|| S_MENU_COMBAT_STYLE_TOGGLE || S_SHOW_UNDERGROUND_FLICKER_TOGGLE
 			|| S_FIGHTMODE_SELECTOR_TOGGLE || S_SHOW_ROOF_TOGGLE
 			|| S_EXPERIENCE_COUNTER_TOGGLE || S_WANT_GLOBAL_CHAT
 			|| S_EXPERIENCE_DROPS_TOGGLE || S_ITEMS_ON_DEATH_MENU
@@ -382,6 +433,7 @@ public final class mudclient implements Runnable {
 	private boolean errorLoadingMemory = false;
 	private int[] experienceArray = new int[S_PLAYER_LEVEL_LIMIT];
 	private int fatigueSleeping = 0;
+	private int fatigueSleepingAuthentic = 0;
 	private int gameHeight = 334;
 	private int gameObjectInstanceCount = 0;
 	private final int[] gameObjectInstanceZ = new int[5000];
@@ -563,6 +615,7 @@ public final class mudclient implements Runnable {
 	private int sleepWordDelayTimer = 0;
 	private int spriteCount = 0;
 	private int statFatigue = 0;
+	private int statFatigueAuthentic = 0;
 	private int statKills2 = 0;
 	private int expShared = 0;
 	private int petFatigue = 0;
@@ -603,6 +656,7 @@ public final class mudclient implements Runnable {
 	private Panel menuNewUser;
 	private int menuNewUserUsername;
 	private int menuNewUserPassword;
+	private int menuNewUserConfirmPassword;
 	private int menuNewUserEmail;
 	private int menuNewUserStatus;
 	private int menuNewUserStatus2;
@@ -629,11 +683,11 @@ public final class mudclient implements Runnable {
 	private int questGuideProgress;
 	private String questGuideStartWho;
 	private String questGuideStartWhere;
-	private final String[] questGuideStartWhos = {"Sir Amik Varze", "the Cook", "the Gypsy", "Doric", "the Priest", "the Bertender", "Veronica", "Wizard Mizgog", "Redbeard Frank", "Chancellor Hassan", "Romeo", "Fred the Farmer", "Reldo", "the Squire", "Morgan", "Hetty", "the Guildmaster", "a boy", "the Adventurers", "Achetties", "Kaqemeex", "King Arthur", "Thormac", "Dimintheis", "Kangai Mau", "a mountain dwarf", "Brother Omad", "Lucien", "Brother Kojo", "King Arthur", "Lady Servil", "Bolren", "Ceril Carnillean", "Councillor Halgrive", "Edmond", "Caroline", "Almera", "Elena", "Trufitus", "King Narnode Shareen", "Mosol Rei", "King Lathas", "Observatory Professor", "Irena", "Watchtower Wizard", "Captain Lawgof", "a Gaurd", "an Examiner", "Gertrude", "Sir Radimus Erkle", "Duke Horacio"};
-	private final String[] questGuideStartWheres = {"on the first floor of the White Knight's Castle in Falador", "on the first floor of Lumbridge Castle", "in Varrock Square", "north of Falador", "in the Lumbridge church", "inside the Rusty Anchor bar in Port Sarim", "outside of Draynor Manor", "on the top floor of the Wizard's Tower", "in Port Sarim", "inside Al-Kharid palace", "in Varrock Square", "north of Lumbridge", "in the Varrock Palace Library", "on the White Knight Castle grounds in Falador", "in Draynor Village", "in Rimmington", "inside the Champion's Guild", "in Taverly", "in the Lumbridge swamp", "outside of the Heroes' Guild north of Taverly", "at the Druid's Stone Circle in Taverly", "in Camelot", "on the top floor fo the Sorcerer's Tower south of Seer's Village", "in eastern Varrock", "in The Shrimp and Parrot pub in Brimhaven", "on either side of the White Wolf Mountain passage", "in the Monastery south of East Ardougne", "in the Flying Horse Inn on the western end of East Ardougne", "inside the Clock Tower south of East Ardougne", "in Camelot", "west of Port Khazard", "in Tree Gnome Village", "south of the Ardougne Castle", "outside of the East Ardougne church", "north of the Ardougne Castle", "east of Ardougne", "northeast of Baxtorian Falls", "north of the Ardougne Castle", "north-east of Tai Bwo Wannai", "in the Grand Tree", "outside of Shilo Village in southern Karamja", "on the ground floor of Ardougne Castle", "in the Observatory reception room west of the Tree Gnome Village", "outside the Shantay Pass in the Kharidian desert", "at the top of the Watchtower north of Yanille", "far north-east of Seer's Village", "in the Sinclair Mansion north of Camelot", "in the Exam Centre south of the Digsite", "at her house west of Varrock", "inside the Legend's Guild", "inside of Lumbridge Castle"};
+	private final String[] questGuideStartWhos = {"Sir Amik Varze", "the Cook", "the Gypsy", "Doric", "the Priest", "the Bertender", "Veronica", "Wizard Mizgog", "Redbeard Frank", "Chancellor Hassan", "Romeo", "Fred the Farmer", "Reldo", "the Squire", "Morgan", "Hetty", "the Guildmaster", "a boy", "the Adventurers", "Achetties", "Kaqemeex", "King Arthur", "Thormac", "Dimintheis", "Kangai Mau", "a mountain dwarf", "Brother Omad", "Lucien", "Brother Kojo", "King Arthur", "Lady Servil", "Bolren", "Ceril Carnillean", "Councillor Halgrive", "Edmond", "Caroline", "Almera", "Elena", "Trufitus", "King Narnode Shareen", "Mosol Rei", "King Lathas", "Observatory Professor", "Irena", "Watchtower Wizard", "Captain Lawgof", "a Gaurd", "an Examiner", "Gertrude", "Sir Radimus Erkle", "Duke Horacio", "the Ogre"};
+	private final String[] questGuideStartWheres = {"on the first floor of the White Knight's Castle in Falador", "on the first floor of Lumbridge Castle", "in Varrock Square", "north of Falador", "in the Lumbridge church", "inside the Rusty Anchor bar in Port Sarim", "outside of Draynor Manor", "on the top floor of the Wizard's Tower", "in Port Sarim", "inside Al-Kharid palace", "in Varrock Square", "north of Lumbridge", "in the Varrock Palace Library", "on the White Knight Castle grounds in Falador", "in Draynor Village", "in Rimmington", "inside the Champion's Guild", "in Taverly", "in the Lumbridge swamp", "outside of the Heroes' Guild north of Taverly", "at the Druid's Stone Circle in Taverly", "in Camelot", "on the top floor fo the Sorcerer's Tower south of Seer's Village", "in eastern Varrock", "in The Shrimp and Parrot pub in Brimhaven", "on either side of the White Wolf Mountain passage", "in the Monastery south of East Ardougne", "in the Flying Horse Inn on the western end of East Ardougne", "inside the Clock Tower south of East Ardougne", "in Camelot", "west of Port Khazard", "in Tree Gnome Village", "south of the Ardougne Castle", "outside of the East Ardougne church", "north of the Ardougne Castle", "east of Ardougne", "northeast of Baxtorian Falls", "north of the Ardougne Castle", "north-east of Tai Bwo Wannai", "in the Grand Tree", "outside of Shilo Village in southern Karamja", "on the ground floor of Ardougne Castle", "in the Observatory reception room west of the Tree Gnome Village", "outside the Shantay Pass in the Kharidian desert", "at the top of the Watchtower north of Yanille", "far north-east of Seer's Village", "in the Sinclair Mansion north of Camelot", "in the Exam Centre south of the Digsite", "at her house west of Varrock", "inside the Legend's Guild", "inside of Lumbridge Castle", "in the Lumbridge swamp"};
 	private String[] questGuideRequirement;
 	private String[] questGuideReward;
-	private final String[][] questGuideRequirements = {{"12 quest points"}, {"None"}, {"Ability to defeat a level 30 demon"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"A friend to assist"}, {"10 Mining", "A friend to assist"}, {"Ability to defeat a level 43 vampire"}, {"None"}, {"32 Quest Points", "33 Magic", "The ability to defeat a level 110 dragon"}, {"Ability to defeat a level 54 shapeshifter"}, {"31 Crafting", "36 Woodcutting", "Ability to defeat a level 95 monster"}, {"Completed Shield of Arrav, Dragon Slayer, Merlin's Crystal, and Lost City", "56 Quest Points", "53 Cooking", "53 Fishing", "25 Herblaw", "50 Mining"}, {"None"}, {"Ability to defeat a level 58 knight", "A friend to assist"}, {"Completed the Barbarian Bar Crawl", "31 Prayer"}, {"40 Mining", "40 Smithing", "40 Crafting", "59 Magic"}, {"21 Thieving"}, {"10 Fishing"}, {"None"}, {"42 Thieving", "35 Ranged", "Ability to defeat a level 63 monster with ranged"}, {"None"}, {"Completed Merlin's Crystal", "20 Attack", "Ability to defeat a level 146 Black Knight Titan"}, {"Ability to defeat a level 122 monster"}, {"None"}, {"None"}, {"None"}, {"None"}, {"30 Firemaking"}, {"None"}, {"Completed Plague City"}, {"Completed Druidic Ritual", "3 Herblaw"}, {"25 Agility", "Ability to defeat a level 184 monster"}, {"Completed Jungle Potion", "32 Agility", "20 Crafting", "4 Smithing", "Ability to defeat a level 83 monsters"}, {"Completed Biohazard", "25 Ranged"}, {"10 Crafting"}, {"10 Fletching", "10 Smithing", "Ability to defeat a level 47 enemy"}, {"40 Mining", "30 Agility", "15 Thieving", "14 Herblaw", "14 Magic", "Ability to defeat a level 68 ogre"}, {"None"}, {"None"}, {"Completed Druidic Ritual", "25 Thieving", "10 Agility", "10 Herblaw"}, {"None"}, {"108 Quest Points", "50 Agility", "50 Crafting", "45 Herblaw", "56 Magic", "52 Mining", "42 Prayer", "50 Smithing", "50 Strength", "50 Thieving", "50 Woodcutting", "Ability to defeat a level 172 demon"}, {"None"}};
+	private final String[][] questGuideRequirements = {{"12 quest points"}, {"None"}, {"Ability to defeat a level 30 demon"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"None"}, {"A friend to assist"}, {"10 Mining", "A friend to assist"}, {"Ability to defeat a level 43 vampire"}, {"None"}, {"32 Quest Points", "33 Magic", "The ability to defeat a level 110 dragon"}, {"Ability to defeat a level 54 shapeshifter"}, {"31 Crafting", "36 Woodcutting", "Ability to defeat a level 95 monster"}, {"Completed Shield of Arrav, Dragon Slayer, Merlin's Crystal, and Lost City", "56 Quest Points", "53 Cooking", "53 Fishing", "25 Herblaw", "50 Mining"}, {"None"}, {"Ability to defeat a level 58 knight", "A friend to assist"}, {"Completed the Barbarian Bar Crawl", "31 Prayer"}, {"40 Mining", "40 Smithing", "40 Crafting", "59 Magic"}, {"21 Thieving"}, {"10 Fishing"}, {"None"}, {"42 Thieving", "35 Ranged", "Ability to defeat a level 63 monster with ranged"}, {"None"}, {"Completed Merlin's Crystal", "20 Attack", "Ability to defeat a level 146 Black Knight Titan"}, {"Ability to defeat a level 122 monster"}, {"None"}, {"None"}, {"None"}, {"None"}, {"30 Firemaking"}, {"None"}, {"Completed Plague City"}, {"Completed Druidic Ritual", "3 Herblaw"}, {"25 Agility", "Ability to defeat a level 184 monster"}, {"Completed Jungle Potion", "32 Agility", "20 Crafting", "4 Smithing", "Ability to defeat a level 83 monsters"}, {"Completed Biohazard", "25 Ranged"}, {"10 Crafting"}, {"10 Fletching", "10 Smithing", "Ability to defeat a level 47 enemy"}, {"40 Mining", "30 Agility", "15 Thieving", "14 Herblaw", "14 Magic", "Ability to defeat a level 68 ogre"}, {"None"}, {"None"}, {"Completed Druidic Ritual", "25 Thieving", "10 Agility", "10 Herblaw"}, {"None"}, {"108 Quest Points", "50 Agility", "50 Crafting", "45 Herblaw", "56 Magic", "52 Mining", "42 Prayer", "50 Smithing", "50 Strength", "50 Thieving", "50 Woodcutting", "Ability to defeat a level 172 demon"}, {"None"}, {"5 Crafting"}};
 	private String[][] questGuideRewards;
 	private String skillToDo;
 	private long time;
@@ -1920,7 +1974,8 @@ public final class mudclient implements Runnable {
 			this.controlButtonAppearanceHair2 = this.panelAppearance.addButton(40 + var4 + var6, yFromTopDistance, 20, 20);
 			yFromTopDistance += 50;
 			this.panelAppearance.addDecoratedBox((var6 - var4), yFromTopDistance, 53, 41);
-			this.panelAppearance.addCenteredText(var6 - var4, yFromTopDistance, "Gender", 1, true);
+			this.panelAppearance.addCenteredText(var6 - var4, yFromTopDistance - 8, "Body", 1, true);
+			this.panelAppearance.addCenteredText(var6 - var4, yFromTopDistance + 8, "Type", 1, true);
 			this.panelAppearance.addSprite(var6 - var4 - 40, yFromTopDistance, spriteSelect(GUIPARTS.LEFTARROW.getDef()));
 			this.controlButtonAppearanceGender1 = this.panelAppearance.addButton(var6 - 40 - var4, yFromTopDistance, 20, 20);
 			this.panelAppearance.addSprite(40 - var4 + var6, yFromTopDistance, spriteSelect(GUIPARTS.RIGHTARROW.getDef()));
@@ -2113,16 +2168,24 @@ public final class mudclient implements Runnable {
 				menuNewUser.addCenteredText(halfGameWidth() - 6, halfGameHeight() - 38, "@whi@Password must be at least between 4 and 20 characters long", 1, false);
 				menuNewUser.addCenteredText(halfGameWidth() - 6, halfGameHeight() - 27, "@red@(DO NOT use the same password that you use elsewhere. Regular letters and numbers only)", 0, false);
 
-				menuNewUser.addButtonBackground(halfGameWidth() - 6, halfGameHeight() - 1, 420, 34);
-				menuNewUser.addCenteredText(halfGameWidth() - 6, halfGameHeight() - 6, "Choose a Password (You will require this to login)", 4, false);
-				menuNewUserPassword = menuNewUser.addCenteredTextEntry(halfGameWidth(), halfGameHeight() + 7, 200, 20, 40, 4, true, false);
+				menuNewUser.addButtonBackground(halfGameWidth() - 106 - 6, halfGameHeight() - 1, 208, 34);
+				menuNewUser.addCenteredText(halfGameWidth() - 106 - 6, halfGameHeight() - 6, "Choose a Password", 4, false);
+				menuNewUserPassword = menuNewUser.addCenteredTextEntry(halfGameWidth() - 106 - 6, halfGameHeight() + 7, 100, 20, 40, 4, true, false);
+
+				menuNewUser.addButtonBackground(halfGameWidth() + 106 - 6, halfGameHeight() - 1, 208, 34);
+				menuNewUser.addCenteredText(halfGameWidth() + 106 - 6, halfGameHeight() - 6, "Confirm Password", 4, false);
+				menuNewUserConfirmPassword = menuNewUser.addCenteredTextEntry(halfGameWidth() + 106 - 6, halfGameHeight() + 7, 100, 20, 40, 4, true, false);
 			} else { // leaves space for the email box below
 				menuNewUser.addCenteredText(halfGameWidth() - 6, halfGameHeight() - 64, "@whi@Password must be at least between 4 and 20 characters long", 1, false);
 				menuNewUser.addCenteredText(halfGameWidth() - 6, halfGameHeight() - 53, "@red@(DO NOT use the same password that you use elsewhere. Regular letters and numbers only)", 0, false);
 
-				menuNewUser.addButtonBackground(halfGameWidth() - 6, halfGameHeight() - 28, 420, 34);
-				menuNewUser.addCenteredText(halfGameWidth() - 6, halfGameHeight() - 37, "Choose a Password (You will require this to login)", 4, false);
-				menuNewUserPassword = menuNewUser.addCenteredTextEntry(halfGameWidth(), halfGameHeight() - 20, 200, 20, 40, 4, true, false);
+				menuNewUser.addButtonBackground(halfGameWidth() - 106 - 6, halfGameHeight() - 28, 208, 34);
+				menuNewUser.addCenteredText(halfGameWidth() - 106 - 6, halfGameHeight() - 37, "Choose a Password", 4, false);
+				menuNewUserPassword = menuNewUser.addCenteredTextEntry(halfGameWidth() - 106 - 6, halfGameHeight() - 20, 100, 20, 40, 4, true, false);
+
+				menuNewUser.addButtonBackground(halfGameWidth() + 106 - 6, halfGameHeight() - 28, 208, 34);
+				menuNewUser.addCenteredText(halfGameWidth() + 106 - 6, halfGameHeight() - 37, "Confirm Password", 4, false);
+				menuNewUserConfirmPassword = menuNewUser.addCenteredTextEntry(halfGameWidth() + 106 - 6, halfGameHeight() - 20, 100, 20, 40, 4, true, false);
 			}
 
 			if (wantEmail()) {
@@ -2600,7 +2663,11 @@ public final class mudclient implements Runnable {
 	}
 
 	public Sprite spriteSelect(ItemDef item) {
-		return getSurface().spriteSelect(item);
+		try {
+			return getSurface().spriteSelect(item);
+		} catch (NullPointerException ex) {
+			return Sprite.getUnknownSprite(48, 32);
+		}
 	}
 
 	public Sprite spriteSelect(AnimationDef animation, int offset) {
@@ -4998,10 +5065,12 @@ public final class mudclient implements Runnable {
 					if (C_SHOW_GROUND_ITEMS != 1) {
 
 						for (centerX = 0; centerX < this.groundItemCount; ++centerX) {
-							if (C_SHOW_GROUND_ITEMS == 3
-								&& (this.groundItemID[centerX] == 20 || this.groundItemID[centerX] == 814 || this.groundItemID[centerX] == 413 || this.groundItemID[centerX] == 604))
+							if (C_SHOW_GROUND_ITEMS == 4 && (this.groundItemID[centerX] == 181)) {
 								continue;
-							else if (C_SHOW_GROUND_ITEMS == 2 && (this.groundItemID[centerX] != 20 && this.groundItemID[centerX] != 814 && this.groundItemID[centerX] != 413 && this.groundItemID[centerX] != 604)) {
+							} else if (C_SHOW_GROUND_ITEMS == 3
+								&& (this.groundItemID[centerX] == 20 || this.groundItemID[centerX] == 814 || this.groundItemID[centerX] == 413 || this.groundItemID[centerX] == 604)) {
+								continue;
+							} else if (C_SHOW_GROUND_ITEMS == 2 && (this.groundItemID[centerX] != 20 && this.groundItemID[centerX] != 814 && this.groundItemID[centerX] != 413 && this.groundItemID[centerX] != 604)) {
 								continue;
 							}
 							centerZ = this.groundItemX[centerX] * this.tileSize + 64;
@@ -5036,10 +5105,12 @@ public final class mudclient implements Runnable {
 					this.getSurface().interlace = false;
 					this.getSurface().blackScreen(true);
 					this.getSurface().interlace = this.interlace;
-					if (this.lastHeightOffset == 3) {
-						centerX = 40 + (int) (3.0D * Math.random());
-						centerZ = (int) (7.0D * Math.random()) + 40;
-						this.scene.setFrustum(-50, centerZ, 0, -50, centerX, -10);
+					if (!C_HIDE_UNDERGROUND_FLICKER) {
+						if (this.lastHeightOffset == 3) {
+							centerX = 40 + (int) (3.0D * Math.random());
+							centerZ = (int) (7.0D * Math.random()) + 40;
+							this.scene.setFrustum(-50, centerZ, 0, -50, centerX, -10);
+						}
 					}
 
 					this.characterBubbleCount = 0;
@@ -5334,14 +5405,14 @@ public final class mudclient implements Runnable {
 							uiX += uiWidth + 15;
 							this.getSurface().drawBoxAlpha(uiX, uiY, uiWidth, uiHeight, 0x659CDE, 160);
 							this.getSurface().drawBoxBorder(uiX, uiWidth, uiY, uiHeight, 0);
-							this.getSurface().drawString("@whi@PK", uiX + 25, uiY + 20, 0xffffff, 1);
+							this.getSurface().drawString("@whi@Wiki", uiX + 18, uiY + 20, 0xffffff, 1);
 							if (this.mouseButtonClick != 0) {
 								if (this.mouseX >= uiX && this.mouseX <= uiX + uiWidth && this.mouseY >= uiY && this.mouseY <= uiY + uiHeight) {
 									this.mouseButtonClick = 0;
-									this.panelMessageTabs.setText(this.panelMessageEntry, "::p ");
+									this.panelMessageTabs.setText(this.panelMessageEntry, "::wiki ");
 								}
 							}
-							if (S_WANT_CLANS) {
+							/*if (S_WANT_CLANS) {
 								uiX += uiWidth + 15;
 								this.getSurface().drawBoxAlpha(uiX, uiY, uiWidth, uiHeight, 0x659CDE, 160);
 								this.getSurface().drawBoxBorder(uiX, uiWidth, uiY, uiHeight, 0);
@@ -5362,7 +5433,7 @@ public final class mudclient implements Runnable {
 									this.mouseButtonClick = 0;
 									this.panelMessageTabs.setText(this.panelMessageEntry, "::onlinelist");
 								}
-							}
+							}*/
 							/*uiX += uiWidth + 15;
 							this.getSurface().drawBoxAlpha(uiX, uiY, uiWidth, uiHeight, 0xff0000, 160);
 							this.getSurface().drawBoxBorder(uiX, uiWidth, uiY, uiHeight, 0);
@@ -5751,6 +5822,9 @@ public final class mudclient implements Runnable {
 						if (intOverflowCheck < Integer.MAX_VALUE) {
 							var4 = Integer.parseInt(str);
 						}
+						if (var4 > this.experienceArray[Config.S_PLAYER_LEVEL_LIMIT - 2]) {
+							var4 = this.experienceArray[Config.S_PLAYER_LEVEL_LIMIT - 2]; //104273167 is the maximum XP possible in OpenPK, level 120 exp is originalCurveExperienceArray[lvl - 2] / 4.
+						}
 						this.packetHandler.getClientStream().newPacket(199);
 						this.packetHandler.getClientStream().bufferBits.putByte(13);
 						this.packetHandler.getClientStream().bufferBits.putByte(pointsOptionId);
@@ -5804,6 +5878,9 @@ public final class mudclient implements Runnable {
 						if (intOverflowCheck < Integer.MAX_VALUE) {
 							var4 = Integer.parseInt(str);
 						}
+						if (var4 > this.experienceArray[Config.S_PLAYER_LEVEL_LIMIT - 2]) {
+							var4 = this.experienceArray[Config.S_PLAYER_LEVEL_LIMIT - 2]; //104273167 is the maximum XP possible in OpenPK, level 120 exp is originalCurveExperienceArray[lvl - 2] / 4.
+						}
 						this.packetHandler.getClientStream().newPacket(199);
 						this.packetHandler.getClientStream().bufferBits.putByte(13);
 						this.packetHandler.getClientStream().bufferBits.putByte(pointsOptionId);
@@ -5825,7 +5902,7 @@ public final class mudclient implements Runnable {
 						int n2800;
 						n2800 = this.playerStatBase[pointsSkillId] - var4;
 						if (n2800 < 1) {
-							this.showMessage(false, null, "Stat cannot be lower then 1", MessageType.GAME, 0,
+							this.showMessage(false, null, "Stat cannot be lower than 1", MessageType.GAME, 0,
 							null, "@whi@");
 							return;
 						}
@@ -7176,7 +7253,15 @@ public final class mudclient implements Runnable {
 
 					if (mouseX > x && mouseX < x + boxWidth && mouseY > y && mouseY < y + boxHeight
 						&& mouseButtonClick > 0 && (this.showUiTab == 0 || C_CUSTOM_UI)) {
-						selectedSpell = lastSelectedSpell;
+						if (color.equals("@yel@") || S_WANT_CUSTOM_SPRITES) {
+							// due to magic cape can't determine client side if spell will not require runes
+							selectedSpell = lastSelectedSpell;
+						} else {
+							this.showMessage(false, null,
+								"You don't have all the reagents you need for this spell",
+								MessageType.GAME, 0, null);
+							selectedSpell = -1;
+						}
 						mouseButtonClick = 0;
 					}
 
@@ -9353,12 +9438,24 @@ public final class mudclient implements Runnable {
 			}
 		}
 
+		// underground lighting flicker toggle
+		if (S_SHOW_UNDERGROUND_FLICKER_TOGGLE) {
+			if (!C_HIDE_UNDERGROUND_FLICKER) {
+				this.panelSettings.setListEntry(this.controlSettingPanel, index++,
+					"@whi@Hide Underground Flicker - @red@Off", 42, null, null);
+			} else {
+				this.panelSettings.setListEntry(this.controlSettingPanel, index++,
+					"@whi@Hide Underground Flicker - @gre@On", 42, null, null);
+			}
+		}
+
 		// ground items
 		if (S_GROUND_ITEM_TOGGLE) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
 				"@whi@Ground Items - " + (C_SHOW_GROUND_ITEMS == 0 ? "@gre@Show ALL"
 					: C_SHOW_GROUND_ITEMS == 1 ? "@red@Hide ALL"
-					: C_SHOW_GROUND_ITEMS == 2 ? "@gr1@Only Bones" : "@ora@No Bones"), 8, null, null);
+					: C_SHOW_GROUND_ITEMS == 2 ? "@gr1@Only Bones"
+					: C_SHOW_GROUND_ITEMS == 3 ? "@ora@No Bones" : "@or1@No Ashes"), 8, null, null);
 		}
 
 		// auto message switch
@@ -9560,30 +9657,39 @@ public final class mudclient implements Runnable {
 		}
 
 		// swipe to scroll
-		if (!osConfig.C_SWIPE_TO_SCROLL) {
+		if (osConfig.C_SWIPE_TO_SCROLL_MODE == 0) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
-				"@whi@Swipe to Scroll - @red@Off", 3, null, null);
-		} else {
+				"@whi@Swipe to Scroll - @red@Unset", 3, null, null);
+		} else if (osConfig.C_SWIPE_TO_SCROLL_MODE == 1) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
-				"@whi@Swipe to Scroll - @gre@On", 3, null, null);
+				"@whi@Swipe to Scroll - @yel@Normal", 3, null, null);
+		} else if (osConfig.C_SWIPE_TO_SCROLL_MODE == 2) {
+			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
+				"@whi@Swipe to Scroll - @gre@Invert", 3, null, null);
 		}
 
 		// swipe to zoom
-		if (!osConfig.C_SWIPE_TO_ZOOM) {
+		if (osConfig.C_SWIPE_TO_ZOOM_MODE == 0) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
-				"@whi@Swipe to Zoom - @red@Off", 4, null, null);
-		} else {
+				"@whi@Swipe to Zoom - @red@Unset", 4, null, null);
+		} else if (osConfig.C_SWIPE_TO_ZOOM_MODE == 1) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
-				"@whi@Swipe to Zoom - @gre@On", 4, null, null);
+				"@whi@Swipe to Zoom - @yel@Normal", 4, null, null);
+		} else if (osConfig.C_SWIPE_TO_ZOOM_MODE == 2) {
+			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
+				"@whi@Swipe to Zoom - @gre@Invert", 4, null, null);
 		}
 
 		// swipe to rotate
-		if (!osConfig.C_SWIPE_TO_ROTATE) {
+		if (osConfig.C_SWIPE_TO_ROTATE_MODE == 0) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
-				"@whi@Swipe to Rotate - @red@Off", 5, null, null);
-		} else {
+				"@whi@Swipe to Rotate - @red@Unset", 5, null, null);
+		} else if (osConfig.C_SWIPE_TO_ROTATE_MODE == 1) {
 			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
-				"@whi@Swipe to Rotate - @gre@On", 5, null, null);
+				"@whi@Swipe to Rotate - @yel@Normal", 5, null, null);
+		} else if (osConfig.C_SWIPE_TO_ROTATE_MODE == 2) {
+			this.panelSettings.setListEntry(this.controlSettingPanel, index++,
+				"@whi@Swipe to Rotate - @gre@Invert", 5, null, null);
 		}
 
 		// volume to rotate
@@ -9673,7 +9779,7 @@ public final class mudclient implements Runnable {
 			}
 		}
 
-		// hide roofs toggle - byte index 5
+		// hide roofs toggle - byte index 26
 		if (settingIndex == 26 && this.mouseButtonClick == 1 && S_SHOW_ROOF_TOGGLE) {
 			C_HIDE_ROOFS = !C_HIDE_ROOFS;
 			this.packetHandler.getClientStream().newPacket(111);
@@ -9683,7 +9789,7 @@ public final class mudclient implements Runnable {
 			this.packetHandler.getClientStream().finishPacket();
 		}
 
-		// fog toggle - byte index 6
+		// fog toggle - byte index 27
 		if (settingIndex == 27 && this.mouseButtonClick == 1 && S_FOG_TOGGLE) {
 			C_HIDE_FOG = !C_HIDE_FOG;
 			this.packetHandler.getClientStream().newPacket(111);
@@ -9693,11 +9799,19 @@ public final class mudclient implements Runnable {
 			this.packetHandler.getClientStream().finishPacket();
 		}
 
+		// hide underground flicker toggle - byte index 42
+		if (settingIndex == 42 && this.mouseButtonClick == 1 && S_SHOW_UNDERGROUND_FLICKER_TOGGLE) {
+			C_HIDE_UNDERGROUND_FLICKER = !C_HIDE_UNDERGROUND_FLICKER;
+			this.packetHandler.getClientStream().newPacket(111);
+			this.packetHandler.getClientStream().bufferBits.putByte(42);
+			boolean optionHideUndergroundFlicker = C_HIDE_UNDERGROUND_FLICKER;
+			this.packetHandler.getClientStream().bufferBits.putByte(optionHideUndergroundFlicker ? 1 : 0);
+			this.packetHandler.getClientStream().finishPacket();
+		}
+
 		// ground items toggle - byte index 28
 		if (settingIndex == 8 && this.mouseButtonClick == 1 && S_GROUND_ITEM_TOGGLE) {
-			C_SHOW_GROUND_ITEMS++;
-			if (C_SHOW_GROUND_ITEMS == 4)
-				C_SHOW_GROUND_ITEMS = 0;
+			C_SHOW_GROUND_ITEMS = ++C_SHOW_GROUND_ITEMS%5;
 			this.packetHandler.getClientStream().newPacket(111);
 			this.packetHandler.getClientStream().bufferBits.putByte(28);
 			this.packetHandler.getClientStream().bufferBits.putByte(C_SHOW_GROUND_ITEMS);
@@ -10074,28 +10188,28 @@ public final class mudclient implements Runnable {
 
 		// swipe scroll control
 		if (this.panelSettings.getControlSelectedListIndex(this.controlSettingPanel) == 3 && this.mouseButtonClick == 1) {
-			osConfig.C_SWIPE_TO_SCROLL = !osConfig.C_SWIPE_TO_SCROLL;
+			osConfig.C_SWIPE_TO_SCROLL_MODE = ++osConfig.C_SWIPE_TO_SCROLL_MODE%3;
 			this.packetHandler.getClientStream().newPacket(111);
 			this.packetHandler.getClientStream().bufferBits.putByte(18);
-			this.packetHandler.getClientStream().bufferBits.putByte(osConfig.C_SWIPE_TO_SCROLL ? 1 : 0);
+			this.packetHandler.getClientStream().bufferBits.putByte(osConfig.C_SWIPE_TO_SCROLL_MODE);
 			this.packetHandler.getClientStream().finishPacket();
 		}
 
 		// swipe camera zoom control
 		if (this.panelSettings.getControlSelectedListIndex(this.controlSettingPanel) == 4 && this.mouseButtonClick == 1) {
-			osConfig.C_SWIPE_TO_ZOOM = !osConfig.C_SWIPE_TO_ZOOM;
+			osConfig.C_SWIPE_TO_ZOOM_MODE = ++osConfig.C_SWIPE_TO_ZOOM_MODE%3;
 			this.packetHandler.getClientStream().newPacket(111);
 			this.packetHandler.getClientStream().bufferBits.putByte(22);
-			this.packetHandler.getClientStream().bufferBits.putByte(osConfig.C_SWIPE_TO_ZOOM ? 1 : 0);
+			this.packetHandler.getClientStream().bufferBits.putByte(osConfig.C_SWIPE_TO_ZOOM_MODE);
 			this.packetHandler.getClientStream().finishPacket();
 		}
 
 		// swipe camera rotation control
 		if (this.panelSettings.getControlSelectedListIndex(this.controlSettingPanel) == 5 && this.mouseButtonClick == 1) {
-			osConfig.C_SWIPE_TO_ROTATE = !osConfig.C_SWIPE_TO_ROTATE;
+			osConfig.C_SWIPE_TO_ROTATE_MODE = ++osConfig.C_SWIPE_TO_ROTATE_MODE%3;
 			this.packetHandler.getClientStream().newPacket(111);
 			this.packetHandler.getClientStream().bufferBits.putByte(17);
-			this.packetHandler.getClientStream().bufferBits.putByte(osConfig.C_SWIPE_TO_ROTATE ? 1 : 0);
+			this.packetHandler.getClientStream().bufferBits.putByte(osConfig.C_SWIPE_TO_ROTATE_MODE);
 			this.packetHandler.getClientStream().finishPacket();
 		}
 
@@ -10514,18 +10628,28 @@ public final class mudclient implements Runnable {
 									this.showUiTab = 0;
 							}
 
-							if (isAndroid() && this.mouseButtonClick == 1 && this.uiTabPlayerInfoSubTab == 0) {
-								if (S_WANT_OPENPK_POINTS) {
+							if (isAndroid() && this.mouseButtonClick == 1 && this.uiTabPlayerInfoSubTab == 0 && S_WANT_OPENPK_POINTS) {
+								if (combatTimeout == 0) {
 									//setSkillGuideChosen(skillNameLong[currentlyHoveredSkill]);
 									pointInterface.setVisible(true);
 									if (!C_CUSTOM_UI)
 										this.showUiTab = 0;
+								} else {
+									this.showMessage(false, null,
+									"You must be out of combat for 10 seconds before changing stats.",
+									MessageType.GAME, 0, null);
 								}
 							} else if (!isAndroid() && this.mouseButtonClick == 1 && this.uiTabPlayerInfoSubTab == 0 && S_WANT_OPENPK_POINTS) {
-								//setSkillGuideChosen(skillNameLong[currentlyHoveredSkill]);
-								pointInterface.setVisible(true);
-								if (!C_CUSTOM_UI)
-									this.showUiTab = 0;
+								if (combatTimeout == 0) {
+									//setSkillGuideChosen(skillNameLong[currentlyHoveredSkill]);
+									pointInterface.setVisible(true);
+									if (!C_CUSTOM_UI)
+										this.showUiTab = 0;
+								} else {
+										this.showMessage(false, null,
+										"You must be out of combat for 10 seconds before changing stats.",
+										MessageType.GAME, 0, null);
+									}
 							}
 						}
 					}
@@ -11108,11 +11232,15 @@ public final class mudclient implements Runnable {
 			}
 
 			if (this.panelAppearance.isClicked(this.controlButtonAppearanceSkin1)) {
-				this.appearanceSkinColour = (this.getPlayerSkinColors().length + (this.appearanceSkinColour - 1)) % this.getPlayerSkinColors().length;
+				do {
+					this.appearanceSkinColour = (this.getPlayerSkinColors().length + (this.appearanceSkinColour - 1)) % this.getPlayerSkinColors().length;
+				} while (!unlockedSkinColours[this.appearanceSkinColour]);
 			}
 
 			if (this.panelAppearance.isClicked(this.controlButtonAppearanceSkin2)) {
-				this.appearanceSkinColour = (1 + this.appearanceSkinColour) % this.getPlayerSkinColors().length;
+				do {
+					this.appearanceSkinColour = (1 + this.appearanceSkinColour) % this.getPlayerSkinColors().length;
+				} while (!unlockedSkinColours[this.appearanceSkinColour]);
 			}
 
 			if (this.panelAppearance.isClicked(this.controlButtonAppearanceBottom1)) {
@@ -11923,7 +12051,7 @@ public final class mudclient implements Runnable {
 						auctionHouse.keyDown(key);
 						return;
 					}
-					if (S_WANT_CUSTOM_BANKS && this.isShowDialogBank() && this.combatTimeout == 0) {
+					if (S_WANT_CUSTOM_BANKS && this.isShowDialogBank() && this.combatTimeout == 0 && (key == 27 || this.controlPressed || bank.bank.focusOn(bank.bankSearch))) {
 						bank.keyDown(key);
 						return;
 					}
@@ -11993,6 +12121,10 @@ public final class mudclient implements Runnable {
 						menuNewUser.setFocus(menuNewUserPassword);
 					}
 					if (menuNewUser.isClicked(menuNewUserPassword)) {
+						enterPressed = false;
+						menuNewUser.setFocus(menuNewUserConfirmPassword);
+					}
+					if (menuNewUser.isClicked(menuNewUserConfirmPassword)) {
 						if (wantEmail()) {
 							enterPressed = false;
 							menuNewUser.setFocus(menuNewUserEmail);
@@ -12010,6 +12142,8 @@ public final class mudclient implements Runnable {
 								&& menuNewUser.getControlText(menuNewUserUsername).length() == 0
 								|| menuNewUser.getControlText(menuNewUserPassword) != null
 								&& menuNewUser.getControlText(menuNewUserPassword).length() == 0
+								|| menuNewUser.getControlText(menuNewUserConfirmPassword) != null
+								&& menuNewUser.getControlText(menuNewUserConfirmPassword).length() == 0
 								|| menuNewUser.getControlText(menuNewUserEmail) != null
 								&& menuNewUser.getControlText(menuNewUserEmail).length() == 0) {
 								menuNewUser.setText(menuNewUserStatus, "Please fill in all requested");
@@ -12020,7 +12154,9 @@ public final class mudclient implements Runnable {
 							if (menuNewUser.getControlText(menuNewUserUsername) != null
 								&& menuNewUser.getControlText(menuNewUserUsername).length() == 0
 								|| menuNewUser.getControlText(menuNewUserPassword) != null
-								&& menuNewUser.getControlText(menuNewUserPassword).length() == 0) {
+								&& menuNewUser.getControlText(menuNewUserPassword).length() == 0
+								|| menuNewUser.getControlText(menuNewUserConfirmPassword) != null
+								&& menuNewUser.getControlText(menuNewUserConfirmPassword).length() == 0) {
 								menuNewUser.setText(menuNewUserStatus, "Please fill in all requested");
 								menuNewUser.setText(menuNewUserStatus2, "information to continue!");
 								return;
@@ -12032,9 +12168,10 @@ public final class mudclient implements Runnable {
 
 						String username = menuNewUser.getControlText(menuNewUserUsername);
 						String password = menuNewUser.getControlText(menuNewUserPassword);
+						String confirm = menuNewUser.getControlText(menuNewUserConfirmPassword);
 						String email = menuNewUser.getControlText(menuNewUserEmail);
 
-						sendRegister(username, password, email);
+						sendRegister(username, password, confirm, email);
 					}
 				} else if (this.loginScreenNumber == 2) {
 					this.panelLogin.handleMouse(this.mouseX, this.mouseY, this.currentMouseButtonDown,
@@ -12285,12 +12422,13 @@ public final class mudclient implements Runnable {
 		}
 	}
 
-	private void sendRegister(String user, String pass, String email) {
+	private void sendRegister(String user, String pass, String confirm, String email) {
 		this.m_Zb = 1500;
 		username = user;
 		user = DataOperations.addCharacters(user, 20);
 		password = pass;
 		pass = DataOperations.addCharacters(pass, 20);
+		confirm = DataOperations.addCharacters(confirm, 20);
 
 		if (user.trim().length() == 0) {
 			showLoginScreenStatus("Please fill in all requested", "information to continue!");
@@ -12302,6 +12440,10 @@ public final class mudclient implements Runnable {
 		}
 		if (user.trim().length() > 12) {
 			showLoginScreenStatus("Username is too long, please use", "username with length of 2-12");
+			return;
+		}
+		if (!pass.trim().equalsIgnoreCase(confirm.trim())) {
+			showLoginScreenStatus("The two passwords entered are not", "the same as each other!");
 			return;
 		}
 		if (pass.trim().length() < 4) {
@@ -13355,8 +13497,10 @@ public final class mudclient implements Runnable {
 			if (this.showUiTab == 0 && this.mouseX >= this.getSurface().width2 - 35 - 33 && this.mouseY >= 3
 				&& this.getSurface().width2 - 3 - 33 > this.mouseX && this.mouseY < 35) {
 				this.showUiTab = Config.MINIMAP_AND_COMPASS_TAB;
-				this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6; // random rotation of the minimap as anti-bot?
-				this.minimapRandom_2 = (int) (Math.random() * 23.0D) - 11;
+				if (!Config.S_DISABLE_MINIMAP_ROTATION) {
+					this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6; // random rotation of the minimap as anti-bot?
+					this.minimapRandom_2 = (int) (Math.random() * 23.0D) - 11;
+				}
 			}
 
 			if (this.showUiTab == 0 && this.getSurface().width2 - 101 <= this.mouseX && this.mouseY >= 3
@@ -13387,8 +13531,10 @@ public final class mudclient implements Runnable {
 			if (this.showUiTab != 0 && this.showUiTab != Config.MINIMAP_AND_COMPASS_TAB && this.getSurface().width2 - 68 <= this.mouseX
 				&& this.mouseY >= 3 && this.getSurface().width2 - 33 - 3 > this.mouseX && this.mouseY < 26) {
 				this.showUiTab = Config.MINIMAP_AND_COMPASS_TAB;
-				this.minimapRandom_2 = (int) (23.0D * Math.random()) - 11; // random rotation of the minimap as anti-bot?
-				this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6;
+				if (!Config.S_DISABLE_MINIMAP_ROTATION) {
+					this.minimapRandom_2 = (int) (23.0D * Math.random()) - 11; // random rotation of the minimap as anti-bot?
+					this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6;
+				}
 			}
 
 			if (this.showUiTab != 0 && this.mouseX >= this.getSurface().width2 - 66 - 35 && this.mouseY >= 3
@@ -13461,8 +13607,10 @@ public final class mudclient implements Runnable {
 			if (this.mouseX >= this.getSurface().width2 - 35 - 33 && this.mouseY >= minY
 				&& this.getSurface().width2 - 3 - 33 > this.mouseX && this.mouseY < maxY) {
 				drawMinimap = !drawMinimap;
-				this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6; // random rotation of the minimap as anti-bot?
-				this.minimapRandom_2 = (int) (Math.random() * 23.0D) - 11;
+				if (!Config.S_DISABLE_MINIMAP_ROTATION) {
+					this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6; // random rotation of the minimap as anti-bot?
+					this.minimapRandom_2 = (int) (Math.random() * 23.0D) - 11;
+				}
 				return true;
 			}
 
@@ -13505,8 +13653,10 @@ public final class mudclient implements Runnable {
 					this.showUiTab = 0;
 				else
 					this.showUiTab = Config.MINIMAP_AND_COMPASS_TAB;
-				this.minimapRandom_2 = (int) (23.0D * Math.random()) - 11; // random rotation of the minimap as anti-bot?
-				this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6;
+				if (!Config.S_DISABLE_MINIMAP_ROTATION) {
+					this.minimapRandom_2 = (int) (23.0D * Math.random()) - 11; // random rotation of the minimap as anti-bot?
+					this.minimapRandom_1 = (int) (13.0D * Math.random()) - 6;
+				}
 				return true;
 			}*/
 
@@ -13723,35 +13873,32 @@ public final class mudclient implements Runnable {
 		//Load & apply sprite packs
 		File configFile = new File(clientPort.getCacheLocation(), "config.txt");
 		if (configFile.exists()) {
-			if (configFile.exists()) {
-				ArrayList<String> activePacks = new ArrayList<>();
-				try {
-					BufferedReader br = new BufferedReader(new FileReader(configFile));
-					String line;
-					while ((line = br.readLine()) != null) {
-						String[] packageName = line.split(":");
-						if (Integer.parseInt(packageName[1]) == 1)
-							activePacks.add(packageName[0]);
-					}
-					br.close();
-					File packFolder = new File(clientPort.getCacheLocation(), "video" + File.separator + "spritepacks");
-					Unpacker unpacker = new Unpacker();
-					Workspace workspace;
-					for (String filename : activePacks) {
-						File pack = new File(packFolder, filename + ".osar");
-						workspace = unpacker.unpackArchive(pack);
-						for (Subspace subspace : workspace.getSubspaces()) {
-							Map<String, orsc.graphics.two.SpriteArchive.Entry> entries = getSurface().spriteTree.get(subspace.getName());
-							for (orsc.graphics.two.SpriteArchive.Entry entry : subspace.getEntryList()) {
-								entries.put(entry.getID(), entry);
-							}
+			ArrayList<String> activePacks = new ArrayList<>();
+			try {
+				BufferedReader br = new BufferedReader(new FileReader(configFile));
+				String line;
+				while ((line = br.readLine()) != null) {
+					String[] packageName = line.split(":");
+					if (Integer.parseInt(packageName[1]) == 1)
+						activePacks.add(packageName[0]);
+				}
+				br.close();
+				File packFolder = new File(clientPort.getCacheLocation(), "video" + File.separator + "spritepacks");
+				Unpacker unpacker = new Unpacker();
+				Workspace workspace;
+				for (String filename : activePacks) {
+					File pack = new File(packFolder, filename + ".osar");
+					workspace = unpacker.unpackArchive(pack);
+					for (Subspace subspace : workspace.getSubspaces()) {
+						Map<String, orsc.graphics.two.SpriteArchive.Entry> entries = getSurface().spriteTree.get(subspace.getName());
+						for (orsc.graphics.two.SpriteArchive.Entry entry : subspace.getEntryList()) {
+							entries.put(entry.getID(), entry);
 						}
 					}
-				} catch (IOException a) {
-					a.printStackTrace();
 				}
+			} catch (IOException a) {
+				a.printStackTrace();
 			}
-
 		}
 	}
 
@@ -14426,6 +14573,7 @@ public final class mudclient implements Runnable {
 		bufferBits.putByte(optionsMenuText.length & 0xFF);
 		bufferBits.putInt(bank.maximumBankItemsSupported());
 		bufferBits.putString(this.world.mapHash);
+		bufferBits.putByte(isAndroid() ? 1 : 0);
 	}
 
 	private void lostConnection(int var1) {
@@ -14951,7 +15099,7 @@ public final class mudclient implements Runnable {
 				}
 
 				if (type == MessageType.CHAT && this.messageTabSelected != MessageTab.CHAT) {
-					this.messageTabActivity_Chat = 100;
+					this.messageTabActivity_Chat = 200;
 				}
 
 				if (type == MessageType.QUEST && this.messageTabSelected != MessageTab.QUEST) {
@@ -14997,8 +15145,8 @@ public final class mudclient implements Runnable {
 			String msg = colour + StringUtil.formatMessage(message, sender, type, colour);
 
 			if (type == MessageType.CHAT) {
-				this.panelMessageTabs.addToList(msg, this.panelMessageTabs.controlListCurrentSize[this.panelMessageChat]
-					- 4 == this.panelMessageTabs.controlScrollAmount[this.panelMessageChat], crownID, sender, formerName, this.panelMessageChat);
+				this.panelMessageTabs.addToList(msg, this.panelMessageTabs.controlScrollAmount[this.panelMessageChat] == this.panelMessageTabs.controlListCurrentSize[this.panelMessageChat]
+					- 4, crownID, sender, formerName, this.panelMessageChat);
 			}
 
 			if (type == MessageType.QUEST) {
@@ -15029,6 +15177,21 @@ public final class mudclient implements Runnable {
 			throw GenUtil.makeThrowable(var12, "client.BD(" + crownEnabled + ',' + (sender != null ? "{...}" : "null")
 				+ ',' + "dummy" + ',' + (message != null ? "{...}" : "null") + ',' + type + ',' + crownID + ','
 				+ (formerName != null ? "{...}" : "null") + ',' + ')');
+		}
+	}
+
+	public boolean hasScroll(MessageTab messageTab) {
+		switch(messageTab) {
+			case CHAT:
+				return this.panelMessageTabs.controlListCurrentSize[this.panelMessageChat] > 4;
+			case QUEST:
+				return this.panelMessageTabs.controlListCurrentSize[this.panelMessageQuest] > 4;
+			case PRIVATE:
+				return this.panelMessageTabs.controlListCurrentSize[this.panelMessagePrivate] > 4;
+			case CLAN:
+				return this.panelMessageTabs.controlListCurrentSize[this.panelMessageClan] > 4;
+			default:
+				return false;
 		}
 	}
 
@@ -15691,6 +15854,10 @@ public final class mudclient implements Runnable {
 		this.optionCameraModeAuto = auto;
 	}
 
+	public boolean getOptionCameraModeAuto() {
+		return this.optionCameraModeAuto;
+	}
+
 	public void setOptionMouseButtonOne(boolean button) {
 		this.optionMouseButtonOne = button;
 	}
@@ -16013,6 +16180,10 @@ public final class mudclient implements Runnable {
 		this.fatigueSleeping = fatigue;
 	}
 
+	public void setFatigueSleepingAuthentic(int fatigue) {
+		this.fatigueSleepingAuthentic = fatigue;
+	}
+
 	public int getStatFatigue() {
 		return this.statFatigue;
 	}
@@ -16021,6 +16192,10 @@ public final class mudclient implements Runnable {
 		if (DEBUG)
 			System.out.println("Fatigue: " + fatigue);
 		this.statFatigue = fatigue;
+	}
+
+	public void setStatFatigueAuthentic(int fatigue) {
+		this.statFatigueAuthentic = fatigue;
 	}
 
 	public int getStatKills2() {
@@ -17408,17 +17583,16 @@ public final class mudclient implements Runnable {
 		osConfig.C_VOLUME_FUNCTION = b;
 	}
 
-	public void setSwipeToRotate(boolean b) {
-		osConfig.C_SWIPE_TO_ROTATE = b;
+	public void setSwipeToRotateMode(int b) {
+		osConfig.C_SWIPE_TO_ROTATE_MODE = b;
 	}
 
-	public void setSwipeToScroll
-		(boolean b) {
-		osConfig.C_SWIPE_TO_SCROLL = b;
+	public void setSwipeToScrollMode(int b) {
+		osConfig.C_SWIPE_TO_SCROLL_MODE = b;
 	}
 
-	public void setSwipeToZoom(boolean b) {
-		osConfig.C_SWIPE_TO_ZOOM = b;
+	public void setSwipeToZoomMode(int b) {
+		osConfig.C_SWIPE_TO_ZOOM_MODE = b;
 	}
 
 	public void setLongPressDelay(int i) {
@@ -17459,6 +17633,10 @@ public final class mudclient implements Runnable {
 
 	public void setOptionHideRoofs(boolean b) {
 		C_HIDE_ROOFS = b;
+	}
+
+	public void setOptionHideUndergroundFlicker(boolean b) {
+		C_HIDE_UNDERGROUND_FLICKER = b;
 	}
 
 	public void setOptionHideFog(boolean b) {
@@ -17516,7 +17694,7 @@ public final class mudclient implements Runnable {
 		if (S_WANT_OPENPK_POINTS) {
 			return;
 		}
-		questGuideRewards = new String[][]{{"3 Quest Points", "2500 coins"}, {"1 Quest Point", "Lvl*50 + 250 Cooking experience", "Access to the Cook's range"}, {"3 Quest Points", "Silverlight"}, {"1 Quest Point", "Lvl*75 + 175 Mining experience", "Ability to use Doric's anvils", "180 coins"}, {"1 Quest Point", "Lvl*62.5 + 500 Prayer experience", "Amulet of Ghostspeak"}, {"5 Quest Points", "Lvl*15 + 125 Crafting experience", "1 Gold bar"}, {"4 Quest Points", "300 coins"}, {"1 Quest Point", "Lvl*100 + 375 Magic experience", "An amulet of accuracy"}, {"2 Quest Points", "450 coins", "A gold ring", "An emerald"}, {"3 Quest points", "Free passage through the Al-Kharid tollgate", "700 coins"}, {"5 Quest Points"}, {"1 Quest Point", "Lvl*25 + 125 Crafting experience", "180 coins"}, {"1 Quest Point", "600 coins"}, {"1 Quest Point", "Lvl*375 + 350 Smithing experience"}, {"3 Quest Points", "Lvl*150 + 325 Attack experience"}, {"1 Quest Point", "Lvl*50 + 225 Magic experience"}, {"2 Quest Points", "Lvl*300 + 650 Defense experience", "Lvl*300 + 650 Strength experience", "The ability to wear a Rune plate mail body"}, {"4 Quest Points", "Lvl*150 + 325 Hits experience"}, {"3 Quest Points", "Ability to enter the city of Zanaris", "Ability to wield a Dragon sword"}, {"1 Quest Point", "Lvl*50 + 75 experience in the following skills: Attack, Defense, Hits, Strength, Cooking, Fishing, Mining, Smithing, Ranged, Firemaking, Woodcutting, and Herblaw", "Access to the Heroes' Guild", "Ability to wield the Dragon axe"}, {"4 Quest Points", "250 Herblaw experience", "Ability to use the Herblaw skill"}, {"6 Quest Points", "Excalibur"}, {"1 Quest Point", "Lvl*125 + 375 Strength experience", "Thormac will enchant your battlestaves for 40000 coins"}, {"1 Quest Point", "A pair of Steel gauntlets"}, {"1 Quest Point", "Lvl*75 + 200 Thieving experience", "5 swordfish"}, {"1 Quest Point", this.playerStatBase[10] < 24 ? "(Lvl - 10)*75 + 975 Fishing experience" : "(Lvl - 24)*75 + 2225 Fishing experience", "Access to the underground tunnel beneath White Wolf Mountain"}, {"1 Quest Point", "(Lvl + 1)*125 Woodcutting experience", "8 Law-Runes"}, {"1 Quest Point", "Lvl*250 + 500 experience in Ranged and Fletching"}, {"1 Quest Point", "500 coins"}, {"2 Quest Points", "(Lvl + 1)*300 Defense experience", "(Lvl + 1)*250 Prayer experience"}, {"2 Quest Points", "Lvl*200 + 175 experience in Attack and Thieving", "1000 coins"}, {"2 Quest Points", "Lvl*225 + 200 Attack experience", "A Gnome amulet of protection", "Ability to use Spirit Trees"}, {"1 Quest Point", "Lvl*50 + 500 Thieving experience", "2000 coins"}, {"4 Quest Points", "3100 coins"}, {"1 Quest Point", "Lvl*75 + 175 Mining experience", "A magic scroll granting the ability to cast Ardougne teleport"}, {"1 Quest Point", "Lvl*200 + 175 Fishing experience", "1 Oyster pearls"}, {"1 Quest Point", "Lvl*225 + 250 experience in Attack and Strength", "40 Mithril seeds", "2 Diamonds", "2 Gold bars"}, {"3 Quest Points", "Lvl*50 + 500 Thieving experience", "Ability to use King Lathas' Combat Training Camp", "Ability to travel freely between eastern and western Ardougne gate"}, {"1 Quest Point", "Lvl*125 + 400 Herblaw experience"}, {"5 Quest Points", "Lvl*300 + 400 experience in Agility and Attack", "Lvl*50 + 150 Magic experience", "Access to the Grand Tree mines", "Ability to use the Spirit Tree at the Grand Tree", "Ability to use the Gnome Gliders"}, {"2 Quest Points", "(Lvl + 1)*125 Crafting experience", "Access to Shilo Village"}, {"5 Quest Points", "Lvl*50 + 500 experience in Agility and Attack", "A Staff of Iban", "15 Death-Runes", "30 Fire-Runes"}, {"2 Quest Points", "Lvl*100 + 250 Crafting experience", "Another reward based on your constellation"}, {"2 Quest Points", "(Lvl + 1)*150 experience twice in a choice of Agility, Fletching, Thieving, Smithing", "Ability to make throwing darts", "Access to the Desert Mining Camp"}, {"4 Quest Points", "(Lvl + 1)*250 Magic experience", "A spell scroll granting the ability to cast the Watchtower teleport", "5000 coins"}, {"1 Quest Point", "Lvl*50 + 250 Crafting experience", "Ability to buy a dwarf cannon", "Ability to make cannon balls"}, {"3 Quest Points", "Lvl*37.5 + 187.5 Crafting experience", "2000 coins"}, {"2 Quest Points", "(Lvl + 1)*300 Mining experience", "(Lvl + 1)*125 Herblaw experience", "2 Gold bars"}, {"1 Quest Point", "Lvl*45 + 175 Cooking experience", "A Kitten", "A Chocolate cake and stew"}, {"4 Quest Points", "(Lvl + 1)*150 experience in 4 of these skills of your choice: Attack, Strength, Defense, Hits, Prayer, Magic, Woodcutting, Crafting, Smithing, Herblaw, Agility, and Thieving", "Access to the Legend's Guild", "Ability to wear the Dragon Square Shield and Cape of Legends", "Ability to make Oomlie meat parcels and Blessed golden bowls"}, {"1 Quest Point", "1 air talisman", "The ability to mine rune stones", "The ability to enter mysterious ruins with the proper talisman"}};
+		questGuideRewards = new String[][]{{"3 Quest Points", "2500 coins"}, {"1 Quest Point", "Lvl*50 + 250 Cooking experience", "Access to the Cook's range"}, {"3 Quest Points", "Silverlight"}, {"1 Quest Point", "Lvl*75 + 175 Mining experience", "Ability to use Doric's anvils", "180 coins"}, {"1 Quest Point", "Lvl*62.5 + 500 Prayer experience", "Amulet of Ghostspeak"}, {"5 Quest Points", "Lvl*15 + 125 Crafting experience", "1 Gold bar"}, {"4 Quest Points", "300 coins"}, {"1 Quest Point", "Lvl*100 + 375 Magic experience", "An amulet of accuracy"}, {"2 Quest Points", "450 coins", "A gold ring", "An emerald"}, {"3 Quest points", "Free passage through the Al-Kharid tollgate", "700 coins"}, {"5 Quest Points"}, {"1 Quest Point", "Lvl*25 + 125 Crafting experience", "180 coins"}, {"1 Quest Point", "600 coins"}, {"1 Quest Point", "Lvl*375 + 350 Smithing experience"}, {"3 Quest Points", "Lvl*150 + 325 Attack experience"}, {"1 Quest Point", "Lvl*50 + 225 Magic experience"}, {"2 Quest Points", "Lvl*300 + 650 Defense experience", "Lvl*300 + 650 Strength experience", "The ability to wear a Rune plate mail body"}, {"4 Quest Points", "Lvl*150 + 325 Hits experience"}, {"3 Quest Points", "Ability to enter the city of Zanaris", "Ability to wield a Dragon sword"}, {"1 Quest Point", "Lvl*50 + 75 experience in the following skills: Attack, Defense, Hits, Strength, Cooking, Fishing, Mining, Smithing, Ranged, Firemaking, Woodcutting, and Herblaw", "Access to the Heroes' Guild", "Ability to wield the Dragon axe"}, {"4 Quest Points", "250 Herblaw experience", "Ability to use the Herblaw skill"}, {"6 Quest Points", "Excalibur"}, {"1 Quest Point", "Lvl*125 + 375 Strength experience", "Thormac will enchant your battlestaves for 40000 coins"}, {"1 Quest Point", "A pair of Steel gauntlets"}, {"1 Quest Point", "Lvl*75 + 200 Thieving experience", "5 swordfish"}, {"1 Quest Point", this.playerStatBase[10] < 24 ? "(Lvl - 10)*75 + 975 Fishing experience" : "(Lvl - 24)*75 + 2225 Fishing experience", "Access to the underground tunnel beneath White Wolf Mountain"}, {"1 Quest Point", "(Lvl + 1)*125 Woodcutting experience", "8 Law-Runes"}, {"1 Quest Point", "Lvl*250 + 500 experience in Ranged and Fletching"}, {"1 Quest Point", "500 coins"}, {"2 Quest Points", "(Lvl + 1)*300 Defense experience", "(Lvl + 1)*250 Prayer experience"}, {"2 Quest Points", "Lvl*200 + 175 experience in Attack and Thieving", "1000 coins"}, {"2 Quest Points", "Lvl*225 + 200 Attack experience", "A Gnome amulet of protection", "Ability to use Spirit Trees"}, {"1 Quest Point", "Lvl*50 + 500 Thieving experience", "2000 coins"}, {"4 Quest Points", "3100 coins"}, {"1 Quest Point", "Lvl*75 + 175 Mining experience", "A magic scroll granting the ability to cast Ardougne teleport"}, {"1 Quest Point", "Lvl*200 + 175 Fishing experience", "1 Oyster pearls"}, {"1 Quest Point", "Lvl*225 + 250 experience in Attack and Strength", "40 Mithril seeds", "2 Diamonds", "2 Gold bars"}, {"3 Quest Points", "Lvl*50 + 500 Thieving experience", "Ability to use King Lathas' Combat Training Camp", "Ability to travel freely between eastern and western Ardougne gate"}, {"1 Quest Point", "Lvl*125 + 400 Herblaw experience"}, {"5 Quest Points", "Lvl*300 + 400 experience in Agility and Attack", "Lvl*50 + 150 Magic experience", "Access to the Grand Tree mines", "Ability to use the Spirit Tree at the Grand Tree", "Ability to use the Gnome Gliders"}, {"2 Quest Points", "(Lvl + 1)*125 Crafting experience", "Access to Shilo Village"}, {"5 Quest Points", "Lvl*50 + 500 experience in Agility and Attack", "A Staff of Iban", "15 Death-Runes", "30 Fire-Runes"}, {"2 Quest Points", "Lvl*100 + 250 Crafting experience", "Another reward based on your constellation"}, {"2 Quest Points", "(Lvl + 1)*150 experience twice in a choice of Agility, Fletching, Thieving, Smithing", "Ability to make throwing darts", "Access to the Desert Mining Camp"}, {"4 Quest Points", "(Lvl + 1)*250 Magic experience", "A spell scroll granting the ability to cast the Watchtower teleport", "5000 coins"}, {"1 Quest Point", "Lvl*50 + 250 Crafting experience", "Ability to buy a dwarf cannon", "Ability to make cannon balls"}, {"3 Quest Points", "Lvl*37.5 + 187.5 Crafting experience", "2000 coins"}, {"2 Quest Points", "(Lvl + 1)*300 Mining experience", "(Lvl + 1)*125 Herblaw experience", "2 Gold bars"}, {"1 Quest Point", "Lvl*45 + 175 Cooking experience", "A Kitten", "A Chocolate cake and stew"}, {"4 Quest Points", "(Lvl + 1)*150 experience in 4 of these skills of your choice: Attack, Strength, Defense, Hits, Prayer, Magic, Woodcutting, Crafting, Smithing, Herblaw, Agility, and Thieving", "Access to the Legend's Guild", "Ability to wear the Dragon Square Shield and Cape of Legends", "Ability to make Oomlie meat parcels and Blessed golden bowls"}, {"1 Quest Point", "1 air talisman", "The ability to mine rune stones", "The ability to enter mysterious ruins with the proper talisman"}, {"2 Quest Points", "Crafting XP", "Cooking XP", "An ogre's friendship", "Cosmetic rewards"}};
 	}
 
 	public void updateQuestCommandOptions() {
@@ -17528,8 +17706,10 @@ public final class mudclient implements Runnable {
 			questStages[RuneMysteriesID] == -1) {
 			NPCDef AuburyDef = EntityHandler.getNpcDef(AuburyID);
 			NPCDef SedridorDef = EntityHandler.getNpcDef(SedridorID);
-			if (AuburyDef != null)
+			if (AuburyDef != null) {
 				AuburyDef.updateCommand1("Teleport");
+				if (Config.S_RIGHT_CLICK_TRADE) AuburyDef.updateCommand2("Trade");
+			}
 			if (SedridorDef != null)
 				SedridorDef.updateCommand1("Teleport");
 		}

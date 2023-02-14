@@ -52,13 +52,13 @@ public class Fluffs implements UsePlayerTrigger, OpInvTrigger, UseNpcTrigger, Us
 		if (player.hasElevatedPriveledges()) {
 			if (player.getWorld().getPlayers().size() > 1) {
 				player.playerServerMessage(MessageType.QUEST, "Eventually, Fluffs meows and you think you can hear the names of all players online?");
-				RegularPlayer.queryOnlinePlayers(player);
+				RegularPlayer.queryOnlinePlayers(player, true);
 			} else {
 				// fluffs' pronouns are she/her according to Gertrude's transcript
 				player.playerServerMessage(MessageType.QUEST, "Eventually, Fluffs meows and you think you can hear her say something?");
-				delay(4);
-				player.playerServerMessage(MessageType.QUEST, "@yel@Fluffs: @dre@... It's just you and me, kid.");
 				delay(3);
+				player.playerServerMessage(MessageType.QUEST, "@yel@Fluffs: @dre@... It's just you and me, kid.");
+				delay(2);
 				player.playerServerMessage(MessageType.QUEST, "@yel@Fluffs: Could we go visit Gertrude some time?");
 			}
 		}

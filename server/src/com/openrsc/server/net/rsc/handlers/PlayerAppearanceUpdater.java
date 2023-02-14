@@ -19,6 +19,11 @@ public class PlayerAppearanceUpdater implements PayloadProcessor<PlayerAppearanc
 			player.setSuspiciousPlayer(true, "player appearance packet without changing appearance");
 			return;
 		}
+
+		boolean tutorialAppearance = player.getCache().hasKey("tutorial_appearance");
+		if (tutorialAppearance)
+			player.getCache().remove("tutorial_appearance");
+
 		player.setChangingAppearance(false);
 		byte headRestrictions = payload.headRestrictions;
 		byte headType = payload.headType;
@@ -47,12 +52,12 @@ public class PlayerAppearanceUpdater implements PayloadProcessor<PlayerAppearanc
 
 		PlayerAppearance appearance = new PlayerAppearance(hairColour,
 			topColour, trouserColour, skinColour, headSprite, bodySprite);
-		if (!appearance.isValid()) {
+		if (!appearance.isValid(player)) {
 			player.setSuspiciousPlayer(true, "player invalid appearance");
 			return;
 		}
 
-		player.setMale(headRestrictions == 1); // TODO: expand gender preferences
+		player.setMale(headRestrictions == 1);
 
 		if (player.isMale()) {
 			if (player.getConfig().WANT_EQUIPMENT_TAB) {
@@ -69,9 +74,7 @@ public class PlayerAppearanceUpdater implements PayloadProcessor<PlayerAppearanc
 					Item i = inv.get(slot);
 					if (i.isWieldable(player.getWorld()) && i.getDef(player.getWorld()).getWieldPosition() == 1
 						&& i.isWielded() && i.getDef(player.getWorld()).isFemaleOnly()) {
-						if(!player.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(player, i, UnequipRequest.RequestType.FROM_EQUIPMENT, false))) {
-							player.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(player, i, UnequipRequest.RequestType.FROM_BANK, false));
-						}
+						player.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(player, i, UnequipRequest.RequestType.FROM_INVENTORY, false));
 						ActionSender.sendInventoryUpdateItem(player, slot);
 						break;
 					}
@@ -88,7 +91,7 @@ public class PlayerAppearanceUpdater implements PayloadProcessor<PlayerAppearanc
 			}
 		}
 
-		if (player.getLastLogin() == 0L) {
+		if (player.getLastLogin() == 0L || tutorialAppearance) {
 			if (player.getConfig().USES_CLASSES) {
 				new PlayerClass(player, payload.chosenClass).init();
 				player.getWorld().getServer().getPlayerService().savePlayerMaxStats(player);

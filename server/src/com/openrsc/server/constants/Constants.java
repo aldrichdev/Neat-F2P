@@ -1,6 +1,5 @@
 package com.openrsc.server.constants;
 
-import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.Server;
 import com.openrsc.server.model.container.Item;
 
@@ -16,6 +15,7 @@ public final class Constants {
 	private final Retreats retreats;
 	private final Minigames minigames;
 	private final Quests quests;
+	private final SpellDamages spellDamages;
 
 	public Constants(Server server) {
 		this.server = server;
@@ -24,6 +24,7 @@ public final class Constants {
 		this.retreats = new Retreats(this);
 		this.minigames = new Minigames(this);
 		this.quests = new Quests(this);
+		this.spellDamages = new SpellDamages();
 	}
 
 	public final Server getServer() {
@@ -44,9 +45,10 @@ public final class Constants {
 	public final Quests getQuests() {
 		return quests;
 	}
+	public final SpellDamages getSpellDamages() { return spellDamages; }
 
 	public final int[] STARTER_ITEMS = {ItemId.BRONZE_AXE.id(), ItemId.TINDERBOX.id(), ItemId.COOKEDMEAT.id()};
-	public final Item[] OPENPK_STARTER_ITEMS = {new Item(ItemId.IRON_2_HANDED_SWORD.id(), 1), new Item(ItemId.RUBY_AMULET_OF_STRENGTH.id(), 1), new Item(ItemId.LARGE_IRON_HELMET.id(), 1), new Item(ItemId.IRON_CHAIN_MAIL_BODY.id(), 1), new Item(ItemId.IRON_PLATE_MAIL_LEGS.id(), 1), new Item(ItemId.LOBSTER.id(), 100, true)}; //TODO: OpenPK needs more starter items.
+	public final Item[] OPENPK_STARTER_ITEMS = {new Item(ItemId.IRON_2_HANDED_SWORD.id(), 1), new Item(ItemId.RUBY_AMULET_OF_STRENGTH.id(), 1), new Item(ItemId.LARGE_IRON_HELMET.id(), 1), new Item(ItemId.IRON_PLATE_MAIL_BODY.id(), 1), new Item(ItemId.IRON_CHAIN_MAIL_BODY.id(), 1), new Item(ItemId.IRON_PLATE_MAIL_LEGS.id(), 1), new Item(ItemId.AIR_RUNE.id(), 100, false), new Item(ItemId.MIND_RUNE.id(), 100, false), new Item(ItemId.WATER_RUNE.id(), 100, false), new Item(ItemId.EARTH_RUNE.id(), 100, false), new Item(ItemId.FIRE_RUNE.id(), 100, false), new Item(ItemId.SHORTBOW.id(), 100, false), new Item(ItemId.IRON_ARROWS.id(), 100, false), new Item(ItemId.LOBSTER.id(), 10000, true), new Item(ItemId.SHARK.id(), 10000, true), new Item(ItemId.FULL_SUPER_ATTACK_POTION.id(), 1000, true), new Item(ItemId.FULL_SUPER_STRENGTH_POTION.id(), 1000, true), new Item(ItemId.FULL_SUPER_DEFENSE_POTION.id(), 1000, true), new Item(ItemId.FULL_RESTORE_PRAYER_POTION.id(), 1000, true), new Item(ItemId.FULL_RANGING_POTION.id(), 1000, true)};
 
 	/**
 	 * Strikes, Bolts & Blast Spells.
@@ -54,7 +56,7 @@ public final class Constants {
 	 * Remember, 30+ Magic damage gives you +1 damage, so these damages are
 	 * -1 the absolute max. Level Requirement, Max Damage
 	 */
-	public final int[][] SPELLS = {{1, 1}, {5, 2}, {9, 3}, {13, 4}, {17, 5}, {23, 5}, {29, 6}, {35, 6}, {41, 7}, {47, 7}, {53, 8}, {59, 8}, {62, 9}, {65, 9}, {70, 10}, {75, 10}};
+	//public final int[][] SPELLS = {{1, 1}, {5, 2}, {9, 3}, {13, 4}, {17, 5}, {23, 5}, {29, 6}, {35, 6}, {41, 7}, {47, 7}, {53, 8}, {59, 8}, {62, 9}, {65, 9}, {70, 10}, {75, 10}};
 
 	/**
 	 * ID's of all Undead-type of NPC's. (Used for crumble undead & sounds)

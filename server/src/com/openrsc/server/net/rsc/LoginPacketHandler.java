@@ -8,6 +8,7 @@ import com.openrsc.server.model.Point;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.*;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
+import com.openrsc.server.plugins.triggers.PlayerLoginTrigger;
 import com.openrsc.server.util.rsc.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -164,15 +165,19 @@ public class LoginPacketHandler {
 							LOGGER.info("error parsing password in login block");
 							e.printStackTrace();
 						}
-						// TODO: there are ignored nonces at the end of the login block.
-						// If we cared about the cryptographic security gained by checking that those nonces haven't been used before,
-						// we would want that logic here.
+
+						for (int i = 0; i < 5; i++) {
+							loginInfo.nonces[i] = bytesToInt(loginBlock[38 + i * 4], loginBlock[39 + i * 4], loginBlock[40 + i * 4], loginBlock[41 + i * 4]);
+						}
+						loginInfo.nonces[5] = bytesToInt((byte)0, loginBlock[58], loginBlock[59], loginBlock[60]);
 
 						// Decrypt XTEA block
 						int xteaLength = packet.readUnsignedShort();
 						byte[] xteaBlock = Crypto.decryptXTEA(packet.readBytes(xteaLength), 0, xteaLength, loginInfo.keys);
 
-						// TODO: there are also ignored nonces at the beginning of the xtea block
+						for (int i = 0; i < 5; i++) {
+							loginInfo.nonces[i + 6] = bytesToInt(loginBlock[i * 4], loginBlock[1 + i * 4], loginBlock[2 + i * 4], loginBlock[3 + i * 4]);
+						}
 
 						String username = "";
 						try {
@@ -184,7 +189,7 @@ public class LoginPacketHandler {
 
 						ClientLimitations cl = new ClientLimitations(clientVersion.get());
 
-						final LoginRequest request = new LoginRequest(server, channel, username, password, true, clientVersion.get(), opcode == OpcodeIn.RELOGIN) {
+						final LoginRequest request = new LoginRequest(server, channel, username, password, true, clientVersion.get(), opcode == OpcodeIn.RELOGIN, loginInfo.nonces) {
 							@Override
 							public void loginValidated(int response) {
 								loginResponse = response;
@@ -217,10 +222,10 @@ public class LoginPacketHandler {
 
 								initializePcapLogger(loadedPlayer, attachment);
 
-								server.getPluginHandler().handlePlugin(loadedPlayer, "PlayerLogin", new Object[]{loadedPlayer});
+								server.getPluginHandler().handlePlugin(PlayerLoginTrigger.class, loadedPlayer, new Object[]{loadedPlayer});
 								ActionSender.sendLogin(loadedPlayer);
 
-								getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP());
+								getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP(), loadedPlayer.getUsernameHash());
 							}
 						};
 						server.getLoginExecutor().add(request);
@@ -228,7 +233,9 @@ public class LoginPacketHandler {
 						// login block with initial ISAAC
 						// TODO
 					} else if (clientVersion.get() >= 93) {
-						short referId = packet.readShort();
+						if (clientVersion.get() > 135) {
+							short referId = packet.readShort();
+						}
 						long userHash = packet.readLong();
 						final String username = DataConversions.hashToUsername(userHash);
 
@@ -274,7 +281,7 @@ public class LoginPacketHandler {
 
 						if (!errored) {
 							ClientLimitations cl = new ClientLimitations(clientVersion.get());
-							final LoginRequest request = new LoginRequest(server, channel, username, password, true, clientVersion.get(), opcode == OpcodeIn.RELOGIN) {
+							final LoginRequest request = new LoginRequest(server, channel, username, password, true, clientVersion.get(), opcode == OpcodeIn.RELOGIN, null) {
 								@Override
 								public void loginValidated(int response) {
 									loginResponse = response;
@@ -302,9 +309,9 @@ public class LoginPacketHandler {
 
 									initializePcapLogger(loadedPlayer, attachment);
 
-									server.getPluginHandler().handlePlugin(loadedPlayer, "PlayerLogin", new Object[]{loadedPlayer});
+									server.getPluginHandler().handlePlugin(PlayerLoginTrigger.class, loadedPlayer, new Object[]{loadedPlayer});
 									ActionSender.sendLogin(loadedPlayer);
-									getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP());
+									getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP(), loadedPlayer.getUsernameHash());
 								}
 							};
 							server.getLoginExecutor().add(request);
@@ -325,6 +332,9 @@ public class LoginPacketHandler {
 
 						final String password = packet.readString(20).trim();
 
+						final int protocolVersion = packet.readShort();
+						clientVersion.set(getVersion(protocolVersion, null));
+
 						if (packet.getLength() >= 34) {
 							// local IP or some sort of seed
 							packet.readByte();
@@ -340,7 +350,7 @@ public class LoginPacketHandler {
 
 						ClientLimitations cl = new ClientLimitations(clientVersion.get());
 
-						final LoginRequest request = new LoginRequest(server, channel, username, password, true, clientVersion.get(), opcode == OpcodeIn.RELOGIN) {
+						final LoginRequest request = new LoginRequest(server, channel, username, password, true, clientVersion.get(), opcode == OpcodeIn.RELOGIN, null) {
 							@Override
 							public void loginValidated(int response) {
 								loginResponse = response;
@@ -367,10 +377,10 @@ public class LoginPacketHandler {
 
 								initializePcapLogger(loadedPlayer, attachment);
 
-								server.getPluginHandler().handlePlugin(loadedPlayer, "PlayerLogin", new Object[]{loadedPlayer});
+								server.getPluginHandler().handlePlugin(PlayerLoginTrigger.class, loadedPlayer, new Object[]{loadedPlayer});
 								ActionSender.sendLogin(loadedPlayer);
 
-								getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP());
+								getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP(), loadedPlayer.getUsernameHash());
 							}
 						};
 						server.getLoginExecutor().add(request);
@@ -416,8 +426,11 @@ public class LoginPacketHandler {
 						cl.maxBankItems = packet.readInt();
 						cl.mapHash = packet.readString();
 					}
+					if (packet.getReadableBytes() > 0) {
+						cl.isAndroidClient = (packet.readUnsignedByte() & 0xFF) != 0;
+					}
 
-					final LoginRequest request = new LoginRequest(server, channel, username, password, false, clientVersion, opcode == OpcodeIn.RELOGIN) {
+					final LoginRequest request = new LoginRequest(server, channel, username, password, false, clientVersion, opcode == OpcodeIn.RELOGIN, null) {
 						@Override
 						public void loginValidated(int response) {
 							loginResponse = response;
@@ -446,10 +459,10 @@ public class LoginPacketHandler {
 
 							initializePcapLogger(loadedPlayer, attachment);
 
-							server.getPluginHandler().handlePlugin(loadedPlayer, "PlayerLogin", new Object[]{loadedPlayer});
+							server.getPluginHandler().handlePlugin(PlayerLoginTrigger.class, loadedPlayer, new Object[]{loadedPlayer});
 							ActionSender.sendLogin(loadedPlayer);
 
-							getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP());
+							getServer().getPacketFilter().addLoggedInPlayer(loadedPlayer.getCurrentIP(), loadedPlayer.getUsernameHash());
 						}
 					};
 					server.getLoginExecutor().add(request);
@@ -480,7 +493,7 @@ public class LoginPacketHandler {
 						channel.writeAndFlush(new PacketBuilder().writeShort((short) 0).toPacket()); // not known what this should write
 
 						if (server.getPacketFilter().shouldAllowLogin(IP, true)) {
-							CharacterCreateRequest characterCreateRequest = new CharacterCreateRequest(server, channel, user, pass, email, 38);
+							CharacterCreateRequest characterCreateRequest = new CharacterCreateRequest(server, channel, user, pass, email, true, 38);
 							server.getLoginExecutor().add(characterCreateRequest);
 						}
 					} else if (packet.getLength() == 32) {
@@ -554,7 +567,9 @@ public class LoginPacketHandler {
 						} else if (clientVersion <= 177) {
 							long userHash = packet.readLong();
 							final String username = DataConversions.hashToUsername(userHash);
-							int referId = packet.readShort();
+							if (clientVersion > 135) {
+								short referId = packet.readShort();
+							}
 
 							// Get encrypted block
 							// password is always 20 characters long, with spaces at the end.
@@ -617,7 +632,7 @@ public class LoginPacketHandler {
 					String email = getString(packet.getBuffer()).trim();
 
 					if (server.getPacketFilter().shouldAllowLogin(IP, true)) {
-						CharacterCreateRequest characterCreateRequest = new CharacterCreateRequest(server, channel, user, pass, email, server.getConfig().CLIENT_VERSION);
+						CharacterCreateRequest characterCreateRequest = new CharacterCreateRequest(server, channel, user, pass, email, false, server.getConfig().CLIENT_VERSION);
 						server.getLoginExecutor().add(characterCreateRequest);
 					}
 					break;
@@ -849,22 +864,51 @@ public class LoginPacketHandler {
 	}
 
 	public int getVersion(int retrievedVersion, Player player) {
-		if (retrievedVersion >= 93 && retrievedVersion <= 235) {
+		if (retrievedVersion >= 61 && retrievedVersion <= 5235) {
 			return retrievedVersion;
 		}
-		if (retrievedVersion < 93) {
+
+		// Until some client > 40 && <= 61, client version was not sent, but a protocol version was sent instead.
+		// The only clients we have with this behaviour are clients 39/40, but we can guess at the other times
+		// that the network protocol needed a new version.
+		switch (retrievedVersion) {
+			case 1: // initial RuneScape release
+				return 14; // 2001-01-23
+			case 2:
+				// spellbook added
+				return 16; // guess @ 2001-01-27 client version
+			case 3:
+				// options menu added
+				return 23; // guess @ 2001-02-28 client version
+			case 4:
+				// friends list added
+				return 26; // 2001-04-06, according to Desu forum post
+			case 5:
+				// right click menu added
+				// technically should be something like 37, but we'll use 38 as default
+				return 38; // guess @ 2001-05-08 client version
+			case 6:
+				// good magic/prayer & evil magic/prayer merged
+				return 39; // 2001-05-10
+		}
+
+		if (null == player) {
+			return retrievedVersion;
+		}
+
+		if (retrievedVersion < 61) {
 			// not known version from login info
 			// retrievedVersion is more of a guess
 			int lastSetVersion;
 			if (player.getCache().hasKey("client_version") &&
 				player.getCache().getInt("client_version") >= 14
-				&& player.getCache().getInt("client_version") < 93) {
+				&& player.getCache().getInt("client_version") < 61) {
 				// although the mudclient 14 has not been retrieved yet, this would allow it
 				lastSetVersion = player.getCache().getInt("client_version");
 			} else {
 				lastSetVersion = retrievedVersion;
 			}
-			return  lastSetVersion;
+			return lastSetVersion;
 		}
 		return player.getWorld().getServer().getConfig().CLIENT_VERSION;
 	}

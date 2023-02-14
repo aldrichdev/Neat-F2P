@@ -29,10 +29,6 @@ public final class ChatHandler implements PayloadProcessor<ChatStruct, OpcodeIn>
 		}
 
 		String message = payload.message;
-		if (sender.isRetroClient() && sender.isEvent() && payload.message.startsWith("::")) {
-			CommandHandler.handleCommandString(sender, message.substring(2));
-			return;
-		}
 		if (!sender.speakTongues) {
 			message = DataConversions.upperCaseAllFirst(
 				DataConversions.stripBadCharacters(message));
@@ -48,7 +44,9 @@ public final class ChatHandler implements PayloadProcessor<ChatStruct, OpcodeIn>
 		if (sender.getPossessing() != null) {
 			if (sender.getPossessing() instanceof Player && sender.isAdmin()) {
 				chatMessage = new ChatMessage((Player)sender.getPossessing(), message, mutedChat);
-				sender.getPossessing().getUpdateFlags().setChatMessage(chatMessage);
+				if (!chatMessage.getMessageString().trim().startsWith("::")) {
+					sender.getPossessing().getUpdateFlags().setChatMessage(chatMessage);
+				}
 			} else if (sender.getPossessing() instanceof Npc) {
 				chatMessage = new ChatMessage((Npc)sender.getPossessing(), message, null);
 				sender.getPossessing().getUpdateFlags().setChatMessage(chatMessage);

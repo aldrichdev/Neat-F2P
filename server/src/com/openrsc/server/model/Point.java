@@ -495,23 +495,24 @@ public class Point {
 	}
 
 	// note: every bank in the game is conveniently perfectly rectangular except for zanaris
-	public boolean isInBank() {
-		return inBounds(87, 689, 93, 700) // Al Kharid
+	public boolean isInBank(int mapData) {
+		return (inBounds(87, 689, 93, 700) && mapData >= 29) // Al Kharid
 			|| inBounds(437, 491, 443, 496) // Catherby
-			|| inBounds(216, 634, 223, 638) // Draynor
+			|| (inBounds(216, 634, 223, 638) && mapData >= 24) // Draynor
 			|| inBounds(577, 572, 585, 576) // East Ardougne North
 			|| inBounds(551, 609, 554, 616) // East Ardougne South
-			|| inBounds(212, 448, 220, 453) // Edgeville
-			|| inBounds(280, 564, 286, 573) // Falador East
+			|| (inBounds(212, 448, 220, 453) && mapData >= 23) // Edgeville
+			|| (inBounds(280, 564, 286, 573) && mapData >= 27) // Falador East
 			|| inBounds(328, 549, 334, 557) // Falador West
 			|| inBounds(714, 1399, 718, 1403) // Grand Tree Second Floor
+			|| inBounds(508, 2421, 517, 2423) // Legend's Guild
 			|| inBounds(451, 3376, 457, 3380) // Mage Arena
 			|| inBounds(498, 447, 504, 453) // Seer's Village
 			|| inBounds(59, 731, 59, 731) // Shantay Pass (1 square)
 			|| inBounds(399, 848, 404, 854) // Shilo Village
 			|| inBounds(196, 746, 203, 754) // Tutorial Island
-			|| inBounds(712, 1450, 716, 1454) // Tree Gnome Stronghold (south, near spinning wheel)
-			|| inBounds(98, 510, 106, 515) // Varrock East
+			|| inBounds(712, 1440, 716, 1464) // Tree Gnome Stronghold (south, near spinning wheel)
+			|| (inBounds(98, 510, 106, 515) && mapData >= 24) // Varrock East
 			|| inBounds(147, 498, 153, 506) // Varrock West
 			|| inBounds(585, 750, 590, 758) // Yanille
 			|| inBounds(172, 3521, 176, 3528) // Zanaris Box 1
@@ -531,6 +532,13 @@ public class Point {
 		return inBounds(96, 625, 142, 671) // Ground Floor
 			|| inBounds(96, 1569, 142, 1615) // 1st Floor
 			|| inBounds(96, 2513, 142, 2559); // 2nd Floor
+	}
+
+	public boolean fromHopper() {
+		return this.equals(new Point(166, 599)) // lumbridge chute
+			|| this.equals(new Point(179, 481)) // cooks guild chute
+			|| this.equals(new Point(565, 532)) // ardougne chute
+			|| this.equals(new Point(162, 3533)); // zanaris chute
 	}
 
 	public boolean inArea(Area area) {
@@ -618,8 +626,9 @@ public class Point {
 		sectorY = (yCalc / 48) + 37;
 		offsetX = x % 48;
 		offsetY = yCalc % 48;
-		if (offsetX == 0 && offsetY == 0) {
-			// not known if short form notation is at 0, 0 offset or not.
+		if (offsetX == 24 && offsetY == 24) {
+			// According to Rab, the spot that a new player spawns at is where /rtele 05050 went to
+			// It is the center of the chunk.
 			return String.format("%d%02d%02d", height, sectorX, sectorY);
 		}
 		return String.format("%d%02d%02d %02d%02d", height, sectorX, sectorY, offsetX, offsetY);
@@ -628,7 +637,6 @@ public class Point {
 	public static final int UNABLE_TO_CONVERT = -10000;
 	public static final int BAD_COORDINATE_LENGTH = 0;
 	public static final int NOT_A_NUMBER = 1;
-	public static final int OFFSET_OUT_OF_BOUNDS = 2;
 	public static Point jagexPointToPoint(String jagexPoint) {
 		int x = 0;
 		int y = 0;
@@ -654,9 +662,18 @@ public class Point {
 		} catch (NumberFormatException ex) {
 			return new Point(UNABLE_TO_CONVERT, NOT_A_NUMBER);
 		}
+		if (jagexPoint.length() == 5) {
+			offsetX = 24;
+			offsetY = 24;
+		}
 
-		if (offsetX > 47 || offsetY > 47) {
-			return new Point(UNABLE_TO_CONVERT, OFFSET_OUT_OF_BOUNDS);
+		while (offsetX > 47) {
+			sectorX += 1;
+			offsetX -= 48;
+		}
+		while (offsetY > 47) {
+			sectorY += 1;
+			offsetY -= 48;
 		}
 
 		x = ((sectorX - 48) * 48) + offsetX;

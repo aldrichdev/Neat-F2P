@@ -116,18 +116,16 @@ public class Cannon implements OpLocTrigger,
 				return;
 			}
 
-			//Disable placing a cannon in KBD's lair on non-authentic servers
-			if (config().WANT_CUSTOM_SPRITES) {
-				if (player.getLocation().inBounds(562,3314,572,3332)) {
-					player.message("you can't set up the cannon here");
-					return;
-				}
+			// no cannon in KBD lair; most likely authentic, but no direct proof.
+			if (player.getLocation().inBounds(562,3314,572,3332)) {
+				player.message("you can't set up the cannon here");
+				return;
 			}
 
 			player.resetPath();
 			player.message("you place the cannon base on the ground");
 			delay(3);
-			player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_BASE.id()));
+			if (player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_BASE.id())) == -1) return;
 
 			GameObject cannonBase = new GameObject(
 				player.getWorld(),
@@ -148,8 +146,8 @@ public class Cannon implements OpLocTrigger,
 
 	private void addCannonStand(Player player, Item item, GameObject object) {
 		if (item.getCatalogId() == ItemId.DWARF_CANNON_STAND.id() && object.getID() == 946) {
+			if (player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_STAND.id())) == -1) return;
 			player.message("you add the stand");
-			player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_STAND.id()));
 
 			player.getCache().set("cannon_stage", 2);
 			player.getWorld().unregisterGameObject(object);
@@ -163,8 +161,8 @@ public class Cannon implements OpLocTrigger,
 
 	private void addCannonBarrels(Player player, Item item, GameObject object) {
 		if (item.getCatalogId() == ItemId.DWARF_CANNON_BARRELS.id() && object.getID() == 947) {
+			if (player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_BARRELS.id())) == -1) return;
 			player.message("you add the barrels");
-			player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_BARRELS.id()));
 
 			player.getWorld().unregisterGameObject(object);
 			GameObject cannonBarrels = new GameObject(player.getWorld(), object.getLocation(),
@@ -179,8 +177,8 @@ public class Cannon implements OpLocTrigger,
 
 	private void addCannonFurnace(Player player, Item item, GameObject object) {
 		if (item.getCatalogId() == ItemId.DWARF_CANNON_FURNACE.id() && object.getID() == 948) {
+			if (player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_FURNACE.id())) == -1) return;
 			player.message("you add the furnace");
-			player.getCarriedItems().remove(new Item(ItemId.DWARF_CANNON_FURNACE.id()));
 
 			player.getWorld().unregisterGameObject(object);
 			GameObject cannonFurnace = new GameObject(player.getWorld(), object.getLocation(),

@@ -1,8 +1,5 @@
 package com.openrsc.server.model.world;
 
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Multimaps;
 import com.openrsc.server.Server;
 import com.openrsc.server.ServerConfiguration;
 import com.openrsc.server.avatargenerator.AvatarGenerator;
@@ -17,6 +14,7 @@ import com.openrsc.server.content.party.PartyManager;
 import com.openrsc.server.database.impl.mysql.queries.logging.LoginLog;
 import com.openrsc.server.database.impl.mysql.queries.logging.PMLog;
 import com.openrsc.server.database.impl.mysql.queries.player.login.PlayerOnlineFlagQuery;
+import com.openrsc.server.event.DelayedEvent;
 import com.openrsc.server.event.SingleEvent;
 import com.openrsc.server.external.GameObjectLoc;
 import com.openrsc.server.external.NPCLoc;
@@ -25,9 +23,11 @@ import com.openrsc.server.model.GlobalMessage;
 import com.openrsc.server.model.PathValidation;
 import com.openrsc.server.model.Point;
 import com.openrsc.server.model.Shop;
+import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.GroundItem;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.player.Group;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.PlayerSettings;
 import com.openrsc.server.model.snapshot.Snapshot;
@@ -38,17 +38,30 @@ import com.openrsc.server.net.PcapLogger;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.MiniGameInterface;
 import com.openrsc.server.plugins.QuestInterface;
-import com.openrsc.server.util.*;
+import com.openrsc.server.util.EntityList;
+import com.openrsc.server.util.IPTracker;
+import com.openrsc.server.util.PathfindingDebug;
+import com.openrsc.server.util.PlayerList;
+import com.openrsc.server.util.SimpleSubscriber;
+import com.openrsc.server.util.ThreadSafeIPTracker;
 import com.openrsc.server.util.rsc.CollisionFlag;
 import com.openrsc.server.util.rsc.MessageType;
 import io.netty.util.AttributeKey;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 
@@ -249,6 +262,13 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 	}
 
 	/**
+	 * Removes a player by their username hash
+	 */
+	public Player removePlayer(final long usernameHash) {
+		return players.removePlayerByHash(usernameHash);
+	}
+
+	/**
 	 * Gets a player by their ID
 	 */
 	public Player getPlayerID(final int databaseID) {
@@ -277,6 +297,13 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 	}
 
 	/**
+	 * Get list of players by IP
+	 */
+	public EntityList<Player> getPlayers(String ip) {
+		return players.stream().filter(p -> p.getCurrentIP().equals(ip)).collect(Collectors.toCollection(EntityList::new));
+	}
+
+	/**
 	 * Gets a random online player
 	 * @return
 	 */
@@ -285,6 +312,22 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 			List<Integer> indices = new ArrayList<>(players.indices());
 			int randomIndex = (int)(Math.random() * indices.size());
 			return players.get(indices.get(randomIndex));
+		}
+		return null;
+	}
+	/**
+	 * Gets the player at or above the PID requested
+	 * @return
+	 */
+	public Player getNextPlayer(final int pid, final int excludePid) {
+		if(!players.isEmpty()) {
+			List<Integer> indices = new ArrayList<>(players.indices());
+			for (int pidSearch = pid; pidSearch < pid + getServer().getConfig().MAX_PLAYERS; pidSearch++) {
+				int pidSearchMod = pidSearch % getServer().getConfig().MAX_PLAYERS;
+				if (indices.contains(pidSearchMod) && pidSearchMod != excludePid) {
+					return players.get(pidSearchMod);
+				}
+			}
 		}
 		return null;
 	}
@@ -589,14 +632,12 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 
 	public boolean registerPlayer(final Player player) {
 		if (!getPlayers().contains(player)) {
-			player.setUUID(UUID.randomUUID());
-
 			player.setBusy(false);
 
 			getPlayers().add(player);
 			player.updateRegion();
 			getServer().getGameLogger().run(new PlayerOnlineFlagQuery(getServer(), player.getDatabaseID(), player.getCurrentIP(), true));
-			getServer().getGameLogger().addQuery(new LoginLog(player.getWorld(), player.getDatabaseID(), player.getCurrentIP(), player.getClientVersion()));
+
 			for (Player other : getPlayers()) {
 				other.getSocial().alertOfLogin(player);
 			}
@@ -780,6 +821,7 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 					avatarGenerator.generateAvatar(player.getDatabaseID(), player.getSettings().getAppearance(), player.getWornItems());
 				}
 			}
+			player.resetSceneryMorph();
 			player.logout();
 			LOGGER.info("Unregistered " + player.getUsername() + " from player list.");
 
@@ -792,7 +834,17 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 				}
 			}
 
-			player.getChannel().attr(attachment).set(null);
+			getServer().getPacketFilter().removeLoggedInPlayer(player.getCurrentIP(), player.getUsernameHash());
+
+			// close the channel after a safe amount of time for the logout packet to reach the player
+			// does not matter if player logs back in while this still hasn't been destroyed, it's just to free memory.
+			player.getWorld().getServer().getGameEventHandler().add(
+				new DelayedEvent(player.getWorld(), null, 2500, "Free channel attachment memory") {
+				public void run() {
+					player.getChannel().attr(attachment).set(null);
+					stop();
+				}
+			});
 		} catch (final Exception e) {
 			LOGGER.catching(e);
 		}
@@ -824,6 +876,11 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 
 	public TileValue getTile(final Point point) {
 		return getRegionManager().getTile(point);
+	}
+
+	public boolean canYield(final Item item) {
+		boolean notYieldable = this.server.getConfig().RESTRICT_ITEM_ID >= 0 && this.server.getConfig().RESTRICT_ITEM_ID < item.getCatalogId();
+		return !notYieldable;
 	}
 
 	public FishingTrawler getFishingTrawler(final TrawlerBoat boat) {
@@ -957,18 +1014,66 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 					if (player == gm.getPlayer()) {
 						player.getWorld().getServer().getGameLogger().addQuery(new PMLog(player.getWorld(), player.getUsername(), gm.getMessage(),
 							"Global$"));
-						ActionSender.sendPrivateMessageSent(gm.getPlayer(), -1L, gm.getMessage(), true);
+						if (player.getCache().hasKey("private_message_global")) {
+							ActionSender.sendPrivateMessageSent(gm.getPlayer(), -1L, gm.getMessage(), true);
+						} else {
+							ActionSender.sendMessage(player, null, MessageType.QUEST, formatGlobalQuestMessage(gm, player), 0, "");
+						}
 					} else {
 						if (!player.getBlockGlobalFriend()) {
 							boolean blockNone = player.getSettings().getPrivacySetting(PlayerSettings.PRIVACY_BLOCK_PRIVATE_MESSAGES, player.isUsingCustomClient())
 								== PlayerSettings.BlockingMode.None.id();
-							if (blockNone && !player.getSocial().isIgnoring(gm.getPlayer().getUsernameHash()) || gm.getPlayer().isMod()) {
-								ActionSender.sendPrivateMessageReceived(player, gm.getPlayer(), gm.getMessage(), true);
+							boolean blockNonFriend = player.getSettings().getPrivacySetting(PlayerSettings.PRIVACY_BLOCK_PRIVATE_MESSAGES, player.isUsingCustomClient())
+								== PlayerSettings.BlockingMode.NonFriends.id();
+							if ((blockNone || blockNonFriend) && !player.getSocial().isIgnoring(gm.getPlayer().getUsernameHash()) || gm.getPlayer().isMod()) {
+								if (player.getCache().hasKey("private_message_global")) {
+									ActionSender.sendPrivateMessageReceived(player, gm.getPlayer(), gm.getMessage(), true);
+								} else {
+									ActionSender.sendMessage(player, null, MessageType.QUEST, formatGlobalQuestMessage(gm, player), 0, "");
+								}
 							}
 						}
 					}
 				}
 			}
 		});
+	}
+
+	private String formatGlobalQuestMessage(GlobalMessage gm, Player playerSentTo) {
+		StringBuilder returnMessage = new StringBuilder();
+
+		String globalMessageColor = "@cya@";
+		if (playerSentTo.getCache().hasKey("global_message_color")) {
+			globalMessageColor = playerSentTo.getCache().getString("global_message_color");
+		}
+
+		returnMessage.append(globalMessageColor);
+		returnMessage.append("Global$");
+
+		// moderators get a prefix
+		String groupPrefix = Group.getGlobalMessageName(gm.getPlayer().getGroupID());
+		if (!groupPrefix.equals("")) {
+			returnMessage.append("@ora@[");
+			if (gm.getPlayer().getGroupID() == Group.PLAYER_MOD) {
+				returnMessage.append("@whi@");
+			} else {
+				returnMessage.append("@yel@");
+			}
+			returnMessage.append(groupPrefix);
+			returnMessage.append("@ora@]");
+		} else {
+			returnMessage.append("@ora@");
+		}
+
+		// username is added
+		returnMessage.append("[@gre@");
+		returnMessage.append(gm.getPlayer().getUsername());
+		returnMessage.append("@ora@]: ");
+		returnMessage.append(globalMessageColor);
+
+		// actual message appended, with stripped positional codes
+		returnMessage.append(gm.getMessage().replaceAll("~...~", ""));
+
+		return returnMessage.toString();
 	}
 }

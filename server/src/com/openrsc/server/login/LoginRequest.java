@@ -2,10 +2,14 @@ package com.openrsc.server.login;
 
 import com.openrsc.server.Server;
 import com.openrsc.server.database.GameDatabaseException;
+import com.openrsc.server.database.impl.mysql.queries.logging.LoginLog;
+import com.openrsc.server.database.struct.InvoluntaryChangeDetails;
 import com.openrsc.server.database.struct.PlayerLoginData;
+import com.openrsc.server.database.struct.UsernameChangeType;
 import com.openrsc.server.event.rsc.ImmediateEvent;
 import com.openrsc.server.model.entity.player.Group;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.LoginResponse;
 import com.openrsc.server.util.rsc.RegisterLoginResponse;
@@ -31,8 +35,11 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 	private int clientVersion;
 	private boolean authenticClient;
 	private boolean reconnecting;
+	private boolean isSimLogin;
+	private int[] nonces;
+	private UsernameChangeType usernameChangeType = UsernameChangeType.NOT_RENAMED;
 
-	protected LoginRequest(final Server server, final Channel channel, final String username, final String password, final boolean isAuthenticClient, final int clientVersion, final boolean reconnecting) {
+	protected LoginRequest(final Server server, final Channel channel, final String username, final String password, final boolean isAuthenticClient, final int clientVersion, final boolean reconnecting, final int[] nonces) {
 		this.server = server;
 		this.channel = channel;
 		this.setUsername(DataConversions.sanitizeUsername(username));
@@ -42,6 +49,21 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 		this.setClientVersion(clientVersion);
 		this.setUsernameHash(DataConversions.usernameToHash(username));
 		this.reconnecting = reconnecting;
+		this.isSimLogin = false;
+		this.nonces = nonces;
+	}
+
+	// only used for sim login
+	protected LoginRequest(final Server server, final String username, final String ip, final int clientVersion) {
+		this.server = server;
+		this.channel = null;
+		this.setUsername(DataConversions.sanitizeUsername(username));
+		this.setAuthenticClient(clientVersion <= 235);
+		this.setIpAddress(ip);
+		this.setClientVersion(clientVersion);
+		this.setUsernameHash(DataConversions.usernameToHash(username));
+		this.reconnecting = false;
+		this.isSimLogin = true;
 	}
 
 	public String getIpAddress() {
@@ -105,14 +127,15 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 	public abstract void loadingComplete(Player loadedPlayer);
 
 	protected void processInternal() {
-		int loginResponse = validateLogin();
+		ValidatedLogin vl = validateLogin();
+		int loginResponse = vl.responseCode;
 
 		if (clientVersion <= 204) {
-			loginResponse = RegisterLoginResponse.translateNewToOld(loginResponse);
+			loginResponse = RegisterLoginResponse.translateNewToOld(loginResponse, clientVersion, false);
 		}
 		loginValidated(loginResponse);
 
-		if (isLoginSuccessful(loginResponse)) {
+		if (!isSimLogin && isLoginSuccessful(loginResponse)) {
 			final Player loadedPlayer = getServer().getPlayerService().loadPlayer(this);
 			loadedPlayer.setLoggedIn(true);
 
@@ -122,6 +145,8 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 				@Override
 				public void action() {
 					loadingComplete(loadedPlayer);
+					loadedPlayer.desertHeatInit();
+					ActionSender.sendReleasedNameExplanation(loadedPlayer, usernameChangeType);
 				}
 			});
 
@@ -129,19 +154,43 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 		LOGGER.info("Processed login request for " + getUsername() + " response: " + loginResponse);
 	}
 
-	public byte validateLogin() {
+	public ValidatedLogin validateLogin() {
 		PlayerLoginData playerData;
 		int groupId = Group.USER;
 		try {
 			if (getServer().isRestarting() || getServer().isShuttingDown() || !getServer().getLoginExecutor().isRunning()) {
-				return (byte) LoginResponse.WORLD_DOES_NOT_ACCEPT_NEW_PLAYERS;
+				return new ValidatedLogin(LoginResponse.WORLD_DOES_NOT_ACCEPT_NEW_PLAYERS);
 			}
 
 			if(!getServer().getPacketFilter().shouldAllowLogin(getIpAddress(), false)) {
-				return (byte) LoginResponse.LOGIN_ATTEMPTS_EXCEEDED;
+				return new ValidatedLogin(LoginResponse.LOGIN_ATTEMPTS_EXCEEDED);
 			}
 
 			playerData = getServer().getDatabase().getPlayerLoginData(username);
+
+			if (playerData == null) {
+				// didn't find player that exists, try again by former name
+				InvoluntaryChangeDetails oldUsername = getServer().getDatabase().queryFormerNameInvoluntaryChange(username);
+				if (null != oldUsername) {
+					username = oldUsername.username;
+					playerData = getServer().getDatabase().getPlayerLoginData(username);
+					usernameChangeType = oldUsername.changeType;
+				}
+			} else {
+				// check for released name that has been reassigned
+				// (password will almost always mismatch, else they've logged into the new account)
+				if (!DataConversions.checkPassword(getPassword(), playerData.salt, playerData.password)) {
+					// TODO: could support searching more than just one formerPlayerData if more than one person has the same released name
+					// wouldn't be an issue until years from now.
+					PlayerLoginData formerPlayerData = getServer().getDatabase().getPlayerLoginDataByFormerName("$" + username);
+					if (null != formerPlayerData && DataConversions.checkPassword(getPassword(), formerPlayerData.salt, formerPlayerData.password)) {
+						// password matches for a player who used to be named this, and had their account name freed without their knowledge.
+						usernameChangeType = UsernameChangeType.RELEASED;
+						username = formerPlayerData.username;
+						playerData = formerPlayerData;
+					}
+				}
+			}
 
 			boolean isAdmin = getServer().getPacketFilter().isHostAdmin(getIpAddress());
 			if (playerData != null) {
@@ -149,57 +198,71 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 				isAdmin = isAdmin || groupId == Group.OWNER || groupId == Group.ADMIN;
 			}
 
-			if(getServer().getPacketFilter().getPasswordAttemptsCount(getIpAddress()) >= getServer().getConfig().MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES && !isAdmin) {
-				return (byte) LoginResponse.LOGIN_ATTEMPTS_EXCEEDED;
+			// TODO: check threshold for webclients, since they get associated IP 127.0.0.1
+			if(!getIpAddress().equals("127.0.0.1") && getServer().getPacketFilter().getPasswordAttemptsCount(getIpAddress()) >= getServer().getConfig().MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES && !isAdmin) {
+				return new ValidatedLogin(LoginResponse.LOGIN_ATTEMPTS_EXCEEDED);
 			}
 
 			if (getServer().getPacketFilter().isHostIpBanned(getIpAddress()) && !isAdmin) {
 				LOGGER.debug(getIpAddress() + " denied for being host ip banned...!");
-				return (byte) LoginResponse.ACCOUNT_TEMP_DISABLED;
+				return new ValidatedLogin(LoginResponse.ACCOUNT_TEMP_DISABLED);
 			}
 
-			if (getClientVersion() != getServer().getConfig().CLIENT_VERSION
-				&& !isAdmin && getClientVersion() < 14) {
-				return (byte) LoginResponse.CLIENT_UPDATED;
+
+			if (getClientVersion() != getServer().getConfig().CLIENT_VERSION && !isAdmin) {
+				if (getClientVersion() > 10000) {
+					if (getServer().getConfig().ENFORCE_CUSTOM_CLIENT_VERSION) {
+						return new ValidatedLogin(LoginResponse.CLIENT_UPDATED);
+					}
+				} else {
+					if (getServer().getConfig().WANT_CUSTOM_SPRITES) {
+						return new ValidatedLogin(LoginResponse.CLIENT_UPDATED);
+					}
+				}
 			}
 
 			final long i = getServer().getTimeUntilShutdown();
 			if (i > 0 && i < 30000 && !isAdmin) {
-				return (byte) LoginResponse.WORLD_DOES_NOT_ACCEPT_NEW_PLAYERS;
+				return new ValidatedLogin(LoginResponse.WORLD_DOES_NOT_ACCEPT_NEW_PLAYERS);
 			}
 
 			if (playerData == null) {
 				server.getPacketFilter().addPasswordAttempt(getIpAddress());
-				return (byte) LoginResponse.INVALID_CREDENTIALS;
+				return new ValidatedLogin(LoginResponse.INVALID_CREDENTIALS);
 			}
 
 			if(getServer().getWorld().getPlayers().size() >= getServer().getConfig().MAX_PLAYERS && !isAdmin) {
-					return (byte) LoginResponse.WORLD_IS_FULL;
+					return new ValidatedLogin(LoginResponse.WORLD_IS_FULL);
 			}
 
 			if (getServer().getWorld().getPlayer(getUsernameHash()) != null) {
-				return (byte) LoginResponse.ACCOUNT_LOGGEDIN;
+				return new ValidatedLogin(LoginResponse.ACCOUNT_LOGGEDIN);
 			}
 
-			if(getServer().getPacketFilter().getPlayersCount(getIpAddress()) >= getServer().getConfig().MAX_PLAYERS_PER_IP && !isAdmin) {
+			if(!getIpAddress().equals("127.0.0.1") && getServer().getPacketFilter().getPlayersCount(getIpAddress()) >= getServer().getConfig().MAX_PLAYERS_PER_IP && !isAdmin) {
 				LOGGER.debug(getIpAddress() + " is using " + getServer().getPacketFilter().getPlayersCount(getIpAddress()) + " out of " + getServer().getConfig().MAX_PLAYERS_PER_IP + " allowed sessions.");
-				return (byte) LoginResponse.IP_IN_USE;
+				return new ValidatedLogin(LoginResponse.IP_IN_USE);
 			}
 
 			final long banExpires = playerData.banned;
-			if (banExpires == -1 && !isAdmin) {
-				return (byte) LoginResponse.ACCOUNT_PERM_DISABLED;
+			if (banExpires == -1) {
+				return new ValidatedLogin(LoginResponse.ACCOUNT_PERM_DISABLED);
 			}
 
 			final double timeBanLeft = (double) (banExpires - System.currentTimeMillis());
-			if (timeBanLeft >= 1 && !isAdmin) {
+			if (timeBanLeft >= 1) {
 				LOGGER.debug(getIpAddress() + " denied for being *actually* temp banned...!");
-				return (byte) LoginResponse.ACCOUNT_TEMP_DISABLED;
+				return new ValidatedLogin(LoginResponse.ACCOUNT_TEMP_DISABLED);
 			}
 
-			if (!DataConversions.checkPassword(getPassword(), playerData.salt, playerData.password)) {
+			if (!isSimLogin && !DataConversions.checkPassword(getPassword(), playerData.salt, playerData.password)) {
 				server.getPacketFilter().addPasswordAttempt(getIpAddress());
-				return (byte) LoginResponse.INVALID_CREDENTIALS;
+				return new ValidatedLogin(LoginResponse.INVALID_CREDENTIALS);
+			}
+
+			// all other checks passed, check cryptographic nonces have not been used before by inserting into a UNIQUE column
+			if (!isSimLogin && !getServer().getDatabase().queryInsertLoginAttempt(new LoginLog(playerData.id, getIpAddress(), clientVersion, nonces))) {
+				return new ValidatedLogin(LoginResponse.INVALID_CREDENTIALS);
 			}
 
 			// Doing this at end because we only want to flag the host as an admin _IF_ they know the password.
@@ -210,14 +273,14 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 
 		} catch (GameDatabaseException e) {
 			LOGGER.catching(e);
-			return (byte) LoginResponse.LOGIN_UNSUCCESSFUL;
+			return new ValidatedLogin(LoginResponse.LOGIN_UNSUCCESSFUL);
 		}
 
 		if (reconnecting && clientVersion <= 204) {
-			return (byte) LoginResponse.RECONNECT_SUCCESFUL;
+			return new ValidatedLogin(LoginResponse.RECONNECT_SUCCESFUL);
 		}
 
-		return (byte) LoginResponse.LOGIN_SUCCESSFUL[groupId];
+		return new ValidatedLogin(LoginResponse.LOGIN_SUCCESSFUL[groupId]);
 	}
 
 	public boolean isLoginSuccessful(int loginResponse) {

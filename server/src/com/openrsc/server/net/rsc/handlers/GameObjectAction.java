@@ -8,6 +8,7 @@ import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.TargetObjectStruct;
+import com.openrsc.server.plugins.triggers.OpLocTrigger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,6 +25,11 @@ public class GameObjectAction implements PayloadProcessor<TargetObjectStruct, Op
 			player.message("You can't do that whilst you are fighting");
 			return;
 		}
+
+		if (player.getDuel().isDueling()) {
+			return;
+		}
+
 		if (player.isBusy()) {
 			player.resetPath();
 			return;
@@ -66,10 +72,11 @@ public class GameObjectAction implements PayloadProcessor<TargetObjectStruct, Op
 
 				int playerDirection = getPlayer().getSprite();
 				if (getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(
-					getPlayer(),
-					"OpLoc",
-					new Object[]{getPlayer(), object, command},
-					this)) {
+						OpLocTrigger.class,
+						getPlayer(),
+						new Object[]{getPlayer(), object, command},
+						this)
+				) {
 					getPlayer().setSprite(playerDirection);
 				}
 			}

@@ -48,7 +48,7 @@ public final class Lundail extends AbstractShop {
 
 	@Override
 	public boolean blockTalkNpc(Player player, Npc n) {
-		return n.getID() == NpcId.LUNDAIL.id();
+		return !player.getConfig().WANT_OPENPK_POINTS && n.getID() == NpcId.LUNDAIL.id();
 	}
 
 	@Override

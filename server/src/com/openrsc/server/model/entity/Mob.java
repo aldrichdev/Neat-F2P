@@ -1,11 +1,12 @@
 package com.openrsc.server.model.entity;
 
 import com.openrsc.server.constants.Skill;
+import com.openrsc.server.event.rsc.DuplicationStrategy;
 import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.event.rsc.impl.PoisonEvent;
-import com.openrsc.server.event.rsc.impl.projectile.RangeEventNpc;
 import com.openrsc.server.event.rsc.impl.StatRestorationEvent;
 import com.openrsc.server.event.rsc.impl.combat.CombatEvent;
+import com.openrsc.server.event.rsc.impl.projectile.RangeEventNpc;
 import com.openrsc.server.model.*;
 import com.openrsc.server.model.Path.PathType;
 import com.openrsc.server.model.container.Item;
@@ -16,6 +17,8 @@ import com.openrsc.server.model.entity.update.UpdateFlags;
 import com.openrsc.server.model.states.CombatState;
 import com.openrsc.server.model.world.World;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.plugins.triggers.DropObjTrigger;
+import com.openrsc.server.plugins.triggers.TalkNpcTrigger;
 import com.openrsc.server.util.rsc.CollisionFlag;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
@@ -31,6 +34,8 @@ public abstract class Mob extends Entity {
 	 * The asynchronous logger.
 	 */
 	private static final Logger LOGGER = LogManager.getLogger();
+
+	protected static final int DEFAULT_PROJECTILE_RADIUS = 5;
 
 	private long lastMovementTime = 0;
 	private final Skills skills = new Skills(this.getWorld(), this);
@@ -71,7 +76,7 @@ public abstract class Mob extends Entity {
 	/**
 	 * Unique ID for event tracking.
 	 */
-	private UUID uuid;
+	private final UUID uuid;
 	/**
 	 * Timer used to track start and end of combat
 	 */
@@ -144,6 +149,7 @@ public abstract class Mob extends Entity {
 	public Mob(final World world, final EntityType type) {
 		super(world, type);
 		statRestorationEvent = new StatRestorationEvent(getWorld(), this);
+		uuid = UUID.randomUUID();
 	}
 
 	/**
@@ -402,42 +408,34 @@ public abstract class Mob extends Entity {
 	}
 
 	public void setFollowing(final Mob mob, final int radius, final boolean canInterrupt) {
-		if (isFollowing()) {
-			resetFollowing();
-		}
+		if (isFollowing()) resetFollowing();
 		following = mob;
-		followEvent = new GameTickEvent(getWorld(), this, 0, "Mob Following Mob") {
+		followEvent = new GameTickEvent(getWorld(), this, 0, "Mob Following Mob", DuplicationStrategy.ONE_PER_MOB) {
 			public void run() {
-				setDelayTicks(1);
-				Mob mob = getOwner().getFollowing();
+				if (getDelayTicks() == 0) setDelayTicks(1);
+
+				if (mob.isRemoved()) {
+					resetFollowing();
+					return;
+				}
 
 				// Handles the following cases:
 				//   1. Mob is out of view range,
 				//   2. Mob is removed,
 				//   3. Player is busy, but not in a duel (duel should not stop following opponent), and
 				//   4. Mob is not following something.
-				boolean duelActive = (getOwner().isPlayer() && ((Player) getOwner()).getDuel().isDuelActive());
-				boolean shouldInterrupt = canInterrupt && (!duelActive && getOwner().isBusy());
-				if (!getOwner().withinRange(mob) || mob.isRemoved() || shouldInterrupt) {
+				boolean duelActive = (isPlayer() && ((Player) Mob.this).getDuel().isDuelActive());
+				boolean shouldInterrupt = canInterrupt && (!duelActive && isBusy());
+				if (!withinRange(mob) || shouldInterrupt) {
 					if (!mob.isFollowing()) {
 						resetFollowing();
 					}
-				}
-
-				// We have not finished the current follow path, but we are in range!
-				else if (!getOwner().finishedPath() && getOwner().withinRange(mob, radius)) {
-					getOwner().resetPath();
-				}
-
-				// We have finished the current follow path, but we need to
-				//  keep walking to get to the target.
-				else if (getOwner().finishedPath() && !getOwner().withinRange(mob, radius)) {
-					getOwner().walkToEntity(mob.getX(), mob.getY());
-				}
-
-				// No point in following nothing.
-				else if (mob.isRemoved()) {
-					resetFollowing();
+				} else if (finishedPath()) {
+					// We have finished the current follow path, but we need to keep walking to get to the target.
+					if (!withinRange(mob, radius)) walkToEntity(mob.getX(), mob.getY());
+				} else {
+					// We have not finished the current follow path, but we are in range!
+					if (withinRange(mob, radius)) resetPath();
 				}
 			}
 		};
@@ -451,7 +449,7 @@ public abstract class Mob extends Entity {
 		} else {
 			possessingUsername = ((Npc) possessing).getDef().getName();
 		}
-		possesionEvent = new GameTickEvent(getWorld(), this, 0, "Moderator possessing Mob") {
+		possesionEvent = new GameTickEvent(getWorld(), this, 0, "Moderator possessing Mob", DuplicationStrategy.ALLOW_MULTIPLE) {
 			public void run() {
 				setDelayTicks(1);
 				Player moderator = (Player)getOwner();
@@ -504,7 +502,7 @@ public abstract class Mob extends Entity {
 		}
 		final Mob me = this;
 		following = mob;
-		followEvent = new GameTickEvent(getWorld(), null, 1, "Player Following Mob") {
+		followEvent = new GameTickEvent(getWorld(), null, 1, "Player Following Mob", DuplicationStrategy.ONE_PER_MOB) {
 			public void run() {
 				if (!me.withinRange(mob) || mob.isRemoved()
 					|| (me.isPlayer() && !((Player) me).getDuel().isDuelActive() && me.isBusy())) {
@@ -856,10 +854,6 @@ public abstract class Mob extends Entity {
 		return uuid;
 	}
 
-	public void setUUID(final UUID u) {
-		this.uuid = u;
-	}
-
 	public CombatEvent getCombatEvent() {
 		return combatEvent;
 	}
@@ -1102,7 +1096,7 @@ public abstract class Mob extends Entity {
 		final int index = dropItemIndex;
 		this.setDropItemEvent(-1, null);
 		if (item == null) return;
-		getWorld().getServer().getPluginHandler().handlePlugin(player, "DropObj", new Object[]{player, index, item, fromInventory});
+		getWorld().getServer().getPluginHandler().handlePlugin(DropObjTrigger.class, player, new Object[]{player, index, item, fromInventory});
 	}
 
 	protected Player talkToNpcEvent = null;
@@ -1118,17 +1112,16 @@ public abstract class Mob extends Entity {
 	public void runTalkToNpcEvent() {
 		Player player = getTalkToNpcEvent();
 		setTalkToNpcEvent(null);
-		player.getWorld().getServer().getPluginHandler().handlePlugin(player, "TalkNpc", new Object[]{player, this});
+		player.getWorld().getServer().getPluginHandler().handlePlugin(TalkNpcTrigger.class, player, new Object[]{player, this});
 	}
 
-	public boolean canProjectileReach(Mob mob) {
-		int radius = 5;
+	public boolean canProjectileReach(final Mob mob) {
 		if (this.isNpc()) {
-			return this.withinRange(mob, radius);
+			return this.withinRange(mob, DEFAULT_PROJECTILE_RADIUS);
 		}
 
 		Player player = (Player) this;
-		radius = player.getProjectileRadius(radius);
+		int radius = player.getProjectileRadius();
 		return player.withinRange(mob, radius);
 	}
 

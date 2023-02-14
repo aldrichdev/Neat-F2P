@@ -1,5 +1,6 @@
 package launcher.Gameupdater;
 
+import launcher.Main;
 import launcher.Utils.Defaults;
 import launcher.Utils.Logger;
 
@@ -78,7 +79,7 @@ public class Downloader implements Runnable {
 	}
 
 	private void download(List<File> fileList) {
-		Thread t = new Thread(new Downloader(Defaults._DEFAULT_CONFIG_DIR, fileList));
+		Thread t = new Thread(new Downloader(Main.configFileLocation, fileList));
 		t.start();
 	}
 
@@ -117,17 +118,18 @@ public class Downloader implements Runnable {
 
 			// File metadata
 			String description = getDescription(file);
-			int fileSize = connection.getContentLength();
+			long fileSize = connection.getContentLength();
 
 			try (BufferedInputStream inputStream = new BufferedInputStream(new URL(completeFileUrl).openStream());
 				 FileOutputStream fileOS = new FileOutputStream(this._GAMEFOLDER + File.separator + filename)) {
 				byte[] data = new byte[1024];
 				int byteContent;
-				int totalRead = 0;
+				double totalRead = 0;
 				while ((byteContent = inputStream.read(data, 0, 1024)) != -1) {
 					totalRead += byteContent;
 					fileOS.write(data, 0, byteContent);
-					ProgressBar.setDownloadProgress(description, (float) (totalRead * 100 / fileSize));
+          float percent = (float) (totalRead / fileSize) * 100;
+					ProgressBar.setDownloadProgress(description, percent);
 				}
 			} catch (UnknownHostException uhe) {
 				offline_start = true;

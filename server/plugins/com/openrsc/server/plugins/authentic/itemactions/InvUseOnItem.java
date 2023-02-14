@@ -4,12 +4,14 @@ import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.player.Player;
+import static com.openrsc.server.plugins.Functions.compareItemsIds;
+import static com.openrsc.server.plugins.Functions.config;
+import static com.openrsc.server.plugins.Functions.delay;
 import com.openrsc.server.plugins.triggers.UseInvTrigger;
 import com.openrsc.server.util.rsc.MessageType;
-
+import java.util.Arrays;
 import java.util.Optional;
-
-import static com.openrsc.server.plugins.Functions.*;
+import org.apache.commons.lang.ArrayUtils;
 
 public class InvUseOnItem implements UseInvTrigger {
 	private int[] capes = {
@@ -196,11 +198,8 @@ public class InvUseOnItem implements UseInvTrigger {
 			if (player.getCarriedItems().getInventory().countId(pieces[0]) < 1 || player.getCarriedItems().getInventory().countId(pieces[1]) < 1 ||
 				player.getCarriedItems().getInventory().countId(pieces[2]) < 1) {
 				player.message("You still need one more piece of map");
-			} else {
+			} else if (player.getCarriedItems().remove(new Item(pieces[0]), new Item(pieces[1]), new Item(pieces[2]))) {
 				player.message("You put all the pieces of map together");
-				player.getCarriedItems().remove(new Item(pieces[0]));
-				player.getCarriedItems().remove(new Item(pieces[1]));
-				player.getCarriedItems().remove(new Item(pieces[2]));
 				player.getCarriedItems().getInventory().add(new Item(ItemId.MAP.id(), 1));
 			}
 		}
@@ -212,11 +211,8 @@ public class InvUseOnItem implements UseInvTrigger {
 			if (player.getCarriedItems().getInventory().countId(fragments[0]) < 1 || player.getCarriedItems().getInventory().countId(fragments[1]) < 1 ||
 				player.getCarriedItems().getInventory().countId(fragments[2]) < 1) {
 				player.message("You still need one more piece of the crest");
-			} else {
+			} else if (player.getCarriedItems().remove(new Item(fragments[0]), new Item(fragments[1]), new Item(fragments[2]))) {
 				player.message("You put all the pieces of the crest together");
-				player.getCarriedItems().remove(new Item(fragments[0]));
-				player.getCarriedItems().remove(new Item(fragments[1]));
-				player.getCarriedItems().remove(new Item(fragments[2]));
 				player.getCarriedItems().getInventory().add(new Item(ItemId.FAMILY_CREST.id(), 1));
 			}
 		}
@@ -267,11 +263,11 @@ public class InvUseOnItem implements UseInvTrigger {
 	@Override
 	public boolean blockUseInv(Player player, Integer invIndex, Item item1, Item item2) {
 		if (compareItemsIds(item1, item2, ItemId.REDDYE.id(), ItemId.YELLOWDYE.id()))
-			return true;
+			return player.getWorld().canYield(new Item(ItemId.ORANGEDYE.id()));
 		else if (compareItemsIds(item1, item2, ItemId.REDDYE.id(), ItemId.BLUEDYE.id()))
-			return true;
+			return player.getWorld().canYield(new Item(ItemId.PURPLEDYE.id()));
 		else if (compareItemsIds(item1, item2, ItemId.YELLOWDYE.id(), ItemId.BLUEDYE.id()))
-			return true;
+			return player.getWorld().canYield(new Item(ItemId.GREENDYE.id()));
 		else if (compareItemsIds(item1, item2, ItemId.GOBLIN_ARMOUR.id(), ItemId.ORANGEDYE.id()))
 			return true;
 		else if (compareItemsIds(item1, item2, ItemId.GOBLIN_ARMOUR.id(), ItemId.BLUEDYE.id()))
@@ -317,11 +313,16 @@ public class InvUseOnItem implements UseInvTrigger {
 		else if (compareItemsIds(item1, item2, ItemId.RIGHT_HALF_DRAGON_SQUARE_SHIELD.id(), ItemId.LEFT_HALF_DRAGON_SQUARE_SHIELD.id()))
 			return true;
 
-		for (int il : capes) {
-			if (il == item1.getCatalogId()) {
-				return true;
+		if(!player.getWorld().getServer().getConfig().CANT_DYE_CAPES) {
+			if ((Arrays.stream(capes).anyMatch(c -> item1.getCatalogId() == c) && Arrays.stream(dye).anyMatch(d -> item2.getCatalogId() == d)) ||
+				(Arrays.stream(capes).anyMatch(c -> item2.getCatalogId() == c) && Arrays.stream(dye).anyMatch(d -> item1.getCatalogId() == d))) {
+				boolean isDyeFirst = Arrays.stream(dye).anyMatch(d -> item1.getCatalogId() == d);
+				int dyeId = isDyeFirst ? item1.getCatalogId() : item2.getCatalogId();
+				int dyeIndex = ArrayUtils.indexOf(dye, dyeId);
+				return player.getWorld().canYield(new Item(newCapes[dyeIndex]));
 			}
 		}
+
 		return false;
 	}
 }

@@ -8,7 +8,7 @@ public class ClientLimitations {
 	public int maxAnimationId, maxItemId, maxNpcId, maxSceneryId, maxPrayerId, maxSpellId,
 		maxSkillId, maxRoofId, maxTextureId, maxTileId, maxBoundaryId, maxTeleBubbleId,
 		maxProjectileSprite, maxSkinColor, maxHairColor, maxClothingColor, maxQuestId,
-		maxDialogueOptions, maxBankItems;
+		maxDialogueOptions, maxBankItems, maxServerId, maxFriends;
 	public String mapHash;
 	int supportsModSprites = NO_SUPPORT;
 	int numberOfSounds = NO_SUPPORT;
@@ -22,14 +22,16 @@ public class ClientLimitations {
 	public boolean supportsSkillUpdate = false;
 	public boolean supportsSystemUpdateTimer = false;
 	public boolean supportsMessageBox = false;
+	public boolean isAndroidClient = false;
 
 	ClientLimitations(int clientVersion) {
 		setKnownLimitations(clientVersion);
 	}
 
 	public void setKnownLimitations(int clientVersion) {
+		maxFriends = 50;
 		if (clientVersion >= 38 && clientVersion <= 40) {
-			maxAnimationId = 114;
+			maxAnimationId = 115;
 			maxItemId = 306;
 			maxNpcId = 157;
 			maxSceneryId = 179;
@@ -54,6 +56,57 @@ public class ClientLimitations {
 			maxDialogueOptions = 5;
 			maxBankItems = 0; // item bank not implemented until client 72 on 2001-07-26
 			mapHash = "14";
+			maxServerId = 1000;
+		}
+
+		else if (clientVersion == 69) {
+			// TODO: correct these
+			maxAnimationId = 122;
+			maxItemId = 382;
+			maxNpcId = 173;
+			maxSceneryId = 194;
+			maxPrayerId = 13; // already added all prayers by now
+			maxSkillId = 15;
+			maxSpellId = 8;
+			maxRoofId = -1; // not implemented until client 115 on 2001-12-24
+			maxTextureId = -1; // not implemented until client 115 on 2001-12-24
+			maxTileId = 2;
+			maxBoundaryId = 47;
+			maxTeleBubbleId = -1; // not implemented until client 119 on 2002-01-24
+			maxProjectileSprite = 2;
+			maxSkinColor = 4;
+			maxHairColor = 9;
+			maxClothingColor = 14;
+			maxQuestId = 15; // 16 quests existed
+			maxDialogueOptions = 5;
+			maxBankItems = 0; // item bank not implemented until client 72 on 2001-07-26
+			mapHash = "20";
+			maxServerId = 1000;
+		}
+
+		else if (clientVersion == 115) {
+			// TODO: correct these
+			maxAnimationId = 122;
+			maxItemId = 581;
+			maxNpcId = 249;
+			maxSceneryId = 260;
+			maxPrayerId = 13; // already added all prayers by now
+			maxSkillId = 15;
+			maxSpellId = 8;
+			maxRoofId = 2;
+			maxTextureId = 31;
+			maxTileId = 10;
+			maxBoundaryId = 73;
+			maxTeleBubbleId = -1; // not implemented until client 119 on 2002-01-24
+			maxProjectileSprite = 2;
+			maxSkinColor = 4;
+			maxHairColor = 9;
+			maxClothingColor = 14;
+			maxQuestId = 16; // 17 quests existed
+			maxDialogueOptions = 5;
+			maxBankItems = 48;
+			mapHash = "27";
+			maxServerId = 1500;
 		}
 
 		else if (clientVersion >= 177 && clientVersion <= 235) {
@@ -83,6 +136,7 @@ public class ClientLimitations {
 			maxDialogueOptions = 5;
 			maxBankItems = 48 * 4;
 			numberOfSounds = AUTHENTIC_SOUNDS_ONLY;
+			maxServerId = 5000;
 		}
 
 		if (clientVersion == 140) {
@@ -107,10 +161,15 @@ public class ClientLimitations {
 			maxDialogueOptions = 5;
 			maxBankItems = 48 * 2;
 			numberOfSounds = AUTHENTIC_SOUNDS_ONLY;
+			maxServerId = 2500;
 		}
 
 		if (clientVersion >= 72) {
 			supportsItemBank = true;
+		}
+		if (clientVersion >= 97) {
+			// guessed
+			maxFriends = 100;
 		}
 		if (clientVersion >= 105) {
 			supportsIntegerStacks = true;
@@ -137,14 +196,18 @@ public class ClientLimitations {
 		if (clientVersion >= 185) {
 			supportsSystemUpdateTimer = true;
 		}
+		if (clientVersion >= 205) {
+			// guessed
+			maxFriends = 200;
+		}
 	}
 
 	@Override
 	public String toString() {
-		return String.format("@ora@Client Limitations%%@gre@maxAnimationId: @whi@%d, @gre@maxItemId: @whi@%d, @gre@maxNpcId: @whi@%d, @gre@maxSceneryId: @whi@%d, @gre@maxPrayerId: @whi@%d, @gre@maxSpellId: @whi@%d, @gre@maxSkillId: @whi@%d, @gre@maxRoofId: @whi@%d, @gre@maxTextureId: @whi@%d, @gre@maxTileId: @whi@%d, @gre@maxBoundaryId: @whi@%d, @gre@maxTeleBubbleId: @whi@%d, @gre@maxProjectileSprite: @whi@%d, @gre@maxSkinColor: @whi@%d, @gre@maxHairColor: @whi@%d, @gre@maxClothingColor: @whi@%d, @gre@maxQuestId: @whi@%d, @gre@maxDialogueOptions: @whi@%d, @gre@maxBankItems: @whi@%d, @gre@mapHash: @whi@%s",
+		return String.format("@ora@Client Limitations%%@gre@maxAnimationId: @whi@%d, @gre@maxItemId: @whi@%d, @gre@maxNpcId: @whi@%d, @gre@maxSceneryId: @whi@%d, @gre@maxPrayerId: @whi@%d, @gre@maxSpellId: @whi@%d, @gre@maxSkillId: @whi@%d, @gre@maxRoofId: @whi@%d, @gre@maxTextureId: @whi@%d, @gre@maxTileId: @whi@%d, @gre@maxBoundaryId: @whi@%d, @gre@maxTeleBubbleId: @whi@%d, @gre@maxProjectileSprite: @whi@%d, @gre@maxSkinColor: @whi@%d, @gre@maxHairColor: @whi@%d, @gre@maxClothingColor: @whi@%d, @gre@maxQuestId: @whi@%d, @gre@maxDialogueOptions: @whi@%d, @gre@maxBankItems: @whi@%d, @gre@mapHash: @whi@%s, @gre@maxServerId: @whi@%d, @gre@maxServerId: @whi@%d",
 			maxAnimationId, maxItemId, maxNpcId, maxSceneryId, maxPrayerId, maxSpellId,
 			maxSkillId, maxRoofId, maxTextureId, maxTileId, maxBoundaryId, maxTeleBubbleId,
 			maxProjectileSprite, maxSkinColor, maxHairColor, maxClothingColor, maxQuestId,
-			maxDialogueOptions, maxBankItems, mapHash);
+			maxDialogueOptions, maxBankItems, mapHash, maxServerId, maxFriends);
 	}
 }

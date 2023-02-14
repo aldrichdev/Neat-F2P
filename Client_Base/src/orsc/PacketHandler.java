@@ -111,6 +111,7 @@ public class PacketHandler {
 		put(147, "SEND_KILLS2");
 		put(148, "SET_OPENPK_POINTS");
 		put(150, "UPDATE_PRESET");
+		put(250, "UPDATE_UNLOCKED_APPEARANCES");
 		put(254, "UPDATE_EQUIPMENT");
 		put(255, "UPDATE_EQUIPMENT_SLOT");
 	}};
@@ -415,12 +416,16 @@ public class PacketHandler {
 				mc.setElixirTimer(packetsIncoming.getShort() * 32);
 
 				// Sleeping Menu Fatigue
-			else if (opcode == 244)
+			else if (opcode == 244) {
 				mc.setFatigueSleeping(packetsIncoming.getShort());
+				mc.setFatigueSleepingAuthentic(packetsIncoming.getShort());
+			}
 
 				// Total Fatigue
-			else if (opcode == 114)
+			else if (opcode == 114) {
 				mc.setStatFatigue(packetsIncoming.getShort());
+				mc.setStatFatigueAuthentic(packetsIncoming.getShort());
+			}
 
 				// Kills2
 			else if (opcode == 147)
@@ -486,7 +491,10 @@ public class PacketHandler {
 			    //sync combat style with server (needed to compensate for network errors)
 			else if (opcode == 129) gotCombatStylePacket();
 
-			else mc.closeConnection(true);
+				// sync unlocked hair/skin/clothing colours & styles
+			else if (opcode == 250) gotUnlockedPlayerAppearancesPacket();
+
+			else handleUnknownPacket(opcode);
 
 		} catch (RuntimeException var17) {
 			String var5 = "T2 - " + opcode + " - " + length + " rx:" + mc.getLocalPlayerX() + " ry:" + mc.getLocalPlayerZ()
@@ -498,6 +506,12 @@ public class PacketHandler {
 			var17.printStackTrace();
 			mc.closeConnection(true);
 		}
+	}
+
+	private void handleUnknownPacket(int opcode) {
+		this.mc.showMessage(false, null,
+			"Unknown opcode " + opcode + " received. You may need to update your client.", MessageType.GAME, 0,
+			null);
 	}
 
 	private void createNPC() {
@@ -917,7 +931,7 @@ public class PacketHandler {
 		int groundItemToggle, autoMessageSwitchToggle, batchProgression;
 		int sideMenuToggle, inventoryCountToggle, zoomViewToggle;
 		int menuCombatStyleToggle, fightmodeSelectorToggle, experienceCounterToggle;
-		int experienceDropsToggle, itemsOnDeathMenu, showRoofToggle, wantHideIp, wantRemember;
+		int experienceDropsToggle, itemsOnDeathMenu, showRoofToggle, showUndergroundFlickerToggle, wantHideIp, wantRemember;
 		int wantGlobalChat, wantSkillMenus, wantQuestMenus, wantQuestStartedIndicator, maxWalkingSpeed;
 		int wantExperienceElixirs, wantKeyboardShortcuts, wantMembers, displayLogoSprite;
 		int wantCustomBanks, wantBankPins, wantBankNotes, wantCertDeposit, customFiremaking;
@@ -927,7 +941,8 @@ public class PacketHandler {
 		int fishingSpotsDepletable, improvedItemObjectNames, wantRunecraft, wantCustomLandscape, wantEquipmentTab;
 		int wantBankPresets, wantParties, miningRocksExtended, movePerFrame, wantLeftclickWebs, npcKillMessages;
 		int wantCustomUI, wantGlobalFriend, characterCreationMode, skillingExpRate, wantHarvesting, hideLoginBox;
-		int globalFriendChat, wantRightClickTrade, featuresSleep, wantExtendedCatsBehavior, wantCertAsNotes, wantOpenPkPoints, openPkPointsToGpRatio;
+		int globalFriendChat, wantRightClickTrade, featuresSleep, wantExtendedCatsBehavior, wantCertAsNotes, wantOpenPkPoints, openPkPointsToGpRatio, wantOpenPkPresets;
+		int disableMinimapRotation;
 
 		String logoSpriteID;
 
@@ -1013,6 +1028,9 @@ public class PacketHandler {
 			wantCertAsNotes = this.getClientStream().getUnsignedByte(); // 79
 			wantOpenPkPoints = this.getClientStream().getUnsignedByte(); // 80
 			openPkPointsToGpRatio = this.getClientStream().getUnsignedByte(); // 81
+			wantOpenPkPresets = this.getClientStream().getUnsignedByte(); // 82
+			showUndergroundFlickerToggle = this.getClientStream().getUnsignedByte(); // 83
+			disableMinimapRotation = this.getClientStream().getUnsignedByte(); // 84
 		} else {
 			serverName = packetsIncoming.readString(); // 1
 			serverNameWelcome = packetsIncoming.readString(); // 2
@@ -1095,6 +1113,9 @@ public class PacketHandler {
 			wantCertAsNotes = packetsIncoming.getUnsignedByte(); // 79
 			wantOpenPkPoints = packetsIncoming.getUnsignedByte(); // 80
 			openPkPointsToGpRatio = packetsIncoming.getUnsignedByte(); // 81
+			wantOpenPkPresets = packetsIncoming.getUnsignedByte(); // 82
+			showUndergroundFlickerToggle = packetsIncoming.getUnsignedByte(); // 83
+			disableMinimapRotation = packetsIncoming.getUnsignedByte(); // 84
 		}
 
 		if (Config.DEBUG) {
@@ -1179,7 +1200,10 @@ public class PacketHandler {
 					"\nS_WANT_EXTENDED_CATS_BEHAVIOR " + wantExtendedCatsBehavior + // 78
 					"\nS_WANT_CERT_AS_NOTES " + wantCertAsNotes + // 79
 					"\nS_WANT_OPENPK_POINTS " + wantOpenPkPoints + // 80
-					"\nS_OPENPK_POINTS_TO_GP_RATIO " + openPkPointsToGpRatio // 81
+					"\nS_OPENPK_POINTS_TO_GP_RATIO " + openPkPointsToGpRatio + // 81
+					"\nS_WANT_OPENPK_PRESETS " + wantOpenPkPresets + // 82
+					"\nS_SHOW_UNDERGROUND_FLICKER_TOGGLE " + showUndergroundFlickerToggle + // 83
+					"\nS_DISABLE_MINIMAP_ROTATION " + disableMinimapRotation // 84
 			);
 		}
 
@@ -1268,6 +1292,9 @@ public class PacketHandler {
 		props.setProperty("S_WANT_CERT_AS_NOTES", wantCertAsNotes == 1 ? "true" : "false"); // 79
 		props.setProperty("S_WANT_OPENPK_POINTS", wantOpenPkPoints == 1 ? "true" : "false"); // 80
 		props.setProperty("S_OPENPK_POINTS_TO_GP_RATIO", String.valueOf(openPkPointsToGpRatio)); // 81
+		props.setProperty("S_WANT_OPENPK_PRESETS", wantOpenPkPresets == 1 ? "true" : "false"); // 82
+		props.setProperty("S_SHOW_UNDERGROUND_FLICKER_TOGGLE", showUndergroundFlickerToggle == 1 ? "true" : "false"); // 83
+		props.setProperty("S_DISABLE_MINIMAP_ROTATION", disableMinimapRotation == 1 ? "true" : "false"); // 84
 		Config.updateServerConfiguration(props);
 
 		mc.authenticSettings = !(
@@ -1276,7 +1303,7 @@ public class PacketHandler {
 				|| Config.S_FOG_TOGGLE || Config.S_GROUND_ITEM_TOGGLE
 				|| Config.S_AUTO_MESSAGE_SWITCH_TOGGLE || Config.S_BATCH_PROGRESSION
 				|| Config.S_SIDE_MENU_TOGGLE || Config.S_INVENTORY_COUNT_TOGGLE
-				|| Config.S_MENU_COMBAT_STYLE_TOGGLE
+				|| Config.S_MENU_COMBAT_STYLE_TOGGLE || Config.S_SHOW_UNDERGROUND_FLICKER_TOGGLE
 				|| Config.S_FIGHTMODE_SELECTOR_TOGGLE || Config.S_SHOW_ROOF_TOGGLE
 				|| Config.S_EXPERIENCE_COUNTER_TOGGLE || Config.S_WANT_GLOBAL_CHAT
 				|| Config.S_EXPERIENCE_DROPS_TOGGLE || Config.S_ITEMS_ON_DEATH_MENU
@@ -1498,6 +1525,75 @@ public class PacketHandler {
 	private void gotCombatStylePacket() {
 		mc.timeOfLastCombatStylePacket = System.currentTimeMillis();
 		mc.proposedStyle = packetsIncoming.getByte();
+	}
+
+	private void gotUnlockedPlayerAppearancesPacket() {
+		int unlockedHairStyles = packetsIncoming.get32();
+		int unlockedBodyTypes = packetsIncoming.get32();
+		int unlockedSkinColours = packetsIncoming.get32();
+		int unlockedHairColours = packetsIncoming.get32();
+		int unlockedTopColours = packetsIncoming.get32();
+		int unlockedBottomColours = packetsIncoming.get32();
+
+		if (unlockedHairStyles > 256) {
+			this.mc.showMessage(false, null,
+				"UnlockedHairStyles out of byte boundary: " + unlockedHairStyles + ". You will need a new client.", MessageType.GAME, 0,
+				null);
+			return;
+		}
+		if (unlockedBodyTypes > 256) {
+			this.mc.showMessage(false, null,
+				"UnlockedBodyTypes out of byte boundary: " + unlockedBodyTypes + ". You will need a new client.", MessageType.GAME, 0,
+				null);
+			return;
+		}
+		if (unlockedSkinColours > 256) {
+			this.mc.showMessage(false, null,
+				"UnlockedSkinColours out of byte boundary: " + unlockedSkinColours + ". You will need a new client.", MessageType.GAME, 0,
+				null);
+			return;
+
+		}
+		if (unlockedHairColours > 256) {
+			this.mc.showMessage(false, null,
+				"UnlockedHairColours out of byte boundary: " + unlockedHairColours + ". You will need a new client.", MessageType.GAME, 0,
+				null);
+			return;
+		}
+		if (unlockedTopColours > 256) {
+			this.mc.showMessage(false, null,
+				"UnlockedTopColours out of byte boundary: " + unlockedTopColours + ". You will need a new client.", MessageType.GAME, 0,
+				null);
+			return;
+		}
+		if (unlockedBottomColours > 256) {
+			this.mc.showMessage(false, null,
+				"UnlockedBottomColours out of byte boundary: " + unlockedBottomColours + ". You will need a new client.", MessageType.GAME, 0,
+				null);
+			return;
+		}
+
+		packetsIncoming.startBitAccess();
+		// for (int i = 0; i < unlockedHairStyles; i++) {
+		packetsIncoming.getBitMask(unlockedHairStyles);
+		// }
+		//for (int i = 0; i < unlockedBodyTypes; i++) {
+		packetsIncoming.getBitMask(unlockedBodyTypes);
+		// }
+		for (int i = 0; i < unlockedSkinColours; i++) {
+			mc.unlockedSkinColours[i] = (packetsIncoming.getBitMask(1) == 1);
+		}
+		/*
+		for (int i = 0; i < unlockedHairColours; i++) {
+
+		}
+		for (int i = 0; i < unlockedTopColours; i++) {
+
+		}
+		for (int i = 0; i < unlockedBottomColours; i++) {
+
+		}
+		 */
 	}
 
 	private void updateInventoryItem() {
@@ -1998,12 +2094,12 @@ public class PacketHandler {
 		mc.setSettingsBlockGlobal(packetsIncoming.getUnsignedByte()); // 9
 		mc.setClanInviteBlockSetting(packetsIncoming.getUnsignedByte() == 1); // 11
 		mc.setVolumeFunction(packetsIncoming.getUnsignedByte()); // 16
-		mc.setSwipeToRotate(packetsIncoming.getUnsignedByte() == 1); // 17
-		mc.setSwipeToScroll(packetsIncoming.getUnsignedByte() == 1); // 18
+		mc.setSwipeToRotateMode(packetsIncoming.getUnsignedByte()); // 17
+		mc.setSwipeToScrollMode(packetsIncoming.getUnsignedByte()); // 18
 		mc.setLongPressDelay(packetsIncoming.getUnsignedByte()); // 19
 		mc.setFontSize(packetsIncoming.getUnsignedByte()); // 20
 		mc.setHoldAndChoose(packetsIncoming.getUnsignedByte() == 1); // 21
-		mc.setSwipeToZoom(packetsIncoming.getUnsignedByte() == 1); // 22
+		mc.setSwipeToZoomMode(packetsIncoming.getUnsignedByte()); // 22
 		mc.setLastZoom(packetsIncoming.getUnsignedByte()); // 23
 		mc.setOptionBatchProgressBar(packetsIncoming.getUnsignedByte() == 1); // 24
 		mc.setOptionExperienceDrops(packetsIncoming.getUnsignedByte() == 1); // 25
@@ -2023,6 +2119,7 @@ public class PacketHandler {
 		mc.setCustomUI(packetsIncoming.getUnsignedByte() == 1); //39
 		mc.setHideLoginBox(packetsIncoming.getUnsignedByte() == 1); // 40
 		mc.setBlockGlobalFriend(packetsIncoming.getUnsignedByte() == 1); // 41
+		mc.setOptionHideUndergroundFlicker(packetsIncoming.getUnsignedByte() == 1); // 42
 	}
 
 	private void togglePrayer(int length) {

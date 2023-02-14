@@ -112,7 +112,6 @@ public class Payload235Generator implements PayloadGenerator<OpcodeOut> {
 			switch (payload.getOpcode()) {
 				// not currently implemented
 				case SEND_28_BYTES_UNUSED:
-				case SEND_UPDATE_IGNORE_LIST_BECAUSE_NAME_CHANGE:
 					break;
 
 				// no payload opcodes
@@ -407,6 +406,15 @@ public class Payload235Generator implements PayloadGenerator<OpcodeOut> {
 					builder.writeByte((byte) fr.onlineStatus);
 					if (!fr.worldName.equals(""))
 						builder.writeZeroQuotedString(fr.worldName);
+					break;
+
+				case SEND_UPDATE_IGNORE_LIST_BECAUSE_NAME_CHANGE:
+					IgnoreListStruct uil = (IgnoreListStruct) payload;
+					builder.writeZeroQuotedString(uil.name[0]);
+					builder.writeZeroQuotedString(uil.name[0]);
+					builder.writeZeroQuotedString(uil.formerName[0]);
+					builder.writeZeroQuotedString(uil.formerName[0]);
+					builder.writeByte((byte)(uil.updateExisting ? 1 : 0));
 					break;
 
 				case SEND_IGNORE_LIST:

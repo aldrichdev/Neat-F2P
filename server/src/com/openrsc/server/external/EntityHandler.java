@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import static com.openrsc.server.plugins.Functions.ZERO_RESERVED;
 import static com.openrsc.server.plugins.Functions.patchObject;
 
 /**
@@ -40,6 +41,7 @@ public final class EntityHandler {
 	public ArrayList<ItemDefinition> items;
 	public ArrayList<ItemDefinition> itemsPatch;
 	public ArrayList<NPCDef> npcs;
+	public ArrayList<NPCDef> npcsPatch;
 	public SpellDef[] spells;
 	private HashMap<Integer, ItemArrowHeadDef> arrowHeads;
 	private HashMap<Integer, ItemBowStringDef> bowString;
@@ -53,7 +55,7 @@ public final class EntityHandler {
 	private HashMap<Integer, int[]> itemAffectedTypes;
 	private HashMap<Integer, ItemCookingDef> itemCooking;
 	private HashMap<Integer, ItemPerfectCookingDef> itemPerfectCooking;
-	private ItemCraftingDef[] itemCrafting;
+	private HashMap<Integer, ItemCraftingDef> itemCrafting;
 	private HashMap<Integer, Integer> itemEdibleHeals;
 	private HashMap<Integer, ItemHerbDef> itemHerb;
 	private HashMap<Integer, ItemSmeltingDef> itemSmelting;
@@ -111,6 +113,7 @@ public final class EntityHandler {
 
 	public void unload() {
 		npcs = null;
+		npcsPatch = null;
 		items = null;
 		itemsPatch = null;
 
@@ -147,17 +150,21 @@ public final class EntityHandler {
 
 	public void load() {
 		npcs = new ArrayList<>();
+		npcsPatch = new ArrayList<>();
 		LOGGER.info("Loading npc definitions...");
 		loadNpcs(getServer().getConfig().CONFIG_DIR + "/defs/NpcDefs.json");
 		loadNpcs(getServer().getConfig().CONFIG_DIR + "/defs/NpcDefsCustom.json");
+		//loadNpcs(getServer().getConfig().CONFIG_DIR + "/defs/NpcDefsExpansion.json");
+		patchNpcs();
 		customNpcConditions();
-		LOGGER.info("Loaded " + npcs.size() + " npc definitions");
+		LOGGER.info("Loaded " + npcs.size() + " total npc definitions");
 
 		items = new ArrayList<>();
 		itemsPatch = new ArrayList<>();
 		LOGGER.info("Loading item definitions...");
 		loadItems(getServer().getConfig().CONFIG_DIR + "/defs/ItemDefs.json");
 		loadItems(getServer().getConfig().CONFIG_DIR + "/defs/ItemDefsCustom.json");
+		//loadItems(getServer().getConfig().CONFIG_DIR + "/defs/ItemDefsExpansion.json");
 		patchItems();
 		customItemConditions();
 		LOGGER.info("Loaded " + items.size() + " item definitions");
@@ -173,29 +180,29 @@ public final class EntityHandler {
 		}
 		tiles = (TileDef[]) getPersistenceManager().load("defs/TileDef.xml");
 
-		herbSeconds = (ItemHerbSecond[]) getPersistenceManager().load("defs/extras/ItemHerbSecond.xml");
-		dartTips = (HashMap<Integer, ItemDartTipDef>) getPersistenceManager().load("defs/extras/ItemDartTipDef.xml");
-		gems = (HashMap<Integer, ItemGemDef>) getPersistenceManager().load("defs/extras/ItemGemDef.xml");
-		logCut = (HashMap<Integer, ItemLogCutDef>) getPersistenceManager().load("defs/extras/ItemLogCutDef.xml");
-		bowString = (HashMap<Integer, ItemBowStringDef>) getPersistenceManager().load("defs/extras/ItemBowStringDef.xml");
-		arrowHeads = (HashMap<Integer, ItemArrowHeadDef>) getPersistenceManager().load("defs/extras/ItemArrowHeadDef.xml");
-		firemaking = (HashMap<Integer, FiremakingDef>) getPersistenceManager().load("defs/extras/FiremakingDef.xml");
-		itemAffectedTypes = (HashMap<Integer, int[]>) getPersistenceManager().load("defs/extras/ItemAffectedTypes.xml");
-		itemUnIdentHerb = (HashMap<Integer, ItemUnIdentHerbDef>) getPersistenceManager().load("defs/extras/ItemUnIdentHerbDef.xml");
-		itemHerb = (HashMap<Integer, ItemHerbDef>) getPersistenceManager().load("defs/extras/ItemHerbDef.xml");
-		itemEdibleHeals = (HashMap<Integer, Integer>) getPersistenceManager().load("defs/extras/ItemEdibleHeals.xml");
-		itemCooking = (HashMap<Integer, ItemCookingDef>) getPersistenceManager().load("defs/extras/ItemCookingDef.xml");
-		itemPerfectCooking = (HashMap<Integer, ItemPerfectCookingDef>) getPersistenceManager().load("defs/extras/ItemPerfectCookingDef.xml");
-		itemSmelting = (HashMap<Integer, ItemSmeltingDef>) getPersistenceManager().load("defs/extras/ItemSmeltingDef.xml");
-		itemSmithing = (ItemSmithingDef[]) getPersistenceManager().load("defs/extras/ItemSmithingDef.xml");
-		itemCrafting = (ItemCraftingDef[]) getPersistenceManager().load("defs/extras/ItemCraftingDef.xml");
-		objectMining = (HashMap<Integer, ObjectMiningDef>) getPersistenceManager().load("defs/extras/ObjectMining.xml");
-		objectWoodcutting = (HashMap<Integer, ObjectWoodcuttingDef>) getPersistenceManager().load("defs/extras/ObjectWoodcutting.xml");
-		objectRunecraft = (HashMap<Integer, ObjectRunecraftDef>) getPersistenceManager().load("defs/extras/ObjectRunecraft.xml");
-		objectFishing = (HashMap<Integer, ObjectFishingDef[]>) getPersistenceManager().load("defs/extras/ObjectFishing.xml");
-		objectHarvesting = (HashMap<Integer, ObjectHarvestingDef>) getPersistenceManager().load("defs/extras/ObjectHarvesting.xml");
-		objectTelePoints = (HashMap<Point, TelePoint>) getPersistenceManager().load("locs/extras/ObjectTelePoints.xml");
-		certers = (HashMap<Integer, CerterDef>) getPersistenceManager().load("defs/extras/NpcCerters.xml");
+		herbSeconds = (ItemHerbSecond[]) getPersistenceManager().load(getPath("defs/extras/ItemHerbSecond.xml"));
+		dartTips = (HashMap<Integer, ItemDartTipDef>) getPersistenceManager().load(getPath("defs/extras/ItemDartTipDef.xml"));
+		gems = (HashMap<Integer, ItemGemDef>) getPersistenceManager().load(getPath("defs/extras/ItemGemDef.xml"));
+		logCut = (HashMap<Integer, ItemLogCutDef>) getPersistenceManager().load(getPath("defs/extras/ItemLogCutDef.xml"));
+		bowString = (HashMap<Integer, ItemBowStringDef>) getPersistenceManager().load(getPath("defs/extras/ItemBowStringDef.xml"));
+		arrowHeads = (HashMap<Integer, ItemArrowHeadDef>) getPersistenceManager().load(getPath("defs/extras/ItemArrowHeadDef.xml"));
+		firemaking = (HashMap<Integer, FiremakingDef>) getPersistenceManager().load(getPath("defs/extras/FiremakingDef.xml"));
+		itemAffectedTypes = (HashMap<Integer, int[]>) getPersistenceManager().load(getPath("defs/extras/ItemAffectedTypes.xml"));
+		itemUnIdentHerb = (HashMap<Integer, ItemUnIdentHerbDef>) getPersistenceManager().load(getPath("defs/extras/ItemUnIdentHerbDef.xml"));
+		itemHerb = (HashMap<Integer, ItemHerbDef>) getPersistenceManager().load(getPath("defs/extras/ItemHerbDef.xml"));
+		itemEdibleHeals = (HashMap<Integer, Integer>) getPersistenceManager().load(getPath("defs/extras/ItemEdibleHeals.xml"));
+		itemCooking = (HashMap<Integer, ItemCookingDef>) getPersistenceManager().load(getPath("defs/extras/ItemCookingDef.xml"));
+		itemPerfectCooking = (HashMap<Integer, ItemPerfectCookingDef>) getPersistenceManager().load(getPath("defs/extras/ItemPerfectCookingDef.xml"));
+		itemSmelting = (HashMap<Integer, ItemSmeltingDef>) getPersistenceManager().load(getPath("defs/extras/ItemSmeltingDef.xml"));
+		itemSmithing = (ItemSmithingDef[]) getPersistenceManager().load(getPath("defs/extras/ItemSmithingDef.xml"));
+		itemCrafting = (HashMap<Integer, ItemCraftingDef>) getPersistenceManager().load(getPath("defs/extras/ItemCraftingDef.xml"));
+		objectMining = (HashMap<Integer, ObjectMiningDef>) getPersistenceManager().load(getPath("defs/extras/ObjectMining.xml"));
+		objectWoodcutting = (HashMap<Integer, ObjectWoodcuttingDef>) getPersistenceManager().load(getPath("defs/extras/ObjectWoodcutting.xml"));
+		objectRunecraft = (HashMap<Integer, ObjectRunecraftDef>) getPersistenceManager().load(getPath("defs/extras/ObjectRunecraft.xml"));
+		objectFishing = (HashMap<Integer, ObjectFishingDef[]>) getPersistenceManager().load(getPath("defs/extras/ObjectFishing.xml"));
+		objectHarvesting = (HashMap<Integer, ObjectHarvestingDef>) getPersistenceManager().load(getPath("defs/extras/ObjectHarvesting.xml"));
+		objectTelePoints = (HashMap<Point, TelePoint>) getPersistenceManager().load(getPath("defs/extras/ObjectTelePoints.xml"));
+		certers = (HashMap<Integer, CerterDef>) getPersistenceManager().load(getPath("defs/extras/NpcCerters.xml"));
 
 		for (int fishSpot : objectFishing.keySet()) {
 			for (ObjectFishingDef fishDef : objectFishing.get(fishSpot)) {
@@ -206,6 +213,25 @@ public final class EntityHandler {
 		for (int tree : objectWoodcutting.keySet()) {
 			objectWoodcutting.get(tree).calculateWoodRates();
 		}
+	}
+
+	private String getPath(String filePath) {
+		String path = filePath;
+		if (getServer().getConfig().OLD_SKILL_DEFS) {
+			int idx = filePath.lastIndexOf('/');
+			String retroPath = path.substring(0, idx + 1) + "retro/" + path.substring(idx + 1);
+			File theFile = new File(getServer().getConfig().CONFIG_DIR, retroPath);
+			if (!theFile.exists()) {
+				// fallback for old servers using .gz definitions
+				theFile = new File(getServer().getConfig().CONFIG_DIR, retroPath + ".gz");
+				if (theFile.exists()) {
+					path = retroPath;
+				}
+			} else {
+				path = retroPath;
+			}
+		}
+		return path;
 	}
 
 	private void loadNpcs(String filename) {
@@ -246,9 +272,57 @@ public final class EntityHandler {
 				def.roundMode = npc.getInt("roundMode");
 				npcs.add(def);
 			}
+			LOGGER.info("Loaded " + npcDefs.length() + " npcs from " + filename);
 		}
 		catch (Exception e) {
 			LOGGER.error(e);
+		}
+	}
+
+	private void loadPatchNpcs(String filename) {
+		try {
+			JSONObject object = new JSONObject(new String(Files.readAllBytes(Paths.get(filename))));
+			JSONArray npcPatchDefs = object.getJSONArray(JSONObject.getNames(object)[0]);
+			for (int i = 0; i < npcPatchDefs.length(); i++) {
+				JSONObject npc = npcPatchDefs.getJSONObject(i);
+				NPCDef.NPCDefinitionBuilder toAddBuild =
+					new NPCDef.NPCDefinitionBuilder(npc.getInt("id"), npc.getString("name"))
+						.description(npc.getString("description"))
+						.command(npc.getString("command"))
+						.attack((int)ifZeroReserve(npc.getInt("attack")))
+						.strength((int)ifZeroReserve(npc.getInt("strength")))
+						.hits((int)ifZeroReserve(npc.getInt("hits")))
+						.defense((int)ifZeroReserve(npc.getInt("defense")))
+						.ranged(npc.getBoolean("ranged") ? 1 : 0)
+						.combatLevel(npc.getInt("combatlvl"))
+						.members(npc.getInt("isMembers") == 1)
+						.attackable(npc.getInt("attackable") == 1)
+						.aggressive(npc.getInt("aggressive") == 1);
+				NPCDef toAdd = toAddBuild.build();
+				npcsPatch.add(toAdd);
+			}
+		}
+		catch (Exception e) {
+			LOGGER.error(e);
+		}
+	}
+
+	private void patchNpcs() {
+		File file;
+		if (getServer().getConfig().BASED_CONFIG_DATA < 85) {
+			String filePath = getServer().getConfig().CONFIG_DIR + "/defs/NpcDefsPatch" + getServer().getConfig().BASED_CONFIG_DATA + ".json";
+			file = new File(filePath);
+			if (file.exists()) {
+				LOGGER.info("Patching npc definitions...");
+				loadPatchNpcs(filePath);
+				try {
+					for (int i = 0; i < npcsPatch.size(); i++) {
+						npcs.set(i, patchObject(npcs.get(i), npcsPatch.get(i)));
+					}
+				} catch (Exception e) {
+					LOGGER.error(e);
+				}
+			}
 		}
 	}
 
@@ -268,7 +342,7 @@ public final class EntityHandler {
 			}
 		}
 		if (getServer().getConfig().WANT_RUNECRAFT) {
-			npcs.get(NpcId.AUBURY.id()).setCommand1("Teleport");
+			npcs.get(NpcId.AUBURY.id()).setCommand1("Teleport/Trade"); //moves position depending on rune mysteries completion
 		}
 		// these although couldn't be pickpocket by client the command was allowed server side
 		npcs.get(NpcId.GUARD_KHAZARD.id()).setCommand1("pickpocket");
@@ -322,13 +396,18 @@ public final class EntityHandler {
 			JSONArray itemPatchDefs = object.getJSONArray(JSONObject.getNames(object)[0]);
 			for (int i = 0; i < itemPatchDefs.length(); i++) {
 				JSONObject item = itemPatchDefs.getJSONObject(i);
-				ItemDefinition toAdd =
+				ItemDefinition.ItemDefinitionBuilder toAddBuild =
 					new ItemDefinition.ItemDefinitionBuilder(item.getInt("id"), item.getString("name"))
 						.description(item.getString("description"))
 						.command(item.getString("command").split(","))
 						.isStackable(item.getInt("isStackable") == 1)
-						.defaultPrice(item.getInt("basePrice"))
-						.build();
+						.defaultPrice(item.getInt("basePrice"));
+				if (item.has("armourBonus")) toAddBuild.armourBonus(ifZeroReserve(item.getLong("armourBonus")));
+				if (item.has("weaponAimBonus")) toAddBuild.weaponAimBonus((int)ifZeroReserve(item.getInt("weaponAimBonus")));
+				if (item.has("weaponPowerBonus")) toAddBuild.weaponPowerBonus((int)ifZeroReserve(item.getInt("weaponPowerBonus")));
+				if (item.has("magicBonus")) toAddBuild.magicBonus((int)ifZeroReserve(item.getInt("magicBonus")));
+				if (item.has("prayerBonus")) toAddBuild.prayerBonus((int)ifZeroReserve(item.getInt("prayerBonus")));
+				ItemDefinition toAdd = toAddBuild.build();
 				if (toAdd.getCommand().length == 1 && "".equals(toAdd.getCommand()[0])) {
 					toAdd.nullCommand();
 				}
@@ -338,6 +417,10 @@ public final class EntityHandler {
 		catch (Exception e) {
 			LOGGER.error(e);
 		}
+	}
+
+	private long ifZeroReserve(long value) {
+		return value == 0 ? ZERO_RESERVED : value;
 	}
 
 	private void patchItems() {
@@ -594,6 +677,8 @@ public final class EntityHandler {
 			items.get(ItemId.MITHRIL_SCIMITAR.id()).setAppearanceId(481);
 			items.get(ItemId.ADAMANTITE_SCIMITAR.id()).setAppearanceId(482);
 			items.get(ItemId.RUNE_SCIMITAR.id()).setAppearanceId(483);
+
+			items.get(ItemId.YOYO.id()).setAppearanceId(485);
 		}
 	}
 
@@ -609,10 +694,7 @@ public final class EntityHandler {
 	 * @return the ItemCraftingDef for the requested item
 	 */
 	public ItemCraftingDef getCraftingDef(int id) {
-		if (id < 0 || id >= itemCrafting.length) {
-			return null;
-		}
-		return itemCrafting[id];
+		return itemCrafting.getOrDefault(id, null);
 	}
 
 	/**

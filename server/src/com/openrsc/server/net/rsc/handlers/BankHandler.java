@@ -12,8 +12,6 @@ import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.BankStruct;
 import com.openrsc.server.util.rsc.MessageType;
 
-import java.util.Optional;
-
 public final class BankHandler implements PayloadProcessor<BankStruct, OpcodeIn> {
 
 	public void process(BankStruct payload, Player player) throws Exception {
@@ -53,12 +51,14 @@ public final class BankHandler implements PayloadProcessor<BankStruct, OpcodeIn>
 				player.resetBank();
 				break;
 			case BANK_WITHDRAW:
-				catalogID = payload.catalogID;
-				amount = payload.amount;
 				// authentic client also sends magic constant 4 byte number that never changes & is not very useful.
 				// possibly a relic if WITHDRAW & DEPOSIT didn't have their own opcodes in the past.
+				catalogID = payload.catalogID;
+				amount = payload.amount;
 
-				if (catalogID < 0 || catalogID >= player.getWorld().getServer().getEntityHandler().getItemCount()) {
+				if (catalogID < 0 ||
+					catalogID >= player.getWorld().getServer().getEntityHandler().getItemCount() ||
+					amount <= 0) {
 					return;
 				}
 
@@ -68,14 +68,13 @@ public final class BankHandler implements PayloadProcessor<BankStruct, OpcodeIn>
 						if (player.getQolOptOut()) {
 							if (wantsNotes) {
 								player.playerServerMessage(MessageType.QUEST, "Sorry, but you may not withdraw bank notes, as your account is opted out of QoL features.");
-								player.playerServerMessage(MessageType.QUEST, "Consider using RSC+ so that you don't see the option.");
+								player.playerServerMessage(MessageType.QUEST, "Consider using an original RSC client so that you don't see the option.");
 								wantsNotes = false;
 							}
 						}
 					}
 				}
 
-				amount = Math.min(player.getBank().countId(catalogID), amount);
 				player.getBank().withdrawItemToInventory(catalogID, amount, wantsNotes);
 				break;
 			case BANK_DEPOSIT:
@@ -88,7 +87,6 @@ public final class BankHandler implements PayloadProcessor<BankStruct, OpcodeIn>
 					return;
 				}
 
-				amount = Math.min(player.getCarriedItems().getInventory().countId(catalogID, Optional.empty()), amount);
 				player.getBank().depositItemFromInventory(catalogID, amount, true);
 				break;
 			case BANK_DEPOSIT_ALL_FROM_INVENTORY:
@@ -108,7 +106,7 @@ public final class BankHandler implements PayloadProcessor<BankStruct, OpcodeIn>
 					player.setSuspiciousPlayer(true, "Trying to deposit all from equipment without custom bank enabled");
 					return;
 				}
-				
+
 				player.getBank().depositAllFromEquipment();
 				break;
 			case BANK_LOAD_PRESET:

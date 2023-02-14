@@ -14,7 +14,6 @@ import com.openrsc.server.model.entity.Mob;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.world.World;
-import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
 import com.openrsc.server.util.rsc.MessageType;
@@ -41,6 +40,8 @@ public class RangeUtils {
             ItemId.DRAGON_LONGBOW.id()
     );
     private final static Set<Integer> CROSSBOWS = ImmutableSet.of(ItemId.PHOENIX_CROSSBOW.id(), ItemId.CROSSBOW.id(), ItemId.DRAGON_CROSSBOW.id());
+	private final static Set<Integer> SHORT_BOWS = ImmutableSet.of(ItemId.SHORTBOW.id(), ItemId.OAK_SHORTBOW.id(), ItemId.WILLOW_SHORTBOW.id(),
+		ItemId.MAPLE_SHORTBOW.id(), ItemId.YEW_SHORTBOW.id(), ItemId.MAGIC_SHORTBOW.id());
 
     private final static Set<Integer> BASIC_ARROWS = ImmutableSet.of(ItemId.BRONZE_ARROWS.id(), ItemId.POISON_BRONZE_ARROWS.id(), ItemId.IRON_ARROWS.id(), ItemId.POISON_IRON_ARROWS.id());
     private final static Set<Integer> STEEL_ARROWS = ImmutableSet.of(ItemId.STEEL_ARROWS.id(), ItemId.POISON_STEEL_ARROWS.id());
@@ -68,17 +69,17 @@ public class RangeUtils {
         // Arrows
         allowedProjectilesMap.put(ItemId.SHORTBOW.id(), BASIC_ARROWS);
         allowedProjectilesMap.put(ItemId.LONGBOW.id(), BASIC_ARROWS);
-        allowedProjectilesMap.put(ItemId.OAK_SHORTBOW.id(), BASIC_ARROWS);
+        allowedProjectilesMap.put(ItemId.OAK_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS));
         allowedProjectilesMap.put(ItemId.OAK_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS));
-        allowedProjectilesMap.put(ItemId.WILLOW_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS));
+        allowedProjectilesMap.put(ItemId.WILLOW_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS));
         allowedProjectilesMap.put(ItemId.WILLOW_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS));
-        allowedProjectilesMap.put(ItemId.MAPLE_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS));
+        allowedProjectilesMap.put(ItemId.MAPLE_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS));
         allowedProjectilesMap.put(ItemId.MAPLE_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS));
         allowedProjectilesMap.put(ItemId.YEW_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS, ICE_ARROWS));
         allowedProjectilesMap.put(ItemId.YEW_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS, RUNE_ARROWS, ICE_ARROWS));
         allowedProjectilesMap.put(ItemId.MAGIC_SHORTBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS, RUNE_ARROWS, ICE_ARROWS));
         allowedProjectilesMap.put(ItemId.MAGIC_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS, RUNE_ARROWS, ICE_ARROWS));
-        allowedProjectilesMap.put(ItemId.DRAGON_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS, RUNE_ARROWS, DRAGON_ARROWS));
+        allowedProjectilesMap.put(ItemId.DRAGON_LONGBOW.id(), combine(BASIC_ARROWS, STEEL_ARROWS, MITHRIL_ARROWS, ADDY_ARROWS, RUNE_ARROWS, DRAGON_ARROWS, ICE_ARROWS));
 
         // Crossbow
         allowedProjectilesMap.put(ItemId.CROSSBOW.id(), BASIC_BOLTS);
@@ -138,13 +139,6 @@ public class RangeUtils {
             ItemId.POISON_DRAGON_BOLTS.id(),
             ItemId.POISONED_DRAGON_DAGGER.id()
     );
-
-    public static void checkOutOfAmmo(Player player, int arrowId) {
-        if (arrowId < 0) {
-            ActionSender.sendSound(player, "outofammo");
-            throw new ProjectileException(ProjectileFailureReason.OUT_OF_AMMO);
-        }
-    }
 
     public static void poisonTarget(Mob aggressor, Mob target, int poisonDamage) {
         target.setPoisonDamage(poisonDamage);
@@ -247,6 +241,10 @@ public class RangeUtils {
     public static boolean isCrossbow(int weaponId) {
         return CROSSBOWS.contains(weaponId);
     }
+
+	public static boolean isShortBow(final int weaponId) {
+		return SHORT_BOWS.contains(weaponId);
+	}
 
     public static boolean isBow(int weaponId) {
         return BOWS.contains(weaponId);

@@ -247,21 +247,7 @@ public class RuneScript {
 			player.face(npc);
 		}
 		for (final String message : messages) {
-			if (!message.equalsIgnoreCase("null")) {
-				if (npc != null) {
-					if (npc.isRemoved()) {
-						player.setBusy(false);
-						return;
-					}
-				}
-				if (npc != null) {
-					npc.resetPath();
-				}
-				if (!player.inCombat()) {
-					player.resetPath();
-				}
-				player.getUpdateFlags().setChatMessage(new ChatMessage(player, message, (npc == null ? player : npc)));
-			}
+			if (Functions.deliverMessage(player, npc, message)) return;
 			delay(Functions.normalizeTicks(Functions.calcDelay(message), player.getConfig().GAME_TICK));
 		}
 	}
@@ -302,6 +288,10 @@ public class RuneScript {
 				player.resetMenuHandler();
 				return -1;
 			} else {
+				npc.setPlayerBeingTalkedTo(player);
+				npc.setMultiTimeout(start);
+				//We'll clear this on each new multi. Other players need to talk to the NPC again if they want to steal it!
+				npc.setPlayerWantsNpc(false);
 				npc.face(player);
 			}
 		}
@@ -310,13 +300,19 @@ public class RuneScript {
 		ActionSender.sendMenu(player, options);
 
 		while (!player.checkUnderAttack()) {
+			//If we get to this point and the multi timeout is higher than our start or is -1, someone has changed it! We should kill the multi if it hasn't been killed by other means.
+			if (npc != null && (npc.getMultiTimeout() == -1 || npc.getMultiTimeout() > start)) {
+				player.resetMenuHandler();
+				return -1;
+			}
+
 			if (player.getOption() != -1) {
 				if (npc != null && options[player.getOption()] != null) {
 					if (sendToClient)
 						say(options[player.getOption()]);
 				}
 				return player.getOption();
-			} else if (System.currentTimeMillis() - start > 500L * player.getConfig().GAME_TICK || player.getMenuHandler() == null) {
+			} else if (Functions.multiMenuNeedsCancel(start, player, npc)) {
 				player.resetMenuHandler();
 				return -1;
 			}
