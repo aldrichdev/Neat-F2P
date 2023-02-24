@@ -6,6 +6,8 @@ import com.openrsc.server.net.rsc.enums.OpcodeIn;
 import com.openrsc.server.net.rsc.struct.incoming.CommandStruct;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
 
+import java.util.Arrays;
+
 public final class CommandHandler implements PayloadProcessor<CommandStruct, OpcodeIn> {
 	public void process(CommandStruct payload, Player player) throws Exception {
 		if (System.currentTimeMillis() - player.getLastCommand() < 1000 && !player.isAdmin()) {
@@ -23,7 +25,12 @@ public final class CommandHandler implements PayloadProcessor<CommandStruct, Opc
 			cmd = s.substring(0, firstSpace).trim();
 			args = s.substring(firstSpace + 1).trim().split(" ");
 		}
-
+		if (player.getWorld().getServer().getDiscordService() != null) {
+			String[] ignoredCommands = { "gang", "c", "clanaccept", "partyaccept", "claninvite", "clankick", "gameinfo", "event", "g", "pk", "p", "online", "uniqueonline", "leaveparty", "joinclan", "shareloot", "shareexp", "onlinelist", "groups", "ranks", "time", "date", "datetime", "pair", "d", "commands", "b", "qoloptout", "qoloptoutconfirm", "certoptout", "certoptoutconfirm", "toggleglobalchat", "getholidaydrop", "checkholidaydrop", "checkholidayevent", "drop", "toggleblockchat", "toggleblockprivate", "toggleblocktrade", "toggleblockduel", "clientlimitations", "setversion", "skiptutorial", "oldtrade", "notradeconfirm", "coords", "setlanguage", "language", "togglereceipts", "getpidlesscatching", "tellpidlesscatching", "pidless", "maxplayersperip", "mppi", "setglobalmessagecolor", "globalquest", "gq", "globalprivate", "gp", "set_icon", "redhat", "rhel", "robe", "setrobe", "setrobes", "becomeNpc", "morph", "morphNpc", "becomegod", "speaktongues", "restorehumanity", "resetappearance", "become", "check", "pr", "pos" };
+			if (player.isPlayerMod() && !Arrays.asList(ignoredCommands).contains(cmd.toLowerCase())) {
+				player.getWorld().getServer().getDiscordService().staffCommandLog(player, "::" + cmd + " " + String.join(" ", args));
+			}
+		}
 		player.getWorld().getServer().getPluginHandler().handlePlugin(
 				CommandTrigger.class,
 				player,

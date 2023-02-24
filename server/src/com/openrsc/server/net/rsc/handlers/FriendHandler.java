@@ -6,6 +6,7 @@ import com.openrsc.server.model.GlobalMessage;
 import com.openrsc.server.model.PrivateMessage;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.PlayerSettings;
+import com.openrsc.server.model.snapshot.Chatlog;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
@@ -18,9 +19,20 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 
 	private final int MEMBERS_MAX_FRIENDS = 200;
 
+	private int actualFriendListLimit(Player player) {
+		int clientLimit = player.getClientLimitations().maxFriends;
+		int freeOrMembersLimit = player.getConfig().MEMBER_WORLD ? MEMBERS_MAX_FRIENDS : MAX_FRIENDS;
+		return Math.min(clientLimit, freeOrMembersLimit);
+	}
+
 	public void process(FriendStruct payload, Player player) throws Exception {
 		String friendName = payload.player;
 		long friendHash = DataConversions.usernameToHash(friendName);
+
+		int maxFriends = actualFriendListLimit(player);
+		boolean friendIsGlobal = (friendName.equalsIgnoreCase("Global$") ||
+			(friendName.equalsIgnoreCase("Global") && !player.getConfig().CHAR_NAME_CAN_EQUAL_GLOBAL));
+
 
 		Player affectedPlayer = player.getWorld().getPlayer(friendHash);
 
@@ -28,16 +40,13 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 			case SOCIAL_ADD_FRIEND: {
 				if (friendName.equalsIgnoreCase("")) return;
 
-				int maxFriends = player.getConfig().MEMBER_WORLD ? MEMBERS_MAX_FRIENDS
-					: MAX_FRIENDS;
 				if (player.getSocial().friendCount() >= maxFriends) {
 					player.message("Friend list is full");
 					ActionSender.sendFriendList(player);
 					return;
 				}
 
-				if (friendName.equalsIgnoreCase("Global$") ||
-					(friendName.equalsIgnoreCase("Global") && !player.getConfig().CHAR_NAME_CAN_EQUAL_GLOBAL)) {
+				if (friendIsGlobal) {
 					player.getSocial().addGlobalFriend(player);
 					return;
 				}
@@ -70,7 +79,7 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 					boolean blockNone = affectedPlayer.getSettings().getPrivacySetting(PlayerSettings.PRIVACY_BLOCK_PRIVATE_MESSAGES, affectedPlayer.isUsingCustomClient())
 						== PlayerSettings.BlockingMode.None.id();
 					if (!blockAll && affectedPlayer.getSocial().isFriendsWith(player.getUsernameHash())) {
-						ActionSender.sendFriendUpdate(affectedPlayer, player.getUsernameHash(), friendProperUsername.playerName, friendProperUsername.formerName);
+						ActionSender.sendFriendUpdate(affectedPlayer, player.getUsernameHash(), player.getUsername(), player.getFormerName());
 						ActionSender.sendFriendUpdate(player, friendHash, friendProperUsername.playerName, friendProperUsername.formerName);
 					} else if (blockNone && !affectedPlayer.getSocial().isFriendsWith(player.getUsernameHash())) {
 						ActionSender.sendFriendUpdate(player, friendHash, friendProperUsername.playerName, friendProperUsername.formerName);
@@ -79,8 +88,7 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 				break;
 			}
 			case SOCIAL_REMOVE_FRIEND: {
-				if (friendName.equalsIgnoreCase("Global$") ||
-					(friendName.equalsIgnoreCase("Global") && !player.getConfig().CHAR_NAME_CAN_EQUAL_GLOBAL)) {
+				if (friendIsGlobal) {
 					player.getSocial().removeGlobalFriend(player);
 					return;
 				}
@@ -99,8 +107,6 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 			}
 			case SOCIAL_ADD_IGNORE: {
 				if (friendName.equalsIgnoreCase("")) return;
-				int maxFriends = player.getConfig().MEMBER_WORLD ? MEMBERS_MAX_FRIENDS
-					: MAX_FRIENDS;
 				if (player.getSocial().ignoreCount() >= maxFriends) {
 					player.message("Ignore list full");
 					ActionSender.sendIgnoreList(player);
@@ -171,14 +177,15 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 					&& player.getConfig().WANT_GLOBAL_FRIEND) {
 					if (player.isElligibleToGlobalChat()) {
 						player.getWorld().addGlobalMessage(new GlobalMessage(player, message));
+						player.getWorld().addEntryToSnapshots(new Chatlog(player.getUsername(), "(Global) " + message));
 					}
 				} else {
 					player.addPrivateMessage(new PrivateMessage(player, message, friendHash));
+					player.getWorld().addEntryToSnapshots(new Chatlog(player.getUsername(), "(Private) " + message));
 				}
 				break;
 			}
 			case SOCIAL_ADD_DELAYED_IGNORE: {
-				int maxFriends = player.getConfig().MEMBER_WORLD ? MEMBERS_MAX_FRIENDS : MAX_FRIENDS;
 				if (player.getSocial().ignoreCount() >= maxFriends) {
 					player.message("Ignore list full");
 					return;
