@@ -169,6 +169,8 @@ public class ServerConfiguration {
 	public String DISCORD_STAFF_COMMANDS_WEBHOOK_URL;
 	public boolean WANT_DISCORD_REPORT_ABUSE_UPDATES;
 	public String DISCORD_REPORT_ABUSE_WEBHOOK_URL;
+	public boolean WANT_DISCORD_NAUGHTY_WORDS_UPDATES;
+	public String DISCORD_NAUGHTY_WORDS_WEBHOOK_URL;
 	public boolean WANT_DISCORD_BOT;
 	public long CROSS_CHAT_CHANNEL;
 	public boolean WANT_EQUIPMENT_TAB;
@@ -294,12 +296,14 @@ public class ServerConfiguration {
 	public boolean SANTA_GIVES_PRESENTS;
 	public boolean USES_RETRO_STOCK_SENSITIVITY;
 	public boolean PIDLESS_CATCHING;
-	public int CATCHING_DISTANCE;
+	public int PVM_CATCHING_DISTANCE;
+	public int PVP_CATCHING_DISTANCE;
 	public boolean SHUFFLE_PID_ORDER;
 	public int SHUFFLE_PID_ORDER_INTERVAL;
 	public int SPELL_RANGE_DISTANCE;
 	public boolean WANT_CORRECTED_SKILLING_XP;
 	public int SUMMON_ALL_PLAYER_LIMIT;
+	public boolean SERVER_SIDED_WORD_FILTERING;
 
 	public boolean DISABLE_MINIMAP_ROTATION;
 
@@ -422,12 +426,14 @@ public class ServerConfiguration {
 		SANTA_GIVES_PRESENTS = tryReadBool("santa_gives_presents").orElse(false);
 		USES_RETRO_STOCK_SENSITIVITY = tryReadBool("uses_retro_stock_sensitivity").orElse(false);
 		PIDLESS_CATCHING = tryReadBool("pidless_catching").orElse(false);
-		CATCHING_DISTANCE = tryReadInt("catching_distance").orElse(1);
+		PVM_CATCHING_DISTANCE = tryReadInt("pvm_catching_distance").orElse(2);
+		PVP_CATCHING_DISTANCE = tryReadInt("pvp_catching_distance").orElse(2);
 		SHUFFLE_PID_ORDER = tryReadBool("shuffle_pid_order").orElse(true);
 		SHUFFLE_PID_ORDER_INTERVAL = tryReadInt("shuffle_pid_order_interval").orElse(500);
 		SPELL_RANGE_DISTANCE = tryReadInt("spell_range_distance").orElse(4);
 		WANT_CORRECTED_SKILLING_XP = tryReadBool("want_corrected_skilling_xp").orElse(false);
 		SUMMON_ALL_PLAYER_LIMIT = tryReadInt("summon_all_player_limit").orElse(15);
+		SERVER_SIDED_WORD_FILTERING = tryReadBool("server_sided_word_filtering").orElse(true);
 
 		// Client
 		VIEW_DISTANCE = tryReadInt("view_distance").orElse(2);
@@ -582,12 +588,22 @@ public class ServerConfiguration {
 		DISCORD_STAFF_COMMANDS_WEBHOOK_URL = tryReadString("discord_staff_commands_webhook_url").orElse("null");
 		DISCORD_MONITORING_WEBHOOK_URL = tryReadString("discord_monitoring_webhook_url").orElse("null");
 		DISCORD_REPORT_ABUSE_WEBHOOK_URL = tryReadString("discord_report_abuse_webhook_url").orElse("null");
-		WANT_DISCORD_AUCTION_UPDATES = tryReadBool("want_discord_auction_updates").orElse(false);
-		WANT_DISCORD_STAFF_COMMANDS = tryReadBool("want_discord_staff_commands").orElse(false);
-		WANT_DISCORD_MONITORING_UPDATES = tryReadBool("want_discord_monitoring_updates").orElse(false);
-		WANT_DISCORD_REPORT_ABUSE_UPDATES = tryReadBool("want_discord_report_abuse_updates").orElse(false);
-		WANT_DISCORD_BOT = tryReadBool("want_discord_bot").orElse(false);
+		DISCORD_NAUGHTY_WORDS_WEBHOOK_URL = tryReadString("discord_naughty_words_webhook_url").orElse("null");
 		CROSS_CHAT_CHANNEL = tryReadInt("cross_chat_channel").orElse(0);
+		WANT_DISCORD_AUCTION_UPDATES = tryReadBool("want_discord_auction_updates").orElse(false)
+			&& !DISCORD_AUCTION_WEBHOOK_URL.equals("null");
+		WANT_DISCORD_STAFF_COMMANDS = tryReadBool("want_discord_staff_commands").orElse(false)
+			&& !DISCORD_STAFF_COMMANDS_WEBHOOK_URL.equals("null");
+		WANT_DISCORD_MONITORING_UPDATES = tryReadBool("want_discord_monitoring_updates").orElse(false)
+			&& !DISCORD_MONITORING_WEBHOOK_URL.equals("null");
+		WANT_DISCORD_REPORT_ABUSE_UPDATES = tryReadBool("want_discord_report_abuse_updates").orElse(false)
+			&& !DISCORD_REPORT_ABUSE_WEBHOOK_URL.equals("null");
+		WANT_DISCORD_NAUGHTY_WORDS_UPDATES = tryReadBool("want_discord_naughty_words_updates").orElse(false)
+			&& !DISCORD_NAUGHTY_WORDS_WEBHOOK_URL.equals("null");
+		WANT_DISCORD_BOT = tryReadBool("want_discord_bot").orElse(false)
+			&& CROSS_CHAT_CHANNEL != 0;
+
+
 
 		// Bank
 		RIGHT_CLICK_BANK = tryReadBool("right_click_bank").orElse(false);

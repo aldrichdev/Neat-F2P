@@ -40,6 +40,20 @@ public class SkillCapes {
 				return magicCape();
 			case SMITHING_CAPE:
 				return smithingCape();
+			case DEFENSE_CAPE:
+				return defenseCape();
+			case HERBLAW_CAPE:
+				return herblawCape();
+			case PRAYER_CAPE:
+				return prayerCape();
+			case WOODCUTTING_CAPE:
+				return woodcuttingCape();
+			case RANGED_CAPE:
+				return rangedCape();
+			case HARVESTING_CAPE:
+				return harvestingCape();
+			case FIREMAKING_CAPE:
+				return true;
 		}
 
 		return false;
@@ -53,7 +67,10 @@ public class SkillCapes {
 			return -1;
 
 		switch (cape) {
+			case HITS_CAPE:
+				return hitsCape();
 		}
+
 		return -1;
 	}
 
@@ -109,12 +126,73 @@ public class SkillCapes {
 		return false;
 	}
 
+	private static boolean defenseCape() {
+		final int hitChance = 35;
+		if (rand1to100() <= hitChance) {
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean herblawCape() {
+		final int saveChance = 10;
+		if (rand1to100() <= saveChance) {
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean prayerCape() {
+		final int pointsChance = 100;
+		if (rand1to100() <= pointsChance) {
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean woodcuttingCape() {
+		final int noFellChance = 35;
+		if (rand1to100() <= noFellChance) {
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean rangedCape() {
+		final int doubleShotChance = 10;
+		if (rand1to100() <= doubleShotChance) {
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean harvestingCape() {
+		final int doubleYieldChance = 20;
+		if (rand1to100() <= doubleYieldChance) {
+			return true;
+		}
+		return false;
+	}
+
 	private static boolean smithingCape() {
 		double noCoalChance = 25;
 		if (rand1to100() <= noCoalChance) {
 			return true;
 		}
 		return false;
+	}
+
+	private static int hitsCape() {
+		final int rand = rand1to100();
+		if (rand >= 75) {
+			return 3;
+		} else if (rand >= 50) {
+			return 2;
+		} else if (rand >= 25) {
+			return 1;
+		} else {
+			return 0;
+		}
 	}
 
 	private static int rand1to100() {

@@ -50,6 +50,7 @@ import com.openrsc.server.util.rsc.Formulae;
 import com.openrsc.server.util.rsc.MessageType;
 import com.openrsc.server.util.rsc.PrerenderedSleepword;
 import io.netty.channel.Channel;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -376,6 +377,11 @@ public final class Player extends Mob {
 	 */
 	private boolean multiEndedEarly = false;
 
+	/**
+	 * Holds the damage received by a given mob
+	 * Also holds the damage absorbed by the defense cape
+	 */
+	private Map<UUID, Pair<Integer, Integer>> trackedDamageFromMob = new HashMap<UUID, Pair<Integer, Integer>>();
 
 	/*
 	 * Restricts P2P stuff in F2P wilderness.
@@ -787,7 +793,7 @@ public final class Player extends Mob {
 	}
 
 	public boolean canReport() {
-		return System.currentTimeMillis() - lastReport > 60000;
+		return isPlayerMod() || System.currentTimeMillis() - lastReport > 60000;
 	}
 
 	public boolean castTimer(boolean allowRapid) {
@@ -2185,6 +2191,20 @@ public final class Player extends Mob {
 				player.incKills();
 				incDeaths();
 				getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(player, String.format("has PKed %s", getUsername())));
+			}
+
+			// Defense skillcape message
+			int totalBlockedDamage = player.getTrackedBlockedDamage(this);
+			if (totalBlockedDamage > 0) {
+				player.playerServerMessage(MessageType.QUEST, "@dcy@Your defense cape blocked " + totalBlockedDamage + " damage!");
+			}
+
+
+			// Reset the tracked damage for anyone who was attacked by this player
+			for (Player curPlayer : getWorld().getPlayers()) {
+				if (curPlayer.getTrackedDamage(this) != -1) {
+					curPlayer.resetTrackedDamageAndBlockedDamage(this);
+				}
 			}
 		}
 
@@ -4350,4 +4370,32 @@ public final class Player extends Mob {
 		this.multiEndedEarly = endedEarly;
 	}
 
+	public void updateDamageAndBlockedDamageTracking(Mob mob, int damage, int blockedDamage) {
+		UUID uuid = mob.getUUID();
+		if (trackedDamageFromMob.containsKey(uuid)) {
+			int oldDamage = trackedDamageFromMob.get(uuid).getLeft();
+			int oldBlockedDamage = trackedDamageFromMob.get(uuid).getRight();
+			trackedDamageFromMob.put(uuid, Pair.of(oldDamage + damage, oldBlockedDamage + blockedDamage));
+		} else {
+			trackedDamageFromMob.put(uuid, Pair.of(damage, blockedDamage));
+		}
+	}
+
+	public int getTrackedDamage(Mob damageInflictingMob) {
+		if (trackedDamageFromMob.containsKey(damageInflictingMob.getUUID())) {
+			return trackedDamageFromMob.get(damageInflictingMob.getUUID()).getLeft();
+		}
+		return -1;
+	}
+
+	public int getTrackedBlockedDamage(Mob damageInflictingMob) {
+		if (trackedDamageFromMob.containsKey(damageInflictingMob.getUUID())) {
+			return trackedDamageFromMob.get(damageInflictingMob.getUUID()).getRight();
+		}
+		return -1;
+	}
+
+	public void resetTrackedDamageAndBlockedDamage(Mob damageInflictingMob) {
+		trackedDamageFromMob.remove(damageInflictingMob.getUUID());
+	}
 }

@@ -23,7 +23,7 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 		OpcodeIn pID = payload.getOpcode();
 
 		if (player.inCombat()) {
-			player.message("You are already busy fighting");
+			player.message("You are already busy fighting!");
 			player.resetPath();
 			return;
 		}
@@ -81,17 +81,18 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 				&& (!player.getCache().hasKey("mage_arena") || player.getCache().getInt("mage_arena") < 2)) {
 				player.message("you are not yet ready to fight the battle mages");
 				return;
+			} else if (player.getWorld().getServer().getCurrentTick() <= n.getRanAwayTimer()) {
+				//TODO: more research on this. At the very least, NPCs on the same tile as you could be attacked one tick after they retreated, but not the same tick.
+				player.resetPath();
+				return;
 			}
 		}
 
 		if (player.getRangeEquip() < 0 && player.getThrowingEquip() < 0) {
 			player.setFollowing(affectedMob, 0, false);
 
-			int radius = 1;
-			if (affectedMob.isPlayer()) {
-				 radius = player.getConfig().CATCHING_DISTANCE;
-			}
-			player.setWalkToAction(new WalkToMobAction(player, affectedMob, radius, false, ActionType.ATTACK) {
+			int radius = affectedMob.isPlayer() ? player.getConfig().PVP_CATCHING_DISTANCE : player.getConfig().PVM_CATCHING_DISTANCE;
+			player.setWalkToAction(new WalkToMobAction(player, affectedMob, radius, false, ActionType.ATTACK, true) {
 				public void executeInternal() {
 					getPlayer().resetFollowing();
 

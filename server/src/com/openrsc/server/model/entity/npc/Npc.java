@@ -330,6 +330,13 @@ public class Npc extends Mob {
 			}
 		}
 
+		// Defense skillcape message
+		int totalBlockedDamage = owner.getTrackedBlockedDamage(this);
+		if (totalBlockedDamage > 0) {
+			owner.playerServerMessage(MessageType.QUEST, "@dcy@Your defense cape blocked " + totalBlockedDamage + " damage!");
+		}
+
+
 		Pair<UUID, Long> ownerInfo = handleXpDistribution(mob);
 		owner = getWorld().getPlayerByUUID(ownerInfo.getLeft());
 
@@ -685,6 +692,8 @@ public class Npc extends Mob {
 				}
 				skillsDist[Skill.HITS.id()] = 1;
 				player.incExp(skillsDist, totalXP, true);
+
+				player.resetTrackedDamageAndBlockedDamage(this);
 			}
 		}
 
@@ -749,6 +758,10 @@ public class Npc extends Mob {
 	public void remove() {
 		this.killed = true;
 		double respawnMult = getConfig().NPC_RESPAWN_MULTIPLIER;
+		/*
+		In RSC, combat events don't necessarily end instantly after the mob dies.
+		TODO: Review this further. Right now we clear the combat event immediately, which isn't authentic.
+		*/
 		resetCombatEvent();
 		this.setLastOpponent(null);
 		if (!isRemoved() && shouldRespawn && def.respawnTime() > 0) {

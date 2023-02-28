@@ -523,7 +523,11 @@ public class EntityHandler {
 
 		sprites = new int[]{130, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Unicorn", "It's a unicorn", "", 21, 23, 19, 23, true, sprites, 0, 0, 0, 0, 201, 230, 6, 6, 7, i++));
-		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, 518};
+		} else {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+		}
 		npcs.add(new NPCDef("Bob", "An axe seller", shopOption, 2, 2, 3, 2, false, sprites, 3158064, 16711680, 16711680, 9461792, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{129, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Sheep", "A very wooly sheep", "", 0, 0, 3, 0, false, sprites, 0, 0, 0, 0, 170, 124, 6, 6, 5, i++));
@@ -641,7 +645,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("shopkeeper", "I can buy swords off him", shopOption, 0, 0, 3, 0, false, sprites, 16761440, 2, 8409120, 15523536, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{0, 1, 2, -1, -1, -1, 82, 88, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Darkwizard", "He works evil magic", "", 15, 15, 12, 12, true, sprites, 1, 2, 3, 15523536, 145, 220, 6, 6, 5, i++));
-		sprites = new int[]{0, 1, 2, -1, -1, -1, 45, -1, -1, -1, -1, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, 45, -1, -1, -1, -1, 517};
+		} else {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, 45, -1, -1, -1, -1, -1};
+		}
 		npcs.add(new NPCDef("lowe", "The owner of the archery store", shopOption, 0, 0, 3, 0, false, sprites, 16761440, 2, 3, 15523536, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{3, 4, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Thessalia", "A young shop assistant", shopOption, 0, 0, 3, 0, false, sprites, 1, 16036851, 3, 15523536, 130, 220, 6, 6, 5, i++));
@@ -809,7 +817,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("King Scorpion", "Wow scorpions shouldn't grow that big", "", 40, 38, 30, 39, true, sprites, 0, 0, 0, 0, 543, 312, 7, 7, 45, i++));
 		sprites = new int[]{6, 1, 2, -1, 48, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Pirate", "A vicious pirate", "", 35, 25, 20, 30, true, sprites, 1, 15658615, 14483456, 15523536, 145, 220, 6, 6, 5, i++));
-		sprites = new int[]{19, 34, 43, -1, 49, -1, -1, -1, -1, -1, -1, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{19, 34, 43, -1, 49, -1, -1, -1, -1, -1, -1, 512};
+		} else {
+			sprites = new int[]{19, 34, 43, -1, 49, -1, -1, -1, -1, -1, -1, -1};
+		}
 		npcs.add(new NPCDef("Sir Vyvin", "One of the white knights of Falador", "", 55, 60, 52, 58, false, sprites, 1, 2, 3, 15523536, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{7, 1, 2, -1, 116, -1, 84, 90, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Monk of Zamorak", "An evil cleric", "", 28, 32, 30, 28, true, sprites, 16761440, 65535, 255, 15392466, 145, 220, 6, 6, 5, i++));
@@ -885,7 +897,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("Abbot Langley", "A Peaceful monk", "", 12, 13, 15, 12, false, sprites, 16761440, 65535, 255, 15523536, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{6, 1, 2, -1, -1, -1, 45, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Thordur", "He runs a a tourist attraction", "", 20, 17, 16, 20, false, sprites, 7360576, 9465888, 9465888, 15523536, 121, 176, 6, 6, 5, i++));
-		sprites = new int[]{7, 1, 2, -1, -1, -1, 83, 87, -1, -1, -1, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{7, 1, 2, -1, -1, -1, 83, 87, -1, -1, -1, 516};
+		} else {
+			sprites = new int[]{7, 1, 2, -1, -1, -1, 83, 87, -1, -1, -1, -1};
+		}
 		npcs.add(new NPCDef("Brother Jered", "human", "", 12, 13, 15, 12, false, sprites, 16761440, 65535, 255, 15523536, 160, 220, 6, 6, 5, i++));
 		sprites = new int[]{123, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Rat", "Overgrown vermin", "", 16, 12, 10, 15, true, sprites, 0, 0, 0, 0, 346, 136, 7, 7, 45, i++));
@@ -949,7 +965,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("Blue Dragon", "A mother dragon", "", 105, 105, 105, 105, true, sprites, 0, 0, 0, 0, 452, 326, 10, 7, 70, i++));
 		sprites = new int[]{146, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Baby Blue Dragon", "Young but still dangerous", "", 50, 50, 50, 50, true, sprites, 0, 0, 0, 0, 226, 163, 10, 7, 30, i++));
-		sprites = new int[]{6, 1, 2, -1, -1, -1, 85, 86, -1, -1, -1, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{6, 1, 2, -1, -1, -1, 85, 86, -1, -1, -1, 514};
+		} else {
+			sprites = new int[]{6, 1, 2, -1, -1, -1, 85, 86, -1, -1, -1, -1};
+		}
 		npcs.add(new NPCDef("Kaqemeex", "A wise druid", "", 28, 32, 30, 28, false, sprites, 14540253, 65535, 255, 15392466, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{6, 1, 2, -1, -1, -1, 85, 86, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Sanfew", "An old druid", "", 28, 32, 30, 28, false, sprites, 16777215, 65535, 255, 15392466, 145, 220, 6, 6, 5, i++));
@@ -1146,7 +1166,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("Arhein", "A merchant", shopOption, 0, 0, 3, 0, false, sprites, 3158064, 13381836, 3, 13415270, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{3, 4, 2, -1, 122, -1, -1, 88, -1, -1, -1, 63};
 		npcs.add(new NPCDef("Morgan le faye", "An evil sorceress", "", 35, 25, 10, 30, false, sprites, 1, 2, 3, 15527632, 155, 220, 6, 6, 5, i++));
-		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 10, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 10, 513};
+		} else {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 10, -1};
+		}
 		npcs.add(new NPCDef("Candlemaker", "He makes and sells candles", shopOption, 15, 22, 22, 6, false, sprites, 16761440, 2, 8409120, 15523536, 155, 230, 6, 6, 5, i++));
 		sprites = new int[]{3, 4, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("lady", "She has a hint of magic about her", "", 0, 0, 3, 0, false, sprites, 15921906, 255, 255, 15523536, 145, 220, 6, 6, 5, i++));
@@ -1460,7 +1484,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("4th plague sheep", "The sheep has the plague", "", 0, 0, 3, 0, false, sprites, 0, 0, 0, 0, 170, 124, 6, 6, 5, i++));
 		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Farmer brumty", "He looks after livestock in this area", "", 15, 16, 12, 18, false, sprites, 11167296, 8409120, 3, 15523536, 145, 220, 6, 6, 5, i++));
-		sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 9, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 9, 385};
+		} else {
+			sprites = new int[]{0, 1, 2, -1, -1, -1, -1, -1, -1, -1, 9, -1};
+		}
 		npcs.add(new NPCDef("Doctor orbon", "A local doctor", "", 20, 20, 3, 20, false, sprites, 1, 16777215, 16711680, 15523536, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{6, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Councillor Halgrive", "A town counceller", "", 20, 20, 20, 20, false, sprites, 16777215, 255, 255, 15523536, 160, 220, 6, 6, 5, i++));
@@ -1781,7 +1809,11 @@ public class EntityHandler {
 		npcs.add(new NPCDef("Gnome child", "hello little gnome", "pickpocket", 3, 3, 3, 3, true, sprites, 1, 16711884, 255, 36864, 80, 100, 6, 6, 5, i++));
 		sprites = new int[]{6, 1, 2, 116, 116, 69, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Gulluck", "He sells weapons", shopOption, 10, 11, 11, 11, false, sprites, 1, 3158064, 3158064, 36864, 100, 150, 6, 6, 5, i++));
-		sprites = new int[]{6, 1, 2, -1, 109, 70, 45, -1, 46, -1, -1, -1};
+		if (Config.S_WANT_CUSTOM_SPRITES) {
+			sprites = new int[]{6, 1, 2, -1, 109, 70, 45, -1, 46, -1, -1, 511};
+		} else {
+			sprites = new int[]{6, 1, 2, -1, 109, 70, 45, -1, 46, -1, -1, -1};
+		}
 		npcs.add(new NPCDef("Gunnjorn", "Not civilised looking", "", 18, 15, 14, 18, false, sprites, 16768384, 8409120, 8409120, 15523536, 160, 230, 6, 6, 5, i++));
 		sprites = new int[]{137, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Zadimus", "Ghostly Visage of the dead Zadimus", "", 0, 0, 0, 0, false, sprites, 0, 0, 0, 0, 201, 243, 9, 9, 5, i++));
@@ -2269,6 +2301,8 @@ public class EntityHandler {
 		// head, shirt, pants, shield, weapon, hat, body, legs, gloves, boots, amulet, cape
 		sprites = new int[]{7, 1, 2, -1, -1, 500, 501, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("Kresh", "He's kind of like an onion", "", 123, 123, 123, 123, false, sprites, 0, 0xFFFFFF, 0x802415, 0xb5ff1d, 160, 220, 6, 6, 5, i++));
+		sprites = new int[]{3, 1, 2, -1, -1, -1, -1, -1, 46, -1, 10, 519};
+		npcs.add(new NPCDef("Lily", "She has a green thumb", "", 1, 1, 10, 1, false, sprites, 0xEEBB70, 0x006600, 0x663300, 15523536, 145, 220, 6, 6, 5, i++));
 
 		if (Config.S_WANT_CUSTOM_SPRITES) {
 			// Ranael
@@ -3966,6 +4000,22 @@ public class EntityHandler {
 		items.add(new ItemDef("Cape of Inclusion", "A colourful cape made from many different pieces of cloth.", "", 3, -1, "items:pridecape", false, true, 2048, 0xFFFFFF, false, false, true, 1516));
 		items.add(new ItemDef("halloween mask", "aaaarrrghhh ... i'm a monster", "", 15, 284, "items:284", false, true, 32, 4, false, false, true, 1517));
 
+		// Rest of the skillcapes
+		items.add(new ItemDef("Agility cape", "The cape worn by the most agile", "Teleport", 99000, -1, "items:479", false, true, 2048, 0, false, false, false, 1518));
+		items.add(new ItemDef("Defense cape", "The cape worn by the most formidable", "", 99000, -1, "items:483", false, true, 2048, 0, false, false, false, 1519));
+		items.add(new ItemDef("Firemaking cape", "The cape worn by pyro enthusiasts", "Combust", 99000, -1, "items:484", false, true, 2048, 0, false, false, false, 1520));
+		items.add(new ItemDef("Herblaw cape", "The cape worn by master herblawists", "", 99000, -1, "items:487", false, true, 2048, 0, false, false, false, 1521));
+		items.add(new ItemDef("Hits cape", "The cape worn by the most sturdy", "", 99000, -1, "items:488", false, true, 2048, 0, false, false, false, 1522));
+		items.add(new ItemDef("Prayer cape", "The cape worn by the most pious", "", 99000, -1, "items:491", false, true, 2048, 0, false, false, false, 1523));
+		items.add(new ItemDef("Ranged cape", "The cape worn by the best archers", "", 99000, -1, "items:493", false, true, 2048, 0, false, false, false, 1524));
+		items.add(new ItemDef("Woodcutting cape", "The cape worn by the best loggers", "", 99000, -1, "items:497", false, true, 2048, 0, false, false, false, 1525));
+		items.add(new ItemDef("Harvesting cape", "The cape worn by agronomists", "", 99000, -1, "items:549", false, true, 2048, 0, false, false, false, 1526));
+		items.add(new ItemDef("Runecraft cape", "The cape worn by masters of rune lore", "", 99000, -1, "items:550", false, true, 2048, 0, false, false, false, 1527));
+		items.add(new ItemDef("Quest cape", "The cape worn by the most seasoned adventurers", "", 99000, -1, "items:492", false, true, 2048, 0, false, false, false, 1528));
+		// We don't have a sprite for this cape, but I want to reserve the ID.
+		items.add(new ItemDef("Max cape", "The cape worn by ???", "", 99000, -1, "items:485", false, true, 2048, 0, false, false, false, 1529));
+
+
 		// Add muddy herb sprite
 		items.get(165).spriteLocation = "items:588";
 		items.get(435).spriteLocation = "items:588";
@@ -4631,6 +4681,21 @@ public class EntityHandler {
 			animations.add(new AnimationDef("halloweenmask", "equipment", 16711935, 0, true, false, 0)); // 508
 			animations.add(new AnimationDef("pridecape", "equipment", 0, 0, true, false, 0)); // 509
 			animations.add(new AnimationDef("halloweenmask", "equipment", 4, 0, true, false, 0)); // 510
+
+			// Rest of the skillcapes
+			animations.add(new AnimationDef("agilitycape", "equipment", 0, 0, true, false, 0)); //511
+			animations.add(new AnimationDef("defensecape", "equipment", 0, 0, true, false, 0)); //512
+			animations.add(new AnimationDef("firemakingcape", "equipment", 0, 0, true, false, 0)); //513
+			animations.add(new AnimationDef("herblawcape", "equipment", 0, 0, true, false, 0)); //514
+			animations.add(new AnimationDef("hitscape", "equipment", 0, 0, true, false, 0)); //515
+			animations.add(new AnimationDef("prayercape", "equipment", 0, 0, true, false, 0)); //516
+			animations.add(new AnimationDef("rangingcape", "equipment", 0, 0, true, false, 0)); //517
+			animations.add(new AnimationDef("woodcuttingcape", "equipment", 0, 0, true, false, 0)); //518
+			animations.add(new AnimationDef("harvestingcape", "equipment", 0, 0, true, false, 0)); //519
+			animations.add(new AnimationDef("runecraftingcape", "equipment", 0, 0, true, false, 0)); //520
+			animations.add(new AnimationDef("questcape", "equipment", 0, 0, true, false, 0)); //521
+			// There isn't an animation for the max cape yet, but I wanted to reserve the ID.
+			animations.add(new AnimationDef("fishingcape", "equipment", 0, 0, true, false, 0)); //522
 		}
 	}
 
