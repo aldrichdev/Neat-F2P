@@ -135,7 +135,7 @@ public class DragonstoneAmulet implements OpInvTrigger, UseLocTrigger {
 		final ItemDefinition itemDef = item.getDef(player.getWorld());
 
 		if (player.getConfig().WANT_EQUIPMENT_TAB) {
-			if (item.isWielded()) {
+			if (carriedItems.getEquipment().hasEquipped(item.getCatalogId())) {
 				final Equipment equipment = carriedItems.getEquipment();
 				final Item neckItem = equipment.getNeckItem();
 
@@ -162,7 +162,7 @@ public class DragonstoneAmulet implements OpInvTrigger, UseLocTrigger {
 		}
 
 		ActionSender.sendEquipmentStats(player, itemDef.getWieldPosition());
-		ActionSender.sendUpdatedPlayer(player);
+		player.getUpdateFlags().setAppearanceChanged(true);
 	}
 
 	@Override

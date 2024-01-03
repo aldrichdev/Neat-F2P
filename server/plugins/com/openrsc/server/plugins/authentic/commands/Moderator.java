@@ -8,6 +8,7 @@ import com.openrsc.server.database.struct.UsernameChangeType;
 import com.openrsc.server.event.DelayedEvent;
 import com.openrsc.server.model.Point;
 import com.openrsc.server.model.container.Item;
+import com.openrsc.server.model.entity.UnregisterForcefulness;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Group;
 import com.openrsc.server.model.entity.player.Player;
@@ -15,13 +16,14 @@ import com.openrsc.server.net.RSCPacketFilter;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
 import com.openrsc.server.util.MessageFilter;
+import com.openrsc.server.util.MessageFilterType;
 import com.openrsc.server.util.RandomUsername;
 import com.openrsc.server.util.UsernameChange;
 import com.openrsc.server.util.rsc.CaptchaGenerator;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.MessageType;
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -84,7 +86,13 @@ public final class Moderator implements CommandTrigger {
 			banPlayer(player, command, args);
 		} else if (command.equalsIgnoreCase("unban")) {
 			unbanPlayer(player, command, args);
-		} else if (command.equalsIgnoreCase("renameplayer") || command.equalsIgnoreCase("renameuser")) {
+		} else if (command.equalsIgnoreCase("renameplayer")
+			|| command.equalsIgnoreCase("rename")
+			|| command.equalsIgnoreCase("rp")
+			|| command.equalsIgnoreCase("rn")
+			|| command.equalsIgnoreCase("ren")
+			|| command.equalsIgnoreCase("renameuser")
+			|| command.equalsIgnoreCase("renamechar")) {
 			renamePlayer(player, command, args, false);
 		} else if (command.equalsIgnoreCase("offensivename") || command.equalsIgnoreCase("inappropriatename") || command.equalsIgnoreCase("badname")) {
 			badName(player, command, args);
@@ -118,12 +126,160 @@ public final class Moderator implements CommandTrigger {
 			removeGoodword(player, command, args);
 		} else if (command.equalsIgnoreCase("syncgoodwordsbadwords") || command.equalsIgnoreCase("sgb")) {
 			reloadGoodwordBadwords(player);
+		} else if (command.equalsIgnoreCase("addalertword")) {
+			addAlertword(player, command, args);
+		} else if (command.equalsIgnoreCase("removealertword")) {
+			removeAlertword(player, command, args);
+		} else if (command.equalsIgnoreCase("togglespacefiltering")) {
+			toggleSpaceFiltering(player);
+		} else if (command.equalsIgnoreCase("gettutorial")) {
+			getTutorial(player);
+		} else if (command.equalsIgnoreCase("toggletutorial")) {
+			toggleTutorial(player);
+		} else if (command.equalsIgnoreCase("babymode")) {
+			setBabyModeLevelThreshold(player, command, args);
+		}
+	}
+
+	private void getTutorial(Player player) {
+		if (player.getConfig().SHOW_TUTORIAL_SKIP_OPTION) {
+			player.message("Players are able to skip tutorial island.");
+		} else {
+			player.message("Players are NOT able to skip tutorial island.");
+		}
+	}
+
+
+	private void toggleTutorial(Player player) {
+		player.getConfig().SHOW_TUTORIAL_SKIP_OPTION = !player.getConfig().SHOW_TUTORIAL_SKIP_OPTION;
+		if (player.getConfig().SHOW_TUTORIAL_SKIP_OPTION) {
+			player.message("Players are now able to skip tutorial island.");
+		} else {
+			player.message("Players are NO LONGER able to skip tutorial island.");
+		}
+	}
+
+	private void toggleSpaceFiltering(Player player) {
+		player.getConfig().SERVER_SIDED_WORD_SPACE_FILTERING = !player.getConfig().SERVER_SIDED_WORD_SPACE_FILTERING;
+		player.message("set player.getConfig().SERVER_SIDED_WORD_SPACE_FILTERING to " + player.getConfig().SERVER_SIDED_WORD_SPACE_FILTERING);
+		if (player.getWorld().getServer().getDiscordService() != null) {
+			player.getWorld().getServer().getDiscordService().reportSpaceFilteringConfigChangeToDiscord(player);
+		}
+	}
+
+	private void setBabyModeLevelThreshold(Player player, String command, String[] args) {
+		int previousThreshold = player.getConfig().BABY_MODE_LEVEL_THRESHOLD;
+		if (args.length < 1) {
+			player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [\"on\"/\"off\"/[level]]");
+			return;
+		}
+		if (args[0].equalsIgnoreCase("off")) {
+			if (previousThreshold != 0) {
+				player.getConfig().BABY_MODE_LEVEL_THRESHOLD = 0;
+				player.message("Baby mode has been disabled.");
+				if (player.getWorld().getServer().getDiscordService() != null) {
+					player.getWorld().getServer().getDiscordService().reportBabyModeChangeToDiscord(player);
+				}
+			} else {
+				player.message("Baby mode was already disabled.");
+			}
+			return;
+		}
+
+		int levelReq;
+		if (args[0].equalsIgnoreCase("on")) {
+			if (previousThreshold != 100) {
+				levelReq = 100;
+			} else {
+				player.message("Baby mode was already set to a total level 100 requirement.");
+				return;
+			}
+		} else {
+			try {
+				levelReq = Integer.parseInt(args[0]);
+				if (previousThreshold == levelReq) {
+					player.message("Baby mode was already set to a total level " + levelReq + " requirement.");
+					return;
+				}
+			} catch (NumberFormatException ex) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " [\"on\"/\"off\"/[level]]");
+				return;
+			}
+		}
+
+		player.getConfig().BABY_MODE_LEVEL_THRESHOLD = levelReq;
+		player.message("Set Baby Mode threshold to at least " + player.getConfig().BABY_MODE_LEVEL_THRESHOLD + " total level.");
+		if (player.getWorld().getServer().getDiscordService() != null) {
+			player.getWorld().getServer().getDiscordService().reportBabyModeChangeToDiscord(player);
 		}
 	}
 
 	private void reloadGoodwordBadwords(Player player) {
-		Pair<Integer, Integer> loadedCounts = MessageFilter.loadGoodAndBadWordsFromDisk();
-		player.message("Loaded " + loadedCounts.getLeft() + " goodwords and " + loadedCounts.getRight() + " badwords from disk.");
+		Triple<Integer, Integer, Integer> loadedCounts = MessageFilter.loadGoodAndBadWordsFromDisk();
+		player.message("Loaded " + loadedCounts.getLeft() + " goodwords, " + loadedCounts.getRight() + " badwords, and " + loadedCounts.getMiddle() + " alertwords from disk.");
+	}
+
+	private void addAlertword(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [alertword]");
+			return;
+		}
+		StringBuilder newStr = new StringBuilder();
+		for (String arg : args) {
+			newStr.append(arg).append(" ");
+		}
+		String newAlertword = newStr.toString().trim();
+		if (MessageFilter.badwordsContains(newAlertword)) {
+			player.message("@red@badwords already contains the word: @dre@" + newAlertword);
+			return;
+		}
+		if (MessageFilter.alertwordsContains(newAlertword)) {
+			player.message("@red@alertwords already contains the word: @dre@" + newAlertword);
+			return;
+		}
+		if (newAlertword.length() < 3) {
+			player.message("@red@alertword must be at least 3 characters long.");
+			return;
+		}
+
+		reloadGoodwordBadwords(player);
+		if (MessageFilter.addAlertWord(newAlertword)) {
+			MessageFilter.syncAlertwordsToDisk();
+			if (player.getWorld().getServer().getDiscordService() != null) {
+				player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, newAlertword, MessageFilterType.alertword, true);
+			}
+			player.message("@whi@Added @red@" + newAlertword + "@whi@ to the alertwords list.");
+		} else {
+			player.message("@red@Not able to add @dre@" + newAlertword + "@red@ to the alertwords list.");
+		}
+	}
+
+	private void removeAlertword(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [old alertword]");
+			return;
+		}
+		StringBuilder newStr = new StringBuilder();
+		for (String arg : args) {
+			newStr.append(arg).append(" ");
+		}
+		String oldAlertword = newStr.toString().trim();
+
+		if (!MessageFilter.alertwordsContains(oldAlertword)) {
+			player.message("@red@alertwords already lacked the word: @gre@" + oldAlertword);
+			return;
+		}
+
+		reloadGoodwordBadwords(player);
+		if (MessageFilter.removeAlertWord(oldAlertword)) {
+			MessageFilter.syncAlertwordsToDisk();
+			if (player.getWorld().getServer().getDiscordService() != null) {
+				player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, oldAlertword, MessageFilterType.alertword, false);
+			}
+			player.message("@whi@Removed @gre@" + oldAlertword + "@whi@ from the alertwords list.");
+		} else {
+			player.message("@red@Not able to remove @gr1@" + oldAlertword + "@red@ from the alertwords list.");
+		}
 	}
 
 	private void addBadword(Player player, String command, String[] args) {
@@ -152,7 +308,9 @@ public final class Moderator implements CommandTrigger {
 		reloadGoodwordBadwords(player);
 		if (MessageFilter.addBadWord(newBadWord)) {
 			MessageFilter.syncBadwordsToDisk();
-			player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, newBadWord, false, true);
+			if (player.getWorld().getServer().getDiscordService() != null) {
+				player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, newBadWord, MessageFilterType.badword, true);
+			}
 			player.message("@whi@Added @red@" + newBadWord + "@whi@ to the badwords list.");
 		} else {
 			player.message("@red@Not able to add @dre@" + newBadWord + "@red@ to the badwords list.");
@@ -178,7 +336,9 @@ public final class Moderator implements CommandTrigger {
 		reloadGoodwordBadwords(player);
 		if (MessageFilter.removeBadWord(oldBadWord)) {
 			MessageFilter.syncBadwordsToDisk();
-			player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, oldBadWord, false, false);
+			if (player.getWorld().getServer().getDiscordService() != null) {
+				player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, oldBadWord, MessageFilterType.badword, false);
+			}
 			player.message("@whi@Removed @gre@" + oldBadWord + "@whi@ from the badwords list.");
 		} else {
 			player.message("@red@Not able to remove @gr1@" + oldBadWord + "@red@ from the badwords list.");
@@ -211,7 +371,9 @@ public final class Moderator implements CommandTrigger {
 		reloadGoodwordBadwords(player);
 		if (MessageFilter.addGoodWord(newGoodword)) {
 			MessageFilter.syncGoodwordsToDisk();
-			player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, newGoodword, true, true);
+			if (player.getWorld().getServer().getDiscordService() != null) {
+				player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, newGoodword, MessageFilterType.goodword, true);
+			}
 			player.message("@whi@Added @red@" + newGoodword + "@whi@ to the goodwords list.");
 		} else {
 			player.message("@red@Not able to add @dre@" + newGoodword + "@red@ to the goodwords list.");
@@ -237,7 +399,9 @@ public final class Moderator implements CommandTrigger {
 		reloadGoodwordBadwords(player);
 		if (MessageFilter.removeGoodWord(oldGoodword)) {
 			MessageFilter.syncGoodwordsToDisk();
-			player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, oldGoodword, true, false);
+			if (player.getWorld().getServer().getDiscordService() != null) {
+				player.getWorld().getServer().getDiscordService().reportNaughtyWordChangedToDiscord(player, oldGoodword, MessageFilterType.goodword, false);
+			}
 			player.message("@whi@Removed @gre@" + oldGoodword + "@whi@ from the goodwords list.");
 		} else {
 			player.message("@red@Not able to remove @gr1@" + oldGoodword + "@red@ from the goodwords list.");
@@ -356,7 +520,6 @@ public final class Moderator implements CommandTrigger {
 		// Make sure we have received all arguments
 		if (args.length < 2) {
 			player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [Offensive username] [Reason]");
-			player.message("(underscores will become spaces)");
 			return;
 		}
 
@@ -377,27 +540,27 @@ public final class Moderator implements CommandTrigger {
 		if (args.length < 4) {
 			if (calledFromBadName) {
 				player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [Offensive username] [Reason]");
-				player.message("(underscores will become spaces)");
 			} else {
 				player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [CurrentName] [NewName] [Inappropriate (yes/no)] [Reason]");
-				player.message("(underscores will become spaces)");
 			}
 			return;
 		}
 
 		// parse args
-		String targetPlayerUsername = args[0].replaceAll("_", " ");
-		String newUsername = args[1].replaceAll("_", " ");
+		String targetPlayerUsername = args[0].replaceAll("[._]", " ");
+		String newUsername = args[1].replaceAll("[._]", " ");
+		if (newUsername.length() > 12) {
+			player.message("Cannot have a username with more than 12 characters.");
+			return;
+		}
 		boolean inappropriate = false;
 		try {
 			inappropriate = DataConversions.parseBoolean(args[2]);
 		} catch (NumberFormatException ex) {
 			if (calledFromBadName) {
 				player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [Offensive username] [Reason]");
-				player.message("(underscores will become spaces)");
 			} else {
 				player.message(config().BAD_SYNTAX_PREFIX + command.toUpperCase() + " [CurrentName] [NewName] [Inappropriate (yes/no)] [Reason]");
-				player.message("(underscores will become spaces)");
 			}
 			return;
 		}
@@ -448,7 +611,12 @@ public final class Moderator implements CommandTrigger {
 			// offline player rename
 			try {
 				// determine if this rename is likely intended to just Free the name
-				long loginDate = player.getWorld().getServer().getDatabase().queryLoadPlayerData(targetPlayerUsername).loginDate;
+				PlayerData playerData = player.getWorld().getServer().getDatabase().queryLoadPlayerData(targetPlayerUsername);
+				if (playerData == null) {
+					player.message("The player \"" + targetPlayerUsername + "\" does not exist");
+					return;
+				}
+				long loginDate = playerData.loginDate;
 				long secondsSinceLastLogin = (System.currentTimeMillis() / 1000) - loginDate;
 				if (changeType != UsernameChangeType.INAPPROPRIATE && secondsSinceLastLogin > (SECONDS_IN_A_MONTH / 2)) {
 					player.message("The name \"" + targetPlayerUsername + "\" belongs to a user that has not logged in in the past 2 weeks.");
@@ -847,7 +1015,7 @@ public final class Moderator implements CommandTrigger {
 		player.getWorld().getServer().getGameLogger().addQuery(
 			new StaffLog(player, 6, targetPlayer, targetPlayer.getUsername()
 				+ " has been kicked by " + player.getUsername()));
-		targetPlayer.unregister(true, "You have been kicked by " + player.getUsername());
+		targetPlayer.unregister(UnregisterForcefulness.FORCED, "You have been kicked by " + player.getUsername());
 
 		final String userHash = args[0];
 		DelayedEvent forceUnregister = new DelayedEvent(player.getWorld(), null, 1000, "Manual Unregister Player") {
@@ -1018,7 +1186,7 @@ public final class Moderator implements CommandTrigger {
 			time = player.isAdmin() ? -1 : 60;
 		}
 
-		if (time == 0 && !player.isAdmin()) {
+		if (time == 0 && !player.isMod()) {
 			player.message(messagePrefix + "You are not allowed to unban users.");
 			return;
 		}

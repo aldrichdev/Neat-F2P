@@ -5,7 +5,6 @@ import com.openrsc.server.constants.Skill;
 import com.openrsc.server.constants.Skills;
 import com.openrsc.server.content.SkillCapes;
 import com.openrsc.server.model.entity.Mob;
-import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.Prayers;
 import com.openrsc.server.util.rsc.DataConversions;
@@ -23,71 +22,43 @@ public class CombatFormula {
 	private static final Logger LOGGER = LogManager.getLogger();
 
 	/**
-	 * Gets a gaussian distributed randomized value between 0 and the
-	 * {@code maximum} value. <br>
-	 * The mean (average) is maximum / 2.
-	 *
-	 * @param maxHit      The max amount of damage
-	 * @return The randomized value.
-	 */
-	private static int calculateDamage(final int maxHit) {
-		if (maxHit == 0) return 0;
-		if (maxHit == 1) return 1;
-
-		final Random r = DataConversions.getRandom();
-		final double mean = maxHit / 2.0D;
-		double value = 0;
-		int i = 0;
-		do {
-			value = Math.floor(mean + r.nextGaussian() * (maxHit / 3.0D));
-			if (++i >= 25) {
-				break;
-			}
-		} while (value < 1 || value > maxHit);
-
-		if (value > maxHit) {
-			value = maxHit;
-		}
-		if (value < 1) {
-			value = 1;
-		}
-
-		return (int)value;
-	}
-
-	/**
 	 * Gets a dice roll for melee damage for a single attack
-	 *
+	 * The result is an int sourced from randomness effectively from 0.5 - maxHit.
+	 * Max hit is fractional, so it is more rare than other values in most circumstances.
+	 * 0 rolls are biased against in a similar way.
 	 * @param source      The mob doing the damage
 	 * @return The randomized value.
 	 */
 	private static int calculateMeleeDamage(final Mob source) {
-		if(source.isNpc() && source.getSkills().getLevel(Skill.STRENGTH.id()) < 5)
-			return 0;
-
-		return calculateDamage(getMeleeDamage(source));
+		int maxRoll = getMeleeDamage(source);
+		int chosenHit = maxRoll <= 0 ? 0 : (DataConversions.getRandom().nextInt(maxRoll) + 320) / 640;
+		return chosenHit;
 	}
 
 	/**
 	 * Gets a dice roll for ranged damage for a single attack
-	 *
+	 * The result is an int sourced from randomness effectively from 0.5 - maxHit.
+	 * Max hit is fractional, so it is more rare than other values in most circumstances.
+	 * 0 rolls are biased against in a similar way.
 	 * @param source      The mob doing the damage
 	 * @param arrowId	  The type of ranged ammunition
 	 * @return The randomized value.
 	 */
-	private static int calculateRangedDamage(final Mob source, final int arrowId) {
-		return calculateDamage(getRangedDamage(source, arrowId));
-
+	private static int calculateRangedDamage(final Mob source, final int bowId, final int arrowId) {
+		int maxRoll = getRangedDamage(source, bowId, arrowId);
+		int chosenHit = (DataConversions.getRandom().nextInt(maxRoll) + 320) / 640;
+		return chosenHit;
 	}
 
 	/**
-	 * Gets a dice roll for magic damage for a single attack
-	 *
+	 * Gets a dice roll for magic damage for a single attack.
 	 * @param spellPower      The max hit of the spell
 	 * @return The randomized value.
 	 */
-	public static int calculateMagicDamage(final int spellPower) {
-		return calculateDamage(spellPower);
+	public static int calculateMagicDamage(final double spellPower) {
+		//Given that melee max hit is fractional, it was likely that spell power values ending in "5" were supposed to hit their max hit more often.
+		//TODO: More research to see if that was the case. For now, we can just make it uniform after flooring.
+		return DataConversions.getRandom().nextInt((int)Math.floor(spellPower) + 1);
 	}
 
 	/**
@@ -97,7 +68,24 @@ public class CombatFormula {
 	 * @return The randomized value.
 	 */
 	public static int calculateGodSpellDamage(final Player source) {
-		return calculateDamage(source.isCharged() ? 25 : 18);
+		int[] godCapes = new int[] {
+			ZAMORAK_CAPE.id(),
+			SARADOMIN_CAPE.id(),
+			GUTHIX_CAPE.id()
+		};
+
+		//Authentically, players only receive Charge benefit if they have a god cape equipped.
+		boolean hasCapeEquipped = false;
+		for (int capeId : godCapes) {
+			if (source.getCarriedItems().getEquipment().hasEquipped(capeId)) {
+				hasCapeEquipped = true;
+				break;
+			}
+		}
+		boolean hasChargeBenefit = source.isCharged() && hasCapeEquipped;
+		int godSpellMax = hasChargeBenefit ? 25 : 18;
+
+		return calculateMagicDamage(godSpellMax);
 	}
 
 	/**
@@ -108,55 +96,44 @@ public class CombatFormula {
 	public static int calculateIbanSpellDamage() {
 		// TODO: Remove this code and roll it into calculateMagicDamage
 		// Source for max damage: http://web.archive.org/web/20041226185618/http://www.rsinn.com/forum/showthread.php?t=2469
-		return calculateDamage(15);
+		return calculateMagicDamage(15);
 	}
 
 	/**
-	 * Calculates an accuracy check (For non-melee)
+	 * Calculates an accuracy check (base method)
 	 *
 	 * @param accuracy            The accuracy term
 	 * @param defence             The defence term
 	 * @return True if the attack is a hit, false if the attack is a miss
 	 */
 	private static boolean calculateAccuracy(final double accuracy, final double defence) {
-		final int odds = (int)Math.min(212.0D, 255.0D * accuracy / (defence * 4.0D));
-		final int roll = DataConversions.random(0, 255);
+		double hitChance;
+		if (accuracy > defence) {
+			hitChance = 1 - ((defence + 2) / (2 * (accuracy + 1)));
+		} else {
+			hitChance = (accuracy) / (2 * (defence + 1));
+		}
 
-		//LOGGER.info(source + " has " + odds + "/256 to hit " + victim + ", rolled " + roll);
+		double rand = Math.random();
+		boolean didHit = rand <= hitChance;
 
-		return roll <= odds;
+		return didHit;
 	}
 
-	/**
-	 * Calculates an accuracy check (For melee)
-	 *
-	 * @param accuracy            The accuracy term
-	 * @param defence             The defence term
-	 * @param isVictimPlayer      True if the victim is a player, false if not
-	 * @return True if the attack is a hit, false if the attack is a miss
-	 */
-	private static boolean calculateAccuracy(final double accuracy, final double defence, final boolean isVictimPlayer) {
-		final int odds = (int)Math.min(212.0D, 255.0D * accuracy / (defence * (isVictimPlayer ? 2.6 : 3.2)));
-		final int roll = DataConversions.random(0, 255);
-
-		//LOGGER.info(source + " has " + odds + "/256 to hit " + victim + ", rolled " + roll);
-
-		return roll <= odds;
-	}
 
 	/**
-	 * Calculates an accuracy check
+	 * Calculates an accuracy check (melee)
 	 *
 	 * @param source             The attacking mob.
 	 * @param victim             The mob being attacked.
 	 * @return True if the attack is a hit, false if the attack is a miss
 	 */
 	private static boolean calculateMeleeAccuracy(final Mob source, final Mob victim) {
-		return calculateAccuracy(getMeleeAccuracy(source), getMeleeDefence(victim), victim.isPlayer());
+		return calculateAccuracy(getMeleeAccuracy(source), getMeleeDefence(victim));
 	}
 
 	/**
-	 * Calculates an accuracy check
+	 * Calculates an accuracy check (ranged)
 	 *
 	 * @param source             The attacking mob.
 	 * @param bowId				 The type of ranged weapon being wielded
@@ -178,10 +155,7 @@ public class CombatFormula {
 		boolean isHit = calculateMeleeAccuracy(source, victim);
 		boolean wasHit = isHit;
 		int damage = calculateMeleeDamage(source);
-		if (source instanceof Player && victim instanceof Player) {
-			// TODO: hopefully temp until this file contains more accurate pvp
-			return PVPCombatFormula.calcFightHit(source, victim);
-		} else if (victim instanceof Player) {
+		if (victim instanceof Player) {
 			// Track the damage dealt to the player
 			Player playerVictim = (Player)victim;
 			if (isHit) {
@@ -189,21 +163,22 @@ public class CombatFormula {
 				int blockedDamage = 0;
 
 				// Defense skillcape
-				if (SkillCapes.shouldActivate((Player) victim, DEFENSE_CAPE)) {
+				if (SkillCapes.shouldActivate((Player) victim, DEFENSE_CAPE) && damageToPlayer > 0) {
 					damage /= 2;
 					blockedDamage = damage;
 				}
 
 				playerVictim.updateDamageAndBlockedDamageTracking(source, damageToPlayer, blockedDamage);
 			}
-		} else if (source instanceof Player) {
+		}
+		if (source instanceof Player) {
 			while(SkillCapes.shouldActivate((Player)source, ATTACK_CAPE, isHit)){
 				isHit = calculateMeleeAccuracy(source, victim);
 			}
 			if (!wasHit && isHit)
 				((Player) source).message("@red@Your Attack cape has prevented a zero hit");
 
-			final double maximum = getMeleeDamage(source);
+			final double maximum = (double) (getMeleeDamage(source) + 320) / 640;
 			if (damage >= (maximum * 0.5) && SkillCapes.shouldActivate((Player) source, STRENGTH_CAPE, isHit)) {
 				damage += (maximum*0.2);
 				((Player) source).message("@ora@Your Strength cape has granted you a critical hit");
@@ -229,12 +204,11 @@ public class CombatFormula {
 
 		//LOGGER.info(source + " " + (isHit ? "hit" : "missed") + " " + victim + ", Damage: " + damage);
 
-		return isHit ? calculateRangedDamage(source, arrowId) : 0;
+		return isHit ? calculateRangedDamage(source, bowId, arrowId) : 0;
 	}
 
 	/**
-	 * Gets the melee max hit of the attacking mob
-	 *
+	 * Gets the melee max roll of the attacking mob.
 	 * @param source             The attacking mob.
 	 * @return The max hit
 	 */
@@ -244,23 +218,22 @@ public class CombatFormula {
 			Prayers.SUPERHUMAN_STRENGTH,
 			Prayers.ULTIMATE_STRENGTH);
 
-		final double strength = (source.getSkills().getLevel(Skill.STRENGTH.id()) * prayerBonus) + styleBonus;
-		final double weaponMultiplier = (source.getWeaponPowerPoints() * (1.0D/600.0D))+0.1D;
-
-		return (int)Math.ceil(strength * weaponMultiplier);
+		final int bonusConstant = source.isPlayer() ? 8 : 0;
+		final double maxRoll = (Math.floor(source.getSkills().getLevel(Skill.STRENGTH.id()) * prayerBonus) + bonusConstant + styleBonus) * (source.getWeaponPowerPoints() + 64);
+		return (int)maxRoll;
 	}
 
 	/**
-	 * Gets the ranged max hit of the attacking mob
+	 * Gets the ranged max roll of the attacking mob.
 	 *
 	 * @param source             The attacking mob.
 	 * @return The max hit
 	 */
-	private static int getRangedDamage(final Mob source, final int arrowId) {
-		final int ranged = source.getSkills().getLevel(Skill.RANGED.id());
-		final double weaponMultiplier = (rangedPower(arrowId) * 0.00175D)+0.1D;
-
-		return (int)Math.ceil(ranged * weaponMultiplier);
+	private static int getRangedDamage(final Mob source, final int bowId, final int arrowId) {
+		final int bonusConstant = source.isPlayer() ? 8 : 0; //NPCs can't range authentically - this should be considered if custom content implements this.
+		final int power = source.getConfig().RETRO_RANGED_DAMAGE ? rangedPowerRetro(bowId) : rangedPower(arrowId);
+		final double maxRoll = (source.getSkills().getLevel(Skill.RANGED.id()) + bonusConstant) * (power + 1 + 64);
+		return (int)maxRoll;
 	}
 
 	/**
@@ -274,12 +247,11 @@ public class CombatFormula {
 		final double prayerBonus = addPrayers(defender, Prayers.THICK_SKIN,
 			Prayers.ROCK_SKIN,
 			Prayers.STEEL_SKIN);
-
-		final double defense = (defender.getSkills().getLevel(Skill.DEFENSE.id()) * prayerBonus) + styleBonus;
-		final double armourMultiplier = (defender.getArmourPoints() * (1.0D/600.0D))+0.1D;
-
-		return defense * armourMultiplier;
+		final int bonusConstant = defender.isPlayer() ? 8 : 0;
+		final double defense = (Math.floor(defender.getSkills().getLevel(Skill.DEFENSE.id()) * prayerBonus) + bonusConstant + styleBonus) * (defender.getArmourPoints() + 64);
+		return defense;
 	}
+
 
 	/**
 	 * Gets the ranged accuracy of the attacking mob
@@ -289,10 +261,8 @@ public class CombatFormula {
 	 * @return The ranged accuracy
 	 */
 	private static double getRangedAccuracy(final Mob attacker, final int bowId) {
-		final double ranged = attacker.getSkills().getLevel(Skill.RANGED.id());
-		final double weaponMultiplier = (rangedAim(bowId) * (1.0D/600.0D))+0.1D;
-
-		return ranged * weaponMultiplier;
+		final int bonusConstant = attacker.isPlayer() ? 8 : 0; //NPCs can't range authentically - this should be considered if custom content implements this.
+		return (attacker.getSkills().getLevel(Skill.RANGED.id()) + bonusConstant) * (rangedAim(bowId) + 1 + 64);
 	}
 
 	/**
@@ -307,10 +277,10 @@ public class CombatFormula {
 			Prayers.IMPROVED_REFLEXES,
 			Prayers.INCREDIBLE_REFLEXES);
 
-		final double attack = (attacker.getSkills().getLevel(Skill.ATTACK.id()) * prayerBonus) + styleBonus;
-		final double weaponMultiplier = (attacker.getWeaponAimPoints() * (1.0D/600.0D))+0.1D;
+		final int bonusConstant = attacker.isPlayer() ? 8 : 0;
+		final double accuracy = (Math.floor(attacker.getSkills().getLevel(Skill.ATTACK.id()) * prayerBonus) + bonusConstant + styleBonus) * (attacker.getWeaponAimPoints() + 64);
 
-		return Math.ceil(attack * weaponMultiplier);
+		return accuracy;
 	}
 
 	/**
@@ -354,82 +324,109 @@ public class CombatFormula {
 	}
 
 	/**
-	 * Returns a power to associate with each arrow
+	 * Returns a power to associate with each bow (pre-Fletching version)
+	 *
+	 * Uses values from the old projectile.txt file included with configXX.jag.
+	 */
+	private static int rangedPowerRetro(final int bowId) {
+		switch (ItemId.getById(bowId)) {
+			case SHORTBOW:
+				return 14;
+			case LONGBOW:
+				return 20;
+			case CROSSBOW:
+			case PHOENIX_CROSSBOW:
+				return 22;
+			default:
+				return 0;
+		}
+	}
+
+	/**
+	 * Returns a power to associate with each arrow (post-Fletching version)
 	 */
 	private static int rangedPower(final int arrowId) {
-		// Most of this is guessed and extrapolated downward from Rune items. We have good guesses on all of the Rune equipment. We also know Bronze arrows.
+		/**
+		 * We don't have good data for spears, or throwing knives,
+		 * so everything besides adamantite spear and rune knives
+		 * is a guess based on arrows increasing by 5 per tier.
+		 * Note circa 14th May 2023: even this might be wrong now. The arrow data should now be pretty accurate, but thrown items may need re-review.
+		 * All the values were scaled back by 5 based on extensive ranged data fitting into the new formula.
+		 * Iron, steel, and adamantite darts are also guesses.
+		 */
 		switch (ItemId.getById(arrowId)) {
 			case BRONZE_THROWING_DART:
 			case POISONED_BRONZE_THROWING_DART:
+			case BRONZE_ARROWS:
+			case POISON_BRONZE_ARROWS:
 				return 15;
 			case IRON_THROWING_DART:
 			case POISONED_IRON_THROWING_DART:
-				return 19;
-			case STEEL_THROWING_DART:
-			case POISONED_STEEL_THROWING_DART:
-				return 23;
-			case MITHRIL_THROWING_DART:
-			case POISONED_MITHRIL_THROWING_DART:
-			case BRONZE_ARROWS:
-			case POISON_BRONZE_ARROWS:
-			case CROSSBOW_BOLTS:
-			case POISON_CROSSBOW_BOLTS:
-				return 27;
-			case BRONZE_THROWING_KNIFE:
-			case POISONED_BRONZE_THROWING_KNIFE:
+				return 17;
 			case IRON_ARROWS:
 			case POISON_IRON_ARROWS:
-			case ADAMANTITE_THROWING_DART:
-			case POISONED_ADAMANTITE_THROWING_DART:
-				return 31;
+			case CROSSBOW_BOLTS:
+			case POISON_CROSSBOW_BOLTS:
+				return 20;
+			case STEEL_THROWING_DART:
+			case POISONED_STEEL_THROWING_DART:
+				return 22;
 			case STEEL_ARROWS:
 			case POISON_STEEL_ARROWS:
-			case IRON_THROWING_KNIFE:
-			case POISONED_IRON_THROWING_KNIFE:
+			case MITHRIL_THROWING_DART:
+			case POISONED_MITHRIL_THROWING_DART:
+			case BRONZE_THROWING_KNIFE:
+			case POISONED_BRONZE_THROWING_KNIFE:
+				return 25;
+			case ADAMANTITE_THROWING_DART:
+			case POISONED_ADAMANTITE_THROWING_DART:
+				return 27;
 			case RUNE_THROWING_DART:
 			case POISONED_RUNE_THROWING_DART:
-			case BRONZE_SPEAR:
-			case POISONED_BRONZE_SPEAR:
-				return 35;
 			case MITHRIL_ARROWS:
 			case POISON_MITHRIL_ARROWS:
+			case OYSTER_PEARL_BOLTS:
+			case IRON_THROWING_KNIFE:
+			case POISONED_IRON_THROWING_KNIFE:
+				return 30;
+			case ADAMANTITE_ARROWS:
+			case POISON_ADAMANTITE_ARROWS:
 			case STEEL_THROWING_KNIFE:
 			case POISONED_STEEL_THROWING_KNIFE:
 			case BLACK_THROWING_KNIFE:
 			case POISONED_BLACK_THROWING_KNIFE:
-			case OYSTER_PEARL_BOLTS:
-				return 39;
-			case ADAMANTITE_ARROWS:
-			case POISON_ADAMANTITE_ARROWS:
-			case MITHRIL_THROWING_KNIFE:
-			case POISONED_MITHRIL_THROWING_KNIFE:
-			case IRON_SPEAR:
-			case POISONED_IRON_SPEAR:
-				return 43;
+				return 35;
 			case RUNE_ARROWS:
 			case POISON_RUNE_ARROWS:
+			case MITHRIL_THROWING_KNIFE:
+			case POISONED_MITHRIL_THROWING_KNIFE:
+				return 40;
 			case ADAMANTITE_THROWING_KNIFE:
 			case POISONED_ADAMANTITE_THROWING_KNIFE:
-				return 47;
+			case BRONZE_SPEAR:
+			case POISONED_BRONZE_SPEAR:
+				return 45;
 			case RUNE_THROWING_KNIFE:
 			case POISONED_RUNE_THROWING_KNIFE:
-			case STEEL_SPEAR:
-			case POISONED_STEEL_SPEAR:
-				return 51;
-			case MITHRIL_SPEAR:
-			case POISONED_MITHRIL_SPEAR:
-				return 59;
-			case ADAMANTITE_SPEAR:
-			case POISONED_ADAMANTITE_SPEAR:
-				return 67;
-			case RUNE_SPEAR:
-			case POISONED_RUNE_SPEAR:
-				return 75;
+			case IRON_SPEAR:
+			case POISONED_IRON_SPEAR:
 			case DRAGON_ARROWS:
 			case POISON_DRAGON_ARROWS:
 			case DRAGON_BOLTS:
 			case POISON_DRAGON_BOLTS:
+				return 50;
+			case STEEL_SPEAR:
+			case POISONED_STEEL_SPEAR:
+				return 55;
+			case MITHRIL_SPEAR:
+			case POISONED_MITHRIL_SPEAR:
 				return 60;
+			case ADAMANTITE_SPEAR:
+			case POISONED_ADAMANTITE_SPEAR:
+				return 65;
+			case RUNE_SPEAR:
+			case POISONED_RUNE_SPEAR:
+				return 70;
 			default:
 				return 0;
 		}
@@ -439,69 +436,88 @@ public class CombatFormula {
 	 * Returns an aim to associate with each ranged item
 	 */
 	private static int rangedAim(final int bowId) {
-		// Everything in this function is just a guess except for Magic longbow.
+		/**
+		 * We have limited pre-Fletching "aim" information for
+		 * the shortbow, longbow, and crossbow in configXX.jag
+		 * from 2001.
+		 *
+		 * We are using known information about how ranged weapon
+		 * power scales by 5 per tier.
+		 *
+		 * We probably have a good guess for the base accuracy of
+		 * darts.
+		 *
+		 * For spears and knives, we can only make wild guesses
+		 * (people didn't throw enough of them).
+		 */
 		switch (ItemId.getById(bowId)) {
+			case SHORTBOW:
+				return 10;
+			case CROSSBOW:
+			case PHOENIX_CROSSBOW:
+				return 12;
+			case LONGBOW:
+			case OAK_SHORTBOW:
+				return 15;
+			case WILLOW_SHORTBOW:
+			case OAK_LONGBOW:
+				return 20;
 			case BRONZE_THROWING_DART:
 			case POISONED_BRONZE_THROWING_DART:
-				return 33;
+			case MAPLE_SHORTBOW:
+			case WILLOW_LONGBOW:
+				return 25;
 			case IRON_THROWING_DART:
 			case POISONED_IRON_THROWING_DART:
 			case BRONZE_THROWING_KNIFE:
 			case POISONED_BRONZE_THROWING_KNIFE:
-			case CROSSBOW:
-			case PHOENIX_CROSSBOW:
-			case LONGBOW:
-			case SHORTBOW:
-				return 38;
+			case YEW_SHORTBOW:
+			case MAPLE_LONGBOW:
+				return 30;
 			case STEEL_THROWING_DART:
 			case POISONED_STEEL_THROWING_DART:
 			case IRON_THROWING_KNIFE:
 			case POISONED_IRON_THROWING_KNIFE:
-			case BRONZE_SPEAR:
-			case POISONED_BRONZE_SPEAR:
-			case OAK_LONGBOW:
-			case OAK_SHORTBOW:
-				return 43;
+			case MAGIC_SHORTBOW:
+			case YEW_LONGBOW:
+				return 35;
 			case MITHRIL_THROWING_DART:
 			case POISONED_MITHRIL_THROWING_DART:
 			case BLACK_THROWING_KNIFE:
 			case POISONED_BLACK_THROWING_KNIFE:
 			case STEEL_THROWING_KNIFE:
 			case POISONED_STEEL_THROWING_KNIFE:
-			case IRON_SPEAR:
-			case POISONED_IRON_SPEAR:
-			case WILLOW_LONGBOW:
-			case WILLOW_SHORTBOW:
-				return 48;
+			case MAGIC_LONGBOW:
+			case DRAGON_CROSSBOW:
+				return 40;
 			case ADAMANTITE_THROWING_DART:
 			case POISONED_ADAMANTITE_THROWING_DART:
 			case MITHRIL_THROWING_KNIFE:
 			case POISONED_MITHRIL_THROWING_KNIFE:
-			case STEEL_SPEAR:
-			case POISONED_STEEL_SPEAR:
-			case MAPLE_LONGBOW:
-			case MAPLE_SHORTBOW:
-				return 53;
+			case BRONZE_SPEAR:
+			case POISONED_BRONZE_SPEAR:
+				return 45;
 			case RUNE_THROWING_DART:
 			case POISONED_RUNE_THROWING_DART:
 			case ADAMANTITE_THROWING_KNIFE:
 			case POISONED_ADAMANTITE_THROWING_KNIFE:
-			case MITHRIL_SPEAR:
-			case POISONED_MITHRIL_SPEAR:
-			case YEW_LONGBOW:
-			case YEW_SHORTBOW:
-				return 58;
+			case IRON_SPEAR:
+			case POISONED_IRON_SPEAR:
+				return 50;
 			case RUNE_THROWING_KNIFE:
 			case POISONED_RUNE_THROWING_KNIFE:
+			case STEEL_SPEAR:
+			case POISONED_STEEL_SPEAR:
+				return 55;
+			case MITHRIL_SPEAR:
+			case POISONED_MITHRIL_SPEAR:
+				return 60;
 			case ADAMANTITE_SPEAR:
 			case POISONED_ADAMANTITE_SPEAR:
-			case MAGIC_LONGBOW:
-			case MAGIC_SHORTBOW:
-			case DRAGON_CROSSBOW:
-				return 63;
+				return 65;
 			case RUNE_SPEAR:
 			case POISONED_RUNE_SPEAR:
-				return 73;
+				return 70;
 			default:
 				return 0;
 		}

@@ -5,8 +5,9 @@ import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.database.impl.mysql.queries.logging.StaffLog;
 import com.openrsc.server.database.struct.LinkedPlayer;
+import com.openrsc.server.database.struct.PlayerIps;
+import com.openrsc.server.event.rsc.ImmediateEvent;
 import com.openrsc.server.external.NPCDef;
-import com.openrsc.server.model.Point;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
@@ -19,6 +20,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 
 import static com.openrsc.server.constants.AppearanceId.*;
@@ -29,6 +32,9 @@ public final class PlayerModerator implements CommandTrigger {
 
 	public static String messagePrefix = null;
 	public static String badSyntaxPrefix = null;
+
+	public static final int REGULAR_MUTE = 0;
+	public static final int GLOBAL_MUTE = 1;
 
 	public boolean blockCommand(Player player, String command, String[] args) {
 		return player.isMod() || player.isPlayerMod();
@@ -70,6 +76,10 @@ public final class PlayerModerator implements CommandTrigger {
 		} else if (command.equalsIgnoreCase("become")) {
 			if (args[0].equalsIgnoreCase("god")) {
 				becomeGod(player);
+			} else if (args[0].equalsIgnoreCase("lain")) {
+				if (player.isEvent()) {
+					player.becomeLain(true, 5);
+				}
 			} else {
 				becomeNpc(player, args);
 			}
@@ -78,121 +88,244 @@ public final class PlayerModerator implements CommandTrigger {
 		}
 	}
 
+	private String stripPort(String ip) {
+		// Sometimes we have slashes in IPs that need to be removed
+		ip = ip.replaceAll("/","");
+
+		// IPv4
+		if (ip.contains(".") && ip.contains(":")) {
+			return ip.substring(0, ip.lastIndexOf(":"));
+		}
+		return ip;
+	}
+
 	private void queryPlayerAlternateCharacters(Player player, String command, String[] args) {
 		if(args.length < 1) {
 			player.message(badSyntaxPrefix + command.toUpperCase() + " [player]");
 			return;
 		}
 
-		String targetUsername	= args[0];
-		Player target			= player.getWorld().getPlayer(DataConversions.usernameToHash(targetUsername));
+		String targetUsername = args[0].replace('.', ' ');
+		Player target = player.getWorld().getPlayer(DataConversions.usernameToHash(targetUsername));
 
-		String currentIp = null;
-		if (target == null) {
+
+		player.getWorld().getServer().submitSql(() -> {
 			try {
-				currentIp = player.getWorld().getServer().getDatabase().playerLoginIp(targetUsername);
+				PlayerIps playerIps = player.getWorld().getServer().getDatabase().playerIps(targetUsername);
 
-				if(currentIp == null) {
-					player.message(messagePrefix + "No character named '" + targetUsername + "' is online or was found in the database.");
+				if(playerIps == null) {
+					player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 1") {
+						@Override
+						public void action() {
+							player.message(messagePrefix + "No character named '" + targetUsername + "' is online or was found in the database.");
+						}
+					});
 					return;
 				}
-			} catch (final GameDatabaseException e) {
-				LOGGER.catching(e);
-				player.message(messagePrefix + "A Database error has occurred! " + e.getMessage());
-				return;
-			}
-		} else {
-			currentIp = target.getCurrentIP();
-		}
 
-		try {
-			final LinkedPlayer[] linkedPlayers = player.getWorld().getServer().getDatabase().linkedPlayers(currentIp);
+				// Here we are going to get rid of localhost IP (127.0.0.1) because we don't want to match every single webclient player
+				// We also want to get rid of 0.0.0.0 from the login IP, since that just means that the player has never logged in.
+				// First we need to get rid of the ports though
+				playerIps.creationIp = stripPort(playerIps.creationIp);
+				playerIps.loginIp = stripPort(playerIps.loginIp);
 
-			// Check if any of the found users have a group less than the player who is running this command
-			boolean authorized = true;
-			for (final LinkedPlayer linkedPlayer : linkedPlayers) {
-				if(linkedPlayer.groupId < player.getGroupID())
-				{
-					authorized = false;
-					break;
+				boolean localCreationIp = playerIps.creationIp.equals("127.0.0.1");
+				boolean localLoginIp = playerIps.loginIp.equals("127.0.0.1");
+				boolean neverLoggedIn = playerIps.loginIp.equals("0.0.0.0");
+
+				if ((localCreationIp && localLoginIp) || (localCreationIp && neverLoggedIn)) {
+					player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 2") {
+						@Override
+						public void action() {
+							player.message(messagePrefix + targetUsername + " is a webclient-only player");
+						}
+					});
+					return;
+				} else if (localCreationIp) {
+					playerIps.creationIp = playerIps.loginIp;
+				} else if (localLoginIp || neverLoggedIn) {
+					playerIps.loginIp = playerIps.creationIp;
 				}
-			}
 
-			List<String> names = new ArrayList<>();
-			for (final LinkedPlayer linkedPlayer : linkedPlayers) {
-				String dbUsername	= linkedPlayer.username;
-				// Only display usernames if the player running the action has a better rank or if the username is the one being targeted
-				if(authorized || dbUsername.toLowerCase().trim().equals(targetUsername.toLowerCase().trim()))
-					names.add(dbUsername);
-			}
-			StringBuilder builder = new StringBuilder("@red@")
-				.append(targetUsername.toUpperCase());
-			if (target != null) {
-				builder.append(" (" + target.getX() + "," + target.getY() + ")");
-			}
-			builder.append(" @whi@currently has ")
-				.append(names.size() > 0 ? "@gre@" : "@red@")
-				.append(names.size())
-				.append(" @whi@registered characters.");
-
-			if(player.isAdmin())
-				builder.append(" %IP Address: " + currentIp);
-
-			if (names.size() > 0) {
-				builder.append(" % % They are: ");
-			}
-			for (int i = 0; i < names.size(); i++) {
-
-				builder.append("@yel@").append(player.getWorld().getPlayer(DataConversions.usernameToHash(names.get(i))) != null
-					? "@gre@" : "@red@").append(names.get(i));
-
-				if (i != names.size() - 1) {
-					builder.append("@whi@, ");
+				final List<LinkedPlayer> linkedPlayers;
+				try {
+					linkedPlayers = new ArrayList<LinkedPlayer>(Arrays.asList(
+						player.getWorld().getServer().getDatabase().linkedPlayers(playerIps.loginIp, playerIps.creationIp)
+					));
+				} catch (final GameDatabaseException ex) {
+					player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 3") {
+						@Override
+						public void action() {
+							player.message(messagePrefix + "A MySQL error has occured! " + ex.getMessage());
+						}
+					});
+					LOGGER.catching(ex);
+					return;
 				}
-			}
 
-			player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 18, target));
-			ActionSender.sendBox(player, builder.toString(), names.size() > 10);
-		} catch (final GameDatabaseException ex) {
-			player.message(messagePrefix + "A MySQL error has occured! " + ex.getMessage());
-		}
+				boolean noBox = !player.getClientLimitations().supportsMessageBox;
+
+				StringBuilder builder = new StringBuilder(target == null ? "@red@" : "@gre@")
+					.append(targetUsername.toUpperCase());
+
+				if (target != null) {
+					builder.append(" (" + target.getX() + "," + target.getY() + ")");
+				}
+				builder.append(" @whi@currently has ")
+					.append(linkedPlayers.size() > 0 ? "@gre@" : "@red@")
+					.append(linkedPlayers.size())
+					.append(" @whi@registered characters.");
+				final String characters =  builder.toString();
+				if (noBox) {
+					player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 4") {
+						@Override
+						public void action() {
+							player.playerServerMessage(MessageType.QUEST, characters);
+						}
+					});
+					builder.setLength(0);
+				}
+
+				if(player.isAdmin()) {
+					if (noBox) {
+						player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 5") {
+							@Override
+							public void action() {
+								player.playerServerMessage(MessageType.QUEST, "IP Address: " + playerIps.loginIp);
+							}
+						});
+					} else {
+						builder.append(" %Last Login IP Address: ")
+							.append(playerIps.loginIp);
+					}
+				}
+
+				if (linkedPlayers.size() > 0) {
+					if (!noBox) {
+						builder.append(" % % They are: ");
+					}
+				}
+
+				for (int i = 0; i < linkedPlayers.size(); i++) {
+					builder.append("@yel@")
+						.append(player.getWorld().getPlayer(DataConversions.usernameToHash(linkedPlayers.get(i).username)) != null
+							? "@gre@" : "@red@")
+						.append(linkedPlayers.get(i).username);
+
+					// Determine if the player is banned
+					long banned = linkedPlayers.get(i).banned;
+					if (banned == -1) {
+						builder.append(" (B -1)");
+					} else if (banned > 0) {
+						long bannedFor = banned - System.currentTimeMillis();
+						if (bannedFor > 0) {
+							builder.append(" (B ")
+								.append(bannedFor / 60000)
+								.append(")");
+						}
+					} else {
+						// Determine if the player is muted, but we don't care if they're already banned
+						long regularMuted = linkedPlayers.get(i).mute_expires;
+
+						if (regularMuted == -1) {
+							builder.append(" (M -1)");
+						} else if (regularMuted > 0) {
+							long mutedFor = regularMuted - System.currentTimeMillis();
+							if (mutedFor > 0) {
+								builder.append(" (M ")
+									.append(mutedFor / 60000)
+									.append(")");
+							}
+						} else {
+							// Check for a global mute. Again, we don't care about this if they're already banned or muted
+							long globalMuted = linkedPlayers.get(i).global_mute;
+							if (globalMuted == -1) {
+								builder.append(" (GM -1)");
+							} else if (globalMuted > 0) {
+								long mutedFor = globalMuted - System.currentTimeMillis();
+								if (mutedFor > 0) {
+									builder.append(" (GM ")
+										.append(mutedFor / 60000)
+										.append(")");
+								}
+							}
+						}
+					}
+
+					if (i != linkedPlayers.size() - 1) {
+						builder.append("@whi@, ");
+					}
+					final String character = builder.toString();
+					if (noBox) {
+						player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 6") {
+							@Override
+							public void action() {
+								player.playerServerMessage(MessageType.QUEST, character);
+							}
+						});
+						builder.setLength(0);
+					}
+				}
+
+				player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 18, target));
+				if (!noBox) {
+					player.getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(player.getWorld(), "queryPlayerAlternateCharacters Player Message 7") {
+						@Override
+						public void action() {
+							ActionSender.sendBox(player, builder.toString(), linkedPlayers.size() >= 8);
+						}
+					});
+				}
+
+			} catch (final GameDatabaseException ex) {
+				LOGGER.catching(ex);
+			}
+		});
 	}
 
 	private void mute(final Player player, final Player targetPlayer, final int targetPlayerId,
 					  final String targetPlayerUsername, final int duration, final boolean notify,
 					  final String reason, final int muteType) {
-		final String muteText = muteType == 0 ? " " : " global chat ";
+		final String muteText = muteType == REGULAR_MUTE ? " " : " global chat ";
 		final String minuteText = duration == -1 ? "permanent" : duration + " minute";
 
 		// Player offline mute
 		if (targetPlayer == null) {
 			try {
-				player.getWorld().getServer().getDatabase().updatePlayerMute(targetPlayerId, duration, muteType);
+				// Check if the offline player has been muted before.
+				// If not, we need to insert the value into the cache.
+				if (player.getWorld().getServer().getDatabase().checkPlayerMute(targetPlayerId, muteType) == Integer.MIN_VALUE) {
+					player.getWorld().getServer().getDatabase().insertPlayerMute(targetPlayerId, duration, muteType);
+				} else {
+					player.getWorld().getServer().getDatabase().updatePlayerMute(targetPlayerId, duration, muteType);
+				}
+
 			} catch (GameDatabaseException ex) {
-				player.message(messagePrefix + "A database error has occurred.");
+				player.message(messagePrefix + "A database error has occurred while muting the player.");
+				player.message("You will likely need to try again.");
 				LOGGER.catching(ex);
 				return;
 			}
-		} else {
+		} else { // The player is online
 			if (duration == 0) {
 				// Handle unmute
-				if (!player.isInvisibleTo(targetPlayer)) {
+				if (notify && !player.isInvisibleTo(targetPlayer)) {
 					targetPlayer.message("Your " + muteText + "mute has been lifted. Happy Classic Scaping!");
 				}
 
-				if (muteType == 0) {
+				if (muteType == REGULAR_MUTE) {
 					targetPlayer.setMuteExpires(System.currentTimeMillis());
 				} else {
 					targetPlayer.setGlobalMuteExpires(System.currentTimeMillis());
 				}
 			} else {
 				// Handle muting
-				if (!player.isInvisibleTo(targetPlayer)) {
+				if (notify && !player.isInvisibleTo(targetPlayer)) {
 					targetPlayer.message(messagePrefix + "You have received a " + minuteText + muteText + "mute.");
 				}
 
 				final long endTime = duration == -1 ? -1 : System.currentTimeMillis() + (duration * 60000L);
-				if (muteType == 0) {
+				if (muteType == REGULAR_MUTE) {
 					targetPlayer.setMuteExpires(endTime);
 				} else {
 					targetPlayer.setGlobalMuteExpires(endTime);
@@ -220,21 +353,7 @@ public final class PlayerModerator implements CommandTrigger {
 		}
 	}
 
-	private void unmutePlayerGlobal(Player player, String command, String[] args) {
-		if (args.length < 1) {
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [name]");
-			return;
-		}
-		mutePlayerGlobal(player, command, new String[]{ args[0], "0" });
-	}
-
-	private void mutePlayerGlobal(Player player, String command, String[] args) {
-		if (args.length < 1) {
-			player.message(badSyntaxPrefix + command.toUpperCase() + " [name] [time in minutes, -1 for permanent, 0 to unmute] ...");
-			player.message("... (notify) (Reason)");
-			return;
-		}
-
+	private void setupMute(Player player, String command, String[] args, int muteType) {
 		final Player targetPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
 		int targetPlayerId = -1;
 		String targetPlayerUsername = "";
@@ -260,7 +379,7 @@ public final class PlayerModerator implements CommandTrigger {
 					return;
 				}
 			} catch (GameDatabaseException ex) {
-				player.message(messagePrefix + "A database error has occurred.");
+				player.message(messagePrefix + "A database error has occurred while looking up the player.");
 				LOGGER.catching(ex);
 				return;
 			}
@@ -276,10 +395,10 @@ public final class PlayerModerator implements CommandTrigger {
 				return;
 			}
 		} else {
-			minutes = player.isSuperMod() ? -1 : player.isMod() ? 60 : 15;
+			minutes = player.isMod() ? -1 : 60;
 		}
 
-		if (!player.isSuperMod()) {
+		if (!player.isMod()) {
 			if (minutes == 0) {
 				player.message(messagePrefix + "You are not allowed to unmute users.");
 				return;
@@ -313,7 +432,62 @@ public final class PlayerModerator implements CommandTrigger {
 			reason = "";
 		}
 
-		mute(player, targetPlayer, targetPlayerId, targetPlayerUsername, minutes, notify, reason, 1);
+		boolean force = false;
+		if (args.length >= 5 && args[4].equalsIgnoreCase("f")) {
+			force = true;
+		}
+
+		// Check if the player is muted for longer
+		if (!force && (minutes != -1 && minutes != 0)) {
+			long currentMuteExpiration = 0;
+			try {
+				currentMuteExpiration = player.getWorld().getServer().getDatabase().queryCheckPlayerMute(targetPlayerId, GLOBAL_MUTE);
+			} catch (GameDatabaseException ex) {
+				LOGGER.catching(ex);
+			}
+
+			// Checking if they aren't muted
+			if (currentMuteExpiration != 0 && currentMuteExpiration != Integer.MIN_VALUE) {
+				long currentMuteDuration = (currentMuteExpiration - System.currentTimeMillis()) / 60000L;
+				if (currentMuteDuration > minutes || currentMuteExpiration == -1) {
+					if (currentMuteExpiration != -1) {
+						player.playerServerMessage(MessageType.QUEST, targetPlayerUsername + " has already been muted and has " + currentMuteDuration + " minutes remaining");
+					} else {
+						player.playerServerMessage(MessageType.QUEST, targetPlayerUsername + " has already been permanently muted");
+					}
+					player.playerServerMessage(MessageType.QUEST, "If you would like to overwrite the current mute");
+					player.playerServerMessage(MessageType.QUEST, "Repeat your previous command with an f at the end like so:");
+					String prevCommand = "::" + command + " ";
+					prevCommand += targetPlayerUsername + " ";
+					prevCommand += minutes + " ";
+					prevCommand += notify + " ";
+					prevCommand += "(reason) ";
+					prevCommand += "f";
+					player.playerServerMessage(MessageType.QUEST, prevCommand);
+					return;
+				}
+			}
+		}
+
+		mute(player, targetPlayer, targetPlayerId, targetPlayerUsername, minutes, notify, reason, muteType);
+	}
+
+	private void unmutePlayerGlobal(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [name]");
+			return;
+		}
+		mutePlayerGlobal(player, command, new String[]{ args[0], "0" });
+	}
+
+	private void mutePlayerGlobal(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " [name] [time in minutes, -1 for permanent, 0 to unmute] ...");
+			player.message("... (notify) (Reason)");
+			return;
+		}
+
+		setupMute(player, command, args, GLOBAL_MUTE);
 	}
 
 	private void unmutePlayer(Player player, String command, String[] args) {
@@ -331,79 +505,7 @@ public final class PlayerModerator implements CommandTrigger {
 			return;
 		}
 
-		final Player targetPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
-		int targetPlayerId = -1;
-		String targetPlayerUsername = "";
-
-		if (targetPlayer != null) {
-			targetPlayerId = targetPlayer.getID();
-			targetPlayerUsername = targetPlayer.getUsername();
-			if (targetPlayer == player) {
-				player.message(messagePrefix + "You can't mute or unmute yourself");
-				return;
-			}
-			if (!targetPlayer.isDefaultUser() && player.getGroupID() >= targetPlayer.getGroupID()) {
-				player.message(messagePrefix + "You can not mute a staff member of equal or greater rank.");
-				return;
-			}
-		} else {
-			// Get the targetPlayer's player ID since they aren't logged in
-			targetPlayerUsername = args[0].replace('.',' ');
-			try {
-				targetPlayerId = player.getWorld().getServer().getDatabase().playerIdFromUsername(targetPlayerUsername);
-				if (targetPlayerId == -1) {
-					player.message(messagePrefix + "The player you have specified does not exist");
-					return;
-				}
-			} catch (GameDatabaseException ex) {
-				player.message(messagePrefix + "A database error has occurred.");
-				LOGGER.catching(ex);
-				return;
-			}
-		}
-
-		int minutes = -1;
-		if (args.length >= 2) {
-			try {
-				minutes = Integer.parseInt(args[1]);
-			} catch (NumberFormatException ex) {
-				player.message(badSyntaxPrefix + command.toUpperCase() + " [name] [time in minutes, -1 for permanent, 0 to unmute] ...");
-				player.message("... (notify) (Reason)");
-				return;
-			}
-		} else {
-			minutes = 60;
-		}
-
-		if (!player.isMod() && minutes == -1) {
-			player.message(messagePrefix + "You are not allowed to mute indefinitely.");
-			return;
-		}
-
-		if (!player.isMod() && minutes > 10080) {
-			player.message(messagePrefix + "You are not allowed to mute that user for more than a week (10,080 minutes).");
-			return;
-		}
-
-		boolean notify;
-		if (args.length >= 3) {
-			try {
-				notify = Integer.parseInt(args[2]) == 1;
-			} catch (NumberFormatException nfe) {
-				notify = Boolean.parseBoolean(args[2]);
-			}
-		} else {
-			notify = false;
-		}
-
-		String reason;
-		if (args.length >= 4) {
-			reason = args[3];
-		} else {
-			reason = "";
-		}
-
-		mute(player, targetPlayer, targetPlayerId, targetPlayerUsername, minutes, notify, reason, 0);
+		setupMute(player, command, args, REGULAR_MUTE);
 	}
 
 	private void showPlayerAlertBox(Player player, String command, String[] args) {
@@ -906,6 +1008,11 @@ public final class PlayerModerator implements CommandTrigger {
 	}
 
 	private void becomeGod(Player player) {
+		if (player.isLain()) {
+			player.message("You are already god.");
+			return;
+		}
+
 		// TODO: God could be more sophisticated
 		for (int i = 0; i < 12; i++) {
 			player.updateWornItems(i, random(124, 180));

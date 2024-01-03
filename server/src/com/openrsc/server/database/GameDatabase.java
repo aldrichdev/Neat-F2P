@@ -14,9 +14,11 @@ import com.openrsc.server.external.GameObjectLoc;
 import com.openrsc.server.external.ItemLoc;
 import com.openrsc.server.external.NPCLoc;
 import com.openrsc.server.external.SkillDef;
+import com.openrsc.server.model.Point;
 import com.openrsc.server.model.container.BankPreset;
 import com.openrsc.server.model.container.Equipment;
 import com.openrsc.server.model.container.Item;
+import com.openrsc.server.model.entity.UnregisterForcefulness;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.PlayerSettings;
@@ -30,6 +32,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class GameDatabase {
 	/**
@@ -38,11 +41,11 @@ public abstract class GameDatabase {
 	private static final Logger LOGGER = LogManager.getLogger();
 
 	public final Server server;
-	private volatile Boolean open;
+	private volatile AtomicBoolean open = new AtomicBoolean(false);
 
 	public GameDatabase(final Server server) {
 		this.server = server;
-		open = false;
+		open.set(false);
 	}
 
 	public abstract Set<Integer> getItemIDList();
@@ -83,6 +86,7 @@ public abstract class GameDatabase {
 
 	public abstract void queryAddDropLog(ItemDrop drop) throws GameDatabaseException;
 
+	public abstract void queryCopyPassword(String username, String hash, String salt) throws GameDatabaseException;
 	public abstract PlayerLoginData queryPlayerLoginData(String username) throws GameDatabaseException;
 
 	public abstract PlayerLoginData queryPlayerLoginDataByFormerName(String formerUsername) throws GameDatabaseException;
@@ -91,9 +95,9 @@ public abstract class GameDatabase {
 
 	public abstract PlayerRecoveryQuestions[] queryPlayerRecoveryChanges(Player player) throws GameDatabaseException;
 
-	protected abstract String queryPlayerLoginIp(String username) throws GameDatabaseException;
+	protected abstract PlayerIps queryPlayerIps(String username) throws GameDatabaseException;
 
-	protected abstract LinkedPlayer[] queryLinkedPlayers(String ip) throws GameDatabaseException;
+	protected abstract LinkedPlayer[] queryLinkedPlayers(String loginIp, String creationIp) throws GameDatabaseException;
 
 	protected abstract void queryInsertNpcSpawn(NPCLoc loc) throws GameDatabaseException;
 
@@ -283,7 +287,13 @@ public abstract class GameDatabase {
 
 	public abstract int addItemToPlayer(Item item);
 
+	public abstract long queryCheckPlayerMute(final int playerId, final int muteType) throws GameDatabaseException;
+
+	public abstract void queryInsertPlayerMute(final int playerId, final long time, final int muteType) throws GameDatabaseException;
+
 	public abstract void queryUpdatePlayerMute(final int playerId, final long time, final int muteType) throws GameDatabaseException;
+
+	public abstract void queryUpdatePlayerLocation(final int playerId, final Point newLocation) throws GameDatabaseException;
 
 	public abstract void queryInsertFormerName(final int playerId, final String formerName, final String whoChanged, final int changeType, final String reason) throws GameDatabaseException;
 
@@ -295,7 +305,7 @@ public abstract class GameDatabase {
 			try {
 				openInternal();
 				initializeOnlinePlayers();
-				open = true;
+				open.set(true);
 			} catch (final GameDatabaseException ex) {
 				LOGGER.catching(ex);
 				SystemUtil.exit(1);
@@ -306,7 +316,7 @@ public abstract class GameDatabase {
 	public void close() {
 		synchronized (open) {
 			closeInternal();
-			open = false;
+			open.set(false);
 		}
 	}
 
@@ -405,12 +415,12 @@ public abstract class GameDatabase {
 		return queryUsernameFromPlayerId(playerId);
 	}
 
-	public String playerLoginIp(final String username) throws GameDatabaseException {
-		return queryPlayerLoginIp(username);
+	public PlayerIps playerIps(final String username) throws GameDatabaseException {
+		return queryPlayerIps(username);
 	}
 
-	public LinkedPlayer[] linkedPlayers(final String ip) throws GameDatabaseException {
-		return queryLinkedPlayers(ip);
+	public LinkedPlayer[] linkedPlayers(final String loginIp, String creationIp) throws GameDatabaseException {
+		return queryLinkedPlayers(loginIp, creationIp);
 	}
 
 	public void addNpcSpawn(final NPCLoc loc) throws GameDatabaseException {
@@ -445,7 +455,7 @@ public abstract class GameDatabase {
 		final Player player = getServer().getWorld().getPlayer(DataConversions.usernameToHash(userNameToBan));
 
 		if (player != null) {
-			player.unregister(true, "You have been banned by " + bannedBy.getUsername() + " " + (bannedForMinutes == -1 ? "permanently" : " for " + bannedForMinutes + " minutes"));
+			player.unregister(UnregisterForcefulness.FORCED, "You have been banned by " + bannedBy.getUsername() + " " + (bannedForMinutes == -1 ? "permanently" : " for " + bannedForMinutes + " minutes"));
 		}
 
 		if (bannedForMinutes == 0) {
@@ -461,6 +471,9 @@ public abstract class GameDatabase {
 		}
 	}
 
+	public void copyPassword(final String username, final String hash, final String salt) throws GameDatabaseException {
+		queryCopyPassword(username, hash, salt);
+	}
 	public PlayerLoginData getPlayerLoginData(final String username) throws GameDatabaseException {
 		return queryPlayerLoginData(username);
 	}
@@ -749,7 +762,7 @@ public abstract class GameDatabase {
 	}
 
 	public boolean isOpen() {
-		return open;
+		return open.get();
 	}
 
 	public void querySavePlayerData(Player player) throws GameDatabaseException {
@@ -1055,6 +1068,17 @@ public abstract class GameDatabase {
 		queryBankRemovePartialStack(playerDatabaseId, item, amountToRemove);
 	}
 
+	public long checkPlayerMute(final int playerId, final int muteType) {
+		return queryCheckPlayerMute(playerId, muteType);
+	}
+
+	public void insertPlayerMute(final int playerId, long duration, final int muteType) throws GameDatabaseException {
+		if (duration != -1 && duration != 0) {
+			duration = System.currentTimeMillis() + (duration * 60000L);
+		}
+		queryInsertPlayerMute(playerId, duration, muteType);
+	}
+
 	/**
 	 * Updates the player's mute value in the cache
 	 * @param playerId The ID of the player being muted
@@ -1067,6 +1091,10 @@ public abstract class GameDatabase {
 			duration = System.currentTimeMillis() + (duration * 60000L);
 		}
 		queryUpdatePlayerMute(playerId, duration, muteType);
+	}
+
+	public void updatePlayerLocation(final int playerId, final Point newLocation) throws GameDatabaseException {
+		queryUpdatePlayerLocation(playerId, newLocation);
 	}
 
 	protected void queryInventoryAdd(final Player player, final Item item, int slot) throws GameDatabaseException {

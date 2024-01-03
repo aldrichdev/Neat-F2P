@@ -267,6 +267,25 @@ Admin Commands
   - Usage: `::setgloballevelreq [total level required to chat]`
   - Example: `::setgloballevelreq 150` sets total level requirement to 150.
   - Sets the minimum amount of total levels a user must have in order to participate in global chat.
+- setmaxplayersperip
+  - Usage: `::setmaxplayersperip (number)`
+  - Alias: `::smppi` 
+  - Sets the server allow a max number of players per ip
+- setmaxconnectionsperip
+  - Usage: `::setmaxconnectionsperip (number)`
+  - Alias: `::smcpi`
+  - Sets the server allow a max number of connections per ip
+- setmaxconnectionspersecond
+  - Usage: `::setmaxconnectionspersecond (number)`
+  - Alias: `::smcps` max_connections_per_second: 80
+  - Sets the server allow a max number of connections per second
+- yoptin
+  - Usage: `::yoptin (name)`
+  - Displays the client version of the optional target player. Can display in-client Yoptin dialog if using client version 61 to 75.
+- copypassword
+  - Usage: `::copypassword [from_name] [to_name]`
+  - Alias: `::copypass` or `::copypw`
+  - Copies the password hash (and salt if applicable) from one account to another.
 ------------------------
 Developer Commands
 ------------------------
@@ -333,7 +352,7 @@ Super/Senior Moderator Commands
   - Sets a cache value for the specified player.
   - If no player is specified, then the current player's cache is modified.
 - deletecache
-  - Usage: `::getcache (name) [cache_key]`
+  - Usage: `::deletecache (name) [cache_key]`
   - Alias: `::dcache` or `::removecache` or `::rcache`
   - Remove the cache contents of a specified key for the specified player.
   - If no player is specified, then the current player's cache is modified.
@@ -346,6 +365,9 @@ Super/Senior Moderator Commands
   - Usage: `::setquest [player] [questId]`
   - Alias: `::questcom`
   - Sets the specified quest to completed for the specified player.
+- completeallquests
+  - Usage: `::completeallquests`
+  - Completes all quests for the player that uses this command.
 - reloaddrops
   - Usage: `::reloaddrops`
   - Reloads NPC drop tables.
@@ -450,8 +472,8 @@ Moderator Commands
   - Display the quest stage for the specified user for the specified quest.
 - renameplayer
   - Usage: `::renameplayer [current name] [new name] [inappropriate (yes/no)] [reason]`
-  - Alias: `::renameuser`
-  - Renames a specified player. Please note that ALL underscores will be replaced with spaces
+  - Alias: `::rename` or `::renameuser` or `::renamechar` or `::rn` or `::rp` or `::ren`
+  - Renames a specified player. Please note that ALL underscores and periods will be replaced with spaces
   - For "Inappropriate", you may type "1" for yes or "0" for no as well.
   - Reason must be specified.
   - Cannot use this command to rename players that have not logged in in the past 2 weeks unless it is an inappropriate name.
@@ -485,12 +507,33 @@ Moderator Commands
 - removegoodword
   - Usage: `::removegoodword [existing word or phrase to no longer allow as a censor exception]`
   - Removes word/phrase from goodwords filtering allowlist.
+- addalertword
+  - Usage: `::addalertword [word or phrase to flag as interesting & report to discord]`
+  - If filtering is enabled on the server, adds a word or phrase that will not be censored, but instead merely reported to a channel in Discord
+  - For example, "Does anyone know" could be added, then server administrators would be alerted when someone is asking for general knowledge, and could help the user.
+- removealertword
+  - Usage: `::removealertword [existing word or phrase that is no longer considered interesting]`
+  - Removes word/phrase from alertwords list.
 - syncgoodwordsbadwords
   - Usage: `::syncgoodwordsbadwords`
   - Alias: `::sgb`
-  - Reloads the contents of goodwords.txt and badwords.txt from the disk.
+  - Reloads the contents of goodwords.txt, badwords.txt and alertwords.txt from the disk.
   - Useful if the list is edited externally while the server is running. This can happen via text editor, or if multiple Open RSC servers are running on the same computer launched from the same directory.
   - Done automatically whenever a goodword or badword is added or removed in order to prevent data loss.
+- togglespacefiltering
+  - Usage: `::togglespacefiltering`
+  - Toggles more aggressive badword censorship. Space filtering is the act of filtering a badword with spaces in it.
+  - For example, if "cow" is a badword on the server "c o... w" would be caught by the same badword once space filtering enabled.
+  - Using this command does not change the behaviour of the server after reboot. Space filtering is disabled in server configs by default.
+- onlinelistlocs
+  - Usage: `::onlinelistlocs`
+  - Shows a list of online players with their locations appended in parentheses next to their usernames.
+- gettutorial
+  - Usage: `::gettutorial`
+  - Tells the user if the tutorial is mandatory to complete, or if it can be skipped by new players.
+- toggletutorial
+  - Usage: `::toggletutorial`
+  - If completing tutorial island is currently mandatory, allow new users to skip. If the tutorial can currently be skipped, disable that ability.
 ------------------------
 Event Commands
 ------------------------
@@ -543,6 +586,22 @@ Event Commands
   - Usage: `::possessrandom`
   - Selects a random player other than yourself to possess.
   - Alias: `::pr`
+- leapaboutinstantnavigator
+  - Usage: `::leapaboutinstantnavigator (tick observation length) (serial)`
+  - Automates `::possessnext` and `::possessrandom` commands, repeating on a tick interval.
+  - "tick observation length" is an integer number of ticks before moving on to the next player possession.
+  - if "serial" is true, (or 1 or yes, etc), `::posssessnext` command is automated. Else, `::possessrandom` is automated.
+  - Alias: `::lain` or `::becomelain` or `::hellonavi` or `::navi`
+- reset
+  - Usage: `::reset`
+  - If the user is in lain mode, then lain mode is exited.
+  - You can also exit lain mode by simply clicking away from your current possessee.
+  - Moderators and above can use this command to spawn a reset crystal if not in lain mode.
+- weird
+  - Usage: `::weird`
+  - Halts lain mode, if the current player seems weird and should be observed further (e.g. for botting)
+  - To resume lain mode, simply issue the lain command again.
+  - Alias: `::weirdplayer` or `::stay` 
 - npctalk
   - Usage: `::npctalk [npc_id] [msg]`
   - Causes the specified NPC to say the specified message to all players in the area.
@@ -773,3 +832,30 @@ Regular Player Commands
   - Usage `::setglobalmessagecolor (colorcode)]`
   - Example: `::setglobalmessagecolor @dre@`
   - If run with no parameter, resets the color to default.
+- minigamelog
+  - Usage `::minigamelog (player name)`
+  - Example: `::minigamelog` or `::minigamelog friendUsername`
+  - Run with no parameter to check your own minigame related statistics. You can also check another person's minigame stats if they are online and not blocking private messages from you. 
+- togglenpckcmessages
+  - Usage `::togglenpckcmessages`
+  - Example: `::togglenpckcmessages`
+  - Toggles kill count messages in the chat
+- bankpinoptin
+  - Usage `::bankpinoptin`
+  - Alias: `::bank_pin_opt_in` or `::bankpin_optin`
+  - Opt into the bank PINs feature. First you start by opting in, then you can talk to any banker to set a bank pin.
+- bankpinoptout
+  - Usage `::bankpinoptout`
+  - Alias: `::bank_pin_opt_out` or `::bankpin_optout`
+  - Opt out of the bank PINs feature. You must first have removed your bank PIN.
+- globalrules
+  - Usage `::globalrules`
+  - Displays the list of global chat rules for the server (if applicable)
+- i_have_read_and_agree_to_the_global_chat_rules
+  - Usage `::i_have_read_and_agree_to_the_global_chat_rules`
+  - Aliases: `::i_have_read_and_agreed_to_the_global_chat_rules` or `::ihavereadandagreetotheglobalchatrules` or `::ihavereadandagreedtotheglobalchatrules`
+  - Accepts the global chat rules of the server and allows the user to speak in global chat (if the global chat rules config is set to true).
+- rename
+  - This command is not yet implemented.
+  - This command would allow users to rename themselves after having had their previous name freed or marked as inappropriate.
+  - Does not work for Moderators or above.

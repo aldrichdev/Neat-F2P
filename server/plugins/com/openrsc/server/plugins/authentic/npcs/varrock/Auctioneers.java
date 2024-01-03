@@ -5,6 +5,7 @@ import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.triggers.OpNpcTrigger;
@@ -42,7 +43,7 @@ public class Auctioneers implements TalkNpcTrigger, OpNpcTrigger {
 		if (menu == 0) {
 			if (player.isIronMan(IronmanMode.Ironman.id()) || player.isIronMan(IronmanMode.Ultimate.id())
 				|| player.isIronMan(IronmanMode.Hardcore.id()) || player.isIronMan(IronmanMode.Transfer.id())) {
-				player.message("As an Iron Man, you cannot use the Auction.");
+				player.message("As an Ironman, you cannot use the Auction.");
 				return;
 			}
 			if (player.getTotalLevel() < 100) {
@@ -96,7 +97,7 @@ public class Auctioneers implements TalkNpcTrigger, OpNpcTrigger {
 			if (command.equalsIgnoreCase("Auction")) {
 				if (player.isIronMan(IronmanMode.Ironman.id()) || player.isIronMan(IronmanMode.Ultimate.id())
 					|| player.isIronMan(IronmanMode.Hardcore.id()) || player.isIronMan(IronmanMode.Transfer.id())) {
-					player.message("As an Iron Man, you cannot use the Auction.");
+					player.message("As an Ironman, you cannot use the Auction.");
 					return;
 				}
 				if(validatebankpin(player, n)) {
@@ -113,7 +114,7 @@ public class Auctioneers implements TalkNpcTrigger, OpNpcTrigger {
 			if (command.equalsIgnoreCase("Auction")) {
 				if (player.isIronMan(IronmanMode.Ironman.id()) || player.isIronMan(IronmanMode.Ultimate.id())
 					|| player.isIronMan(IronmanMode.Hardcore.id()) || player.isIronMan(IronmanMode.Transfer.id())) {
-					player.message("As an Iron Man, you cannot use the Auction.");
+					player.message("As an Ironman, you cannot use the Auction.");
 					return;
 				}
 				if(validatebankpin(player, n)) {
@@ -122,8 +123,8 @@ public class Auctioneers implements TalkNpcTrigger, OpNpcTrigger {
 					ActionSender.sendOpenAuctionHouse(player);
 				}
 			} else if (command.equalsIgnoreCase("Teleport")) {
-				n.face(player);
-				player.face(n);
+				NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+				NpcInteraction.setInteractions(n, player, interaction);
 				mes(n, "Would you like to be teleport to Varrock centre for 1000 gold?");
 				delay(2);
 				int yesOrNo = multi(player, "Yes please!", "No thanks.");

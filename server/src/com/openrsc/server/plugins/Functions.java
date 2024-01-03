@@ -15,6 +15,7 @@ import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.GroundItem;
 import com.openrsc.server.model.entity.Mob;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.ScriptContext;
 import com.openrsc.server.model.entity.update.Bubble;
@@ -71,7 +72,6 @@ import java.util.stream.Collectors;
  * ifheld
  * ifnearvisnpc
  * inarray
- * incQuestReward
  * isBlocking
  * isObject
  * mes
@@ -102,7 +102,7 @@ import java.util.stream.Collectors;
 public class Functions {
 
 	private static final int DEFAULT_TICK = 640;
-	public static int ZERO_RESERVED = Integer.MAX_VALUE;
+	public static final int ZERO_RESERVED = Integer.MAX_VALUE;
 
 	/**
 	 * The asynchronous logger.
@@ -147,7 +147,7 @@ public class Functions {
 		final Bubble bubble = new Bubble(player, item.getCatalogId());
 		Npc npc;
 		if ((npc = scriptContext.getInteractingNpc()) != null) {
-			npc.face(player);
+			//npc.face(player);
 			player.face(npc);
 		}
 		player.getUpdateFlags().setActionBubble(bubble);
@@ -257,11 +257,10 @@ public class Functions {
 		final ScriptContext scriptContext = PluginTask.getContextPluginTask().getScriptContext();
 		if (scriptContext == null) return;
 		npc = npc != null ? npc : scriptContext.getInteractingNpc();
-		if(npc != null) {
-			npc.face(player);
-		}
+
 		if (npc != null && !player.inCombat()) {
-			player.face(npc);
+			NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+			NpcInteraction.setInteractions(npc, player, interaction);
 		}
 		for (final String message : messages) {
 			if (deliverMessage(player, npc, message)) return;
@@ -280,11 +279,10 @@ public class Functions {
 		final ScriptContext scriptContext = PluginTask.getContextPluginTask().getScriptContext();
 		if (scriptContext == null) return;
 		npc = npc != null ? npc : scriptContext.getInteractingNpc();
-		if(npc != null) {
-			npc.face(player);
-		}
+
 		if (npc != null && !player.inCombat()) {
-			player.face(npc);
+			NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+			NpcInteraction.setInteractions(npc, player, interaction);
 		}
 		for (final String message : messages) {
 			if (deliverMessage(player, npc, message)) return;
@@ -299,13 +297,16 @@ public class Functions {
 					return true;
 				}
 			}
+			/*
 			if (npc != null) {
 				npc.resetPath();
 			}
 			if (!player.inCombat()) {
 				player.resetPath();
 			}
+			 */
 			player.getUpdateFlags().setChatMessage(new ChatMessage(player, message, (npc == null ? player : npc)));
+			player.getUpdateFlags().setPluginChatMessage(true);
 		}
 		return false;
 	}
@@ -333,14 +334,17 @@ public class Functions {
 				return -1;
 			}
 			else {
-				npc.setPlayerBeingTalkedTo(player);
+				if (!player.inCombat()) {
+					NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+					NpcInteraction.setInteractions(npc, player, interaction);
+				}
 				npc.setMultiTimeout(start);
 				//We'll clear this on each new multi. Other players need to talk to the NPC again if they want to steal it!
 				npc.setPlayerWantsNpc(false);
-				npc.face(player);
+				//npc.face(player);
 			}
 		}
-		player.face(npc);
+		//player.face(npc);
 		player.setMenuHandler(new MenuOptionListener(options));
 		ActionSender.sendMenu(player, options);
 
@@ -381,6 +385,76 @@ public class Functions {
 
 	public static void advancestat(Player player, int skillId, int baseXp, int expPerLvl) {
 		player.incExp(skillId, player.getSkills().getMaxStat(skillId) * expPerLvl + baseXp, true);
+	}
+
+	/**
+	 * Temporarily adds constant+(current*percent)/100 to the player's specified stat.
+	 * @param statId The ID of the skill to be changed
+	 * @param constant Constant number for addition
+	 * @param percent Percentage of current skill level to add
+	 */
+	public static void addstat(final Player player, final int statId, final int constant, final int percent) {
+		final int maxStat = player.getSkills().getMaxStat(statId);
+		final int currentLevel = player.getSkills().getLevel(statId);
+		final int maxBoost = maxStat + constant + (int)((maxStat * percent) / 100.0);
+		int newLevel = currentLevel + constant + (int)((currentLevel * percent) / 100.0);
+		if (newLevel > maxBoost)
+			newLevel = maxBoost;
+		player.getSkills().setLevel(statId, newLevel, true, false);
+	}
+
+	/**
+	 * Temporarily subtracts constant+(current*percent)/100 from the player's specified stat.
+	 * @param statId The ID of the skill to be changed
+	 * @param constant Constant number for addition
+	 * @param percent Percentage of current skill level to add
+	 */
+	public static void substat(final Player player, final int statId, final int constant, final int percent) {
+		final int currentLevel = player.getSkills().getLevel(statId);
+		final int damage = constant + (int)((currentLevel * percent) / 100.0);
+		if (statId == Skill.HITS.id()) {
+			// We don't know whether the runescript function would have
+			// created a damage splat, but we know that the potion of zamorak
+			// does and is implemented with runescript.
+			player.damage(damage);
+			return;
+		}
+		final int newLevel = currentLevel - damage;
+		player.getSkills().setLevel(statId, newLevel, true, false);
+	}
+
+	/**
+	 * Temporarily adds constant+(current*percent)/100 to the player's specified stat.
+	 * Will not take the player's stat above the normal level.
+	 * @param statId The ID of the skill to be changed
+	 * @param constant Constant number for addition
+	 * @param percent Percentage of current skill level to add
+	 */
+	public static void healstat(final Player player, final int statId, final int constant, final int percent) {
+		// The original 2001 RuneScript documentation describes it as operating on
+		// "the current level", but this is inconsistent with later observed behavior
+		// (from e.g. stat restore potions).
+		final int currentLevel = player.getSkills().getLevel(statId);
+		final int levelToScalePotionEffect = player.getConfig().HEALSTAT_ON_CURRENT_STAT ? currentLevel : player.getSkills().getMaxStat(statId);
+		final int newLevel = currentLevel + constant + (int)((levelToScalePotionEffect * percent) / 100.0);
+		player.getSkills().setLevel(statId,
+			Math.min(newLevel, player.getSkills().getMaxStat(statId)), true, false);
+	}
+
+	/**
+	 * Returns true if the mob's stat is temporarily raised.
+	 * @param statId The ID of the skill
+	 */
+	public static boolean isstatup(Mob mob, int statId) {
+		return mob.getSkills().getLevel(statId) > mob.getSkills().getMaxStat(statId);
+	}
+
+	/**
+	 * Returns true if the mob's stat is temporarily lowered.
+	 * @param statId The ID of the skill
+	 */
+	public static boolean isstatdown(Mob mob, int statId) {
+		return mob.getSkills().getLevel(statId) < mob.getSkills().getMaxStat(statId);
 	}
 
 	/**
@@ -582,16 +656,13 @@ public class Functions {
 	 */
 	public static void npcsay(final Player player, final Npc npc, final String... messages) {
 
-		// Reset the walk action on the Npc (stop them from walking).
-		if(npc != null) {
-			npc.resetPath();
-			npc.face(player);
-		}
 		if (npc != null && !player.inCombat()) {
-			player.face(npc);
+			NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+			NpcInteraction.setInteractions(npc, player, interaction);
 		}
 
 		// Send each message with a delay between.
+
 		for (final String message : messages) {
 			if (!message.equalsIgnoreCase("null")) {
 				if (npc != null) {
@@ -737,30 +808,33 @@ public class Functions {
 						}
 					}
 					// authentic client can only show 5 options at once.
-					pinNum = Functions.multi(player, "1 (one)", "2 (two)", "3 (three)", "4 (four)", "-- more --") + 1;
-					if (pinNum == 5) {
-						pinNum = Functions.multi(player, "5 (five)", "6 (six)", "7 (seven)", "8 (eight)", "-- more --") + 1;
-						if (pinNum == 5) {
-							pinNum = Functions.multi(player, "9 (nine)", "0 (zero)", "cycle back to 1", "please cancel", "i love you") + 1;
+					pinNum = Functions.multi(player, "1 (one)", "2 (two)", "3 (three)", "4 (four)", "-- more --");
+					if (pinNum == -1) return null;
+					if (pinNum == 4) {
+						pinNum = Functions.multi(player, "5 (five)", "6 (six)", "7 (seven)", "8 (eight)", "-- more --");
+						if (pinNum == -1) return null;
+						if (pinNum == 4) {
+							pinNum = Functions.multi(player, "9 (nine)", "0 (zero)", "cycle back to 1", "please cancel", "i love you");
+							if (pinNum == -1) return null;
 							switch (pinNum) {
-								case 1:
+								case 0:
 									pinNum = 9;
 									playerSatisfied = true;
 									break;
-								case 2:
+								case 1:
 									pinNum = 0;
 									playerSatisfied = true;
 									break;
-								case 3:
+								case 2:
 									if (n != null) {
 										npcsay(player, n, "ok no big deal, all good");
 										bankerIsAnnoyed = true;
 									}
 									continue;
-								case 4:
+								case 3:
 									player.resetMenuHandler();
 									return null;
-								case 5:
+								case 4:
 									// if you remove this feature the entire client breaks
 									if (n != null) {
 										npcsay(player, n, "@red@*blushes*");
@@ -772,10 +846,11 @@ public class Functions {
 									break;
 							}
 						} else {
-							pinNum += 4;
+							pinNum += 5;
 							playerSatisfied = true;
 						}
 					} else {
+						pinNum += 1;
 						playerSatisfied = true;
 					}
 				}
@@ -884,7 +959,7 @@ public class Functions {
 		BankPinVerifyRequest request;
 		String pin;
 
-		if (!player.getConfig().WANT_BANK_PINS) {
+		if (!player.getConfig().WANT_BANK_PINS && !player.getConfig().TOLERATE_BANK_PINS) {
 			return true;
 		}
 
@@ -909,6 +984,7 @@ public class Functions {
 		return player.getAttribute("bankpin", false);
 	}
 
+	// called only on servers that have WANT_BANK_PIN enabled and aren't CUSTOM_SPRITE_ENABLED
 	public static boolean bankpinoptout(final Player player, final Npc n, final boolean concerned) {
 		say(player, n, "Can you please never mention bank pins to me again?");
 		if (!player.getCache().hasKey("bank_pin")) {
@@ -1198,34 +1274,12 @@ public class Functions {
 		return item1.getCatalogId() == idA && item2.getCatalogId() == idB || item1.getCatalogId() == idB && item2.getCatalogId() == idA;
 	}
 
-	/**
-	 * QuestData: Quest Points, Exp Skill ID, Base Exp, Variable Exp
-	 *
-	 * @param player         - the player
-	 * @param questData - the data, if skill id is < 0 means no exp is applied
-	 * @param applyQP   - apply the quest point increase
-	 */
-	@Deprecated
-	public static void incQuestReward(Player player, Either<Integer, String>[] questData, boolean applyQP) {
-		int qp = questData[0].fromLeft().get();
-		String skill = questData[1].fromRight().get();
-		int baseXP = questData[2].fromLeft().get();
-		int varXP = questData[3].fromLeft().get();
-		if (skill != Skill.NONE.name() && baseXP > 0 && varXP >= 0) {
-			player.incQuestExp(Skill.of(skill).id(),
-				player.getSkills().getMaxStat(Skill.of(skill).id()) * varXP + baseXP, false);
-		}
-		if (applyQP) {
-			player.incQuestPoints(qp);
-		}
-	}
-
 	public static void incStat(Player player, Integer skillId, Integer baseXP, Integer varXP) {
 		incStat(player, skillId, baseXP, varXP, false);
 	}
 
 	public static void incStat(Player player, Integer skillId, Integer baseXP, Integer varXP, Boolean useFatigue) {
-		if (skillId != Skill.NONE.id() && baseXP > 0 && varXP >= 0) {
+		if (!skillId.equals(Skill.NONE.id()) && baseXP > 0 && varXP >= 0) {
 			player.incQuestExp(skillId,
 				player.getSkills().getMaxStat(skillId) * varXP + baseXP, useFatigue);
 		}
@@ -1312,8 +1366,7 @@ public class Functions {
 	}
 
 	public static void setCurrentLevel(Player player, int skill, int level) {
-		player.getSkills().setLevel(skill, level);
-		ActionSender.sendStat(player, skill);
+		player.getSkills().setLevel(skill, level, true, false);
 	}
 
 	public static void displayTeleportBubble(Player player, int x, int y, boolean teleGrab) {
@@ -1407,17 +1460,7 @@ public class Functions {
 
 	public static void npcWalkFromPlayer(Player player, Npc n) {
 		if (player.getLocation().equals(n.getLocation())) {
-			for (int x = -1; x <= 1; ++x) {
-				for (int y = -1; y <= 1; ++y) {
-					if (x == 0 || y == 0)
-						continue;
-					Point destination = canWalk(n, player.getX() - x, player.getY() - y);
-					if (destination != null && destination.inBounds(n.getLoc().minX, n.getLoc().minY, n.getLoc().maxY, n.getLoc().maxY)) {
-						n.walk(destination.getX(), destination.getY());
-						break;
-					}
-				}
-			}
+			n.moveToAdjacentTile();
 		}
 	}
 

@@ -7,8 +7,11 @@ import com.openrsc.server.login.CharacterCreateRequest;
 import com.openrsc.server.login.LoginRequest;
 import com.openrsc.server.login.ValidatedLogin;
 import com.openrsc.server.model.Point;
+import com.openrsc.server.model.entity.UnregisterForcefulness;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.plugins.QuestInterface;
+import com.openrsc.server.plugins.shared.constants.Quests;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.MessageType;
@@ -49,6 +52,8 @@ public final class SuperModerator implements CommandTrigger {
 			setQuest(player, command, args);
 		} else if (command.equalsIgnoreCase("questcomplete") || command.equalsIgnoreCase("questcom")) {
 			setQuestComplete(player, command, args);
+		} else if (command.equalsIgnoreCase("completeallquests")) {
+			completeAllQuests(player);
 		} else if (command.equalsIgnoreCase("viewipbans")) {
 			queryIPBans(player, command, args);
 		} else if (command.equalsIgnoreCase("ipban")) {
@@ -102,13 +107,19 @@ public final class SuperModerator implements CommandTrigger {
 			return;
 		}
 
+
 		try {
-			boolean value = DataConversions.parseBoolean(args[valArg]);
-			args[valArg] = value ? "1" : "0";
-		} catch (NumberFormatException ex) {
+			int value = Integer.parseInt(args[valArg]);
+			targetPlayer.getCache().store(args[keyArg], value);
+		} catch (NumberFormatException e) {
+			try {
+				boolean value = DataConversions.parseBoolean(args[valArg]);
+				targetPlayer.getCache().store(args[keyArg], value);
+			} catch (NumberFormatException ex) {
+				targetPlayer.getCache().store(args[keyArg], args[valArg]);
+			}
 		}
 
-		targetPlayer.getCache().store(args[keyArg], args[valArg]);
 		player.message(messagePrefix + "Added " + args[keyArg] + " with value " + args[valArg] + " to " + targetPlayer.getUsername() + "'s cache");
 	}
 
@@ -221,6 +232,12 @@ public final class SuperModerator implements CommandTrigger {
 		player.message(messagePrefix + "You have completed Quest ID " + quest + " for " + targetPlayer.getUsername());
 	}
 
+	private void completeAllQuests(Player player) {
+		for (QuestInterface quest : player.getWorld().getQuests()) {
+			setQuestComplete(player, "questcomplete", new String[]{player.getUsername(), String.valueOf(quest.getQuestId())});
+		}
+	}
+
 	private void queryIPBans(Player player, String command, String[] args) {
 		Map<String, Long> bannedIPs = player.getWorld().getServer().getPacketFilter().getIpBans();
 		if (player.getClientLimitations().supportsMessageBox) {
@@ -286,7 +303,7 @@ public final class SuperModerator implements CommandTrigger {
 		}
 
 		if (targetPlayer != null) {
-			targetPlayer.unregister(true, "You have been banned by " + player.getUsername() + " " + (time == -1 ? "permanently" : " for " + time + " minutes"));
+			targetPlayer.unregister(UnregisterForcefulness.FORCED, "You have been banned by " + player.getUsername() + " " + (time == -1 ? "permanently" : " for " + time + " minutes"));
 
 			final String userHash = args[0];
 			DelayedEvent forceUnregister = new DelayedEvent(player.getWorld(), null, 1000, "Manual Unregister Player") {

@@ -62,13 +62,13 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 				}
 				if (player.isIronMan(IronmanMode.Ironman.id()) || player.isIronMan(IronmanMode.Ultimate.id())
 					|| player.isIronMan(IronmanMode.Hardcore.id()) || player.isIronMan(IronmanMode.Transfer.id())) {
-					player.message("You are an Iron Man. You stand alone.");
+					player.message("You are an Ironman. You stand alone.");
 					player.getTrade().resetAll();
 					return;
 				}
 				if (affectedPlayer.isIronMan(IronmanMode.Ironman.id()) || affectedPlayer.isIronMan(IronmanMode.Ultimate.id())
 					|| affectedPlayer.isIronMan(IronmanMode.Hardcore.id()) || affectedPlayer.isIronMan(IronmanMode.Transfer.id())) {
-					player.message(affectedPlayer.getUsername() + " is an Iron Man. They stand alone.");
+					player.message(affectedPlayer.getUsername() + " is an Ironman. They stand alone.");
 					player.getTrade().resetAll();
 					return;
 				}
@@ -270,6 +270,11 @@ public class PlayerTradeHandler implements PayloadProcessor<PlayerTradeStruct, O
 					if (item.getCatalogId() > affectedPlayer.getClientLimitations().maxItemId) {
 						player.message("The other player is unable to receive the offered object");
 						player.setRequiresOfferUpdate(true);
+						continue;
+					}
+					if (item.getCatalogId() > player.getClientLimitations().maxItemId) {
+						player.message("You don't even know what that is...!");
+						player.message("Definitely update your client before trying to trade that item.");
 						continue;
 					}
 					if (item.getDef(player.getWorld()).isMembersOnly() && !player.getConfig().MEMBER_WORLD) {

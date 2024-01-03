@@ -360,11 +360,12 @@ public class Thieving implements OpLocTrigger, OpNpcTrigger, OpBoundTrigger {
 			return;
 		}
 		player.playerServerMessage(MessageType.QUEST, "You attempt to pick the " + thievedMobString + "'s pocket");
-		delay(2);
+		delay();
 		boolean succeededPickpocket = succeedThieving(player, pickpocket.getRequiredLevel());
 		if (SkillCapes.shouldActivate(player, THIEVING_CAPE, succeededPickpocket)) {
 			succeededPickpocket = true;
 			thinkbubble(new Item(THIEVING_CAPE.id()));
+			mes("@mag@Your Thieving cape activates, and you successfully pick the " + thievedMobString + "'s pocket");
 		}
 		if (succeededPickpocket) {
 			if (config().WANT_FATIGUE) {
@@ -425,7 +426,7 @@ public class Thieving implements OpLocTrigger, OpNpcTrigger, OpBoundTrigger {
 				npc.setBusy(false);
 				return;
 			}
-			delay();
+			delay(2);
 			batchPickpocket(player, npc, pickpocket, lootTable, thievedMobString);
 		}
 		else {

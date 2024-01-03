@@ -1,12 +1,15 @@
 package com.openrsc.server.plugins.authentic.commands;
 
 import com.google.common.collect.ImmutableMap;
+import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.database.impl.mysql.queries.logging.StaffLog;
 import com.openrsc.server.database.struct.LinkedPlayer;
 import com.openrsc.server.event.SingleEvent;
 import com.openrsc.server.model.Point;
+import com.openrsc.server.model.container.Inventory;
+import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Group;
@@ -181,6 +184,9 @@ public final class Event implements CommandTrigger {
 		else if (command.equalsIgnoreCase("possess") || command.equalsIgnoreCase("pos") || command.equalsIgnoreCase("possessnpc") || command.equalsIgnoreCase("pnpc") || command.equalsIgnoreCase("posnpc") || command.equalsIgnoreCase("pr") || command.equalsIgnoreCase("possessrandom") || command.equalsIgnoreCase("possessnext") || command.equalsIgnoreCase("pn")) {
 			possessMob(player, command, args);
 		}
+		else if (command.equalsIgnoreCase("lain") || command.equalsIgnoreCase("leapaboutinstantnavigator") || command.equalsIgnoreCase("hellonavi") || command.equalsIgnoreCase("becomelain") || command.equalsIgnoreCase("navi")) {
+			leapAboutInstantNavigator(player, command, args);
+		}
 		else if (command.equalsIgnoreCase("npctalk") || command.equalsIgnoreCase("npcsay")) {
 			npcTalk(player, command, args);
 		}
@@ -199,6 +205,12 @@ public final class Event implements CommandTrigger {
 		}
 		else if (command.equalsIgnoreCase("npckills")) {
 			npcKills(player, args);
+		}
+		else if (command.equalsIgnoreCase("reset")) {
+			resetCommand(player, args);
+		}
+		else if (command.equalsIgnoreCase("weird") || command.equalsIgnoreCase("weirdplayer") || command.equalsIgnoreCase("stay")) {
+			weirdCommand(player, args);
 		}
 	}
 
@@ -385,23 +397,6 @@ public final class Event implements CommandTrigger {
 			isTownOrPlayer = false;
 		}
 
-		if(targetPlayer == null) {
-			player.message(messagePrefix + "Invalid name or player is not online");
-			return;
-		}
-
-		if(!targetPlayer.isDefaultUser() && targetPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= targetPlayer.getGroupID()) {
-			player.message(messagePrefix + "You can not teleport a staff member of equal or greater rank.");
-			return;
-		}
-
-		if(player.isJailed() && targetPlayer.getUsernameHash() == player.getUsernameHash() && !player.isAdmin()) {
-			player.message(messagePrefix + "You can not teleport while you are jailed.");
-			return;
-		}
-
-		originalLocation = targetPlayer.getLocation();
-
 		if (isTownOrPlayer) {
 
 			// Check player first
@@ -437,6 +432,37 @@ public final class Event implements CommandTrigger {
 			return;
 		}
 
+		if(targetPlayer == null) {
+			// Offline teleport
+			String targetUsername = args[0];
+			int playerId = player.getWorld().getServer().getDatabase().playerIdFromUsername(targetUsername);
+			if (playerId == -1) {
+				player.message(messagePrefix + "Invalid name or player is not online");
+				return;
+			}
+
+			try {
+				player.getWorld().getServer().getDatabase().updatePlayerLocation(playerId, teleportTo);
+				player.message(messagePrefix + "You have teleported " + targetUsername + " to " + teleportTo);
+				player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 15, player.getUsername() + " has offline teleported " + targetUsername + " to " + teleportTo));
+				return;
+			} catch (GameDatabaseException e) {
+				player.message("There was a database error");
+				LOGGER.catching(e);
+			}
+		}
+
+		if(!targetPlayer.isDefaultUser() && targetPlayer.getUsernameHash() != player.getUsernameHash() && player.getGroupID() >= targetPlayer.getGroupID()) {
+			player.message(messagePrefix + "You can not teleport a staff member of equal or greater rank.");
+			return;
+		}
+
+		if(player.isJailed() && targetPlayer.getUsernameHash() == player.getUsernameHash() && !player.isAdmin()) {
+			player.message(messagePrefix + "You can not teleport while you are jailed.");
+			return;
+		}
+
+		originalLocation = targetPlayer.getLocation();
 
 		// Same player and command usage is tpto or goto, we want to set a return point in order to use ::return later
 		if((command.equalsIgnoreCase("goto") || command.equalsIgnoreCase("tpto")) && targetPlayer.getUsernameHash() == player.getUsernameHash()) {
@@ -575,6 +601,56 @@ public final class Event implements CommandTrigger {
 				player.setPossessing(targetPlayer);
 				player.message(messagePrefix + "Your spirit has entered @mag@" + targetPlayer.getUsername());
 			}
+		}
+	}
+
+	// LAIN is omnipresent, existing everywhere.
+	// LAIN watches quietly.
+	public void leapAboutInstantNavigator(Player player, String command, String[] args) {
+		int interval = 5;
+		boolean serial = true;
+		if (args.length > 0) {
+			try {
+				interval = Integer.parseInt(args[0]);
+			} catch (NumberFormatException e) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (tick observation length) (serial)");
+				return;
+			}
+		}
+		if (args.length > 1) {
+			try {
+				serial = DataConversions.parseBoolean(args[1]);
+			} catch (NumberFormatException e) {
+				player.message(badSyntaxPrefix + command.toUpperCase() + " (tick observation length) (serial)");
+				return;
+			}
+		}
+		player.becomeLain(serial, interval);
+
+	}
+
+	private void resetCommand(Player player, String[] args) {
+		if (player.isLain()) {
+			player.resetFollowing();
+			player.message("You are forgotten.");
+		} else {
+			if (player.hasElevatedPriveledges()) {
+				Inventory i = player.getCarriedItems().getInventory();
+				synchronized (i) {
+					if (!i.hasCatalogID(ItemId.RESETCRYSTAL.id())) {
+						i.add(new Item(ItemId.RESETCRYSTAL.id(), 1));
+						player.message("Here you go. A shiny crystal that lets you reset things.");
+					} else {
+						player.message("You're already holding a resetcrystal.");
+					}
+				}
+			}
+		}
+	}
+	private void weirdCommand(Player player, String[] args) {
+		if (player.isLain()) {
+			player.resetLain();
+			player.message("@whi@Commencing extended observation of @mag@" + ((Player)player.getPossessing()).getUsername() + "@whi@...");
 		}
 	}
 

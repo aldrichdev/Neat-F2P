@@ -21,6 +21,13 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 	public void process(final WalkStruct payload, final Player player) throws Exception {
 
 		OpcodeIn packetOpcode = payload.getOpcode();
+		if (player.isBusy() && player.getMenuHandler() == null) {
+			if (player.getConfig().BATCH_PROGRESSION) {
+				player.interruptPlugins();
+			}
+			return;
+		}
+		
 		if (player.inCombat()) {
 			if (packetOpcode == OpcodeIn.WALK_TO_POINT) {
 				Mob opponent = player.getOpponent();
@@ -47,10 +54,12 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 						Player victimPlayer = ((Player) player.getOpponent());
 						victimPlayer.message("Your opponent is retreating!");
 						ActionSender.sendSound(victimPlayer, "retreat");
+						victimPlayer.setRanAwayTimer(); //This player also needs to be immune from player attacks for a while.
 					}
 					player.setLastCombatState(CombatState.RUNNING);
 					opponent.setLastCombatState(CombatState.WAITING);
 					player.resetCombatEvent();
+					player.setRanAwayTimer();
 					ActionSender.sendSound(player, "retreat");
 
 					if (player.getConfig().WANT_PARTIES) {
@@ -74,13 +83,7 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 			} else {
 				return;
 			}
-		} else if (player.isBusy() && player.getMenuHandler() == null) {
-			if (player.getConfig().BATCH_PROGRESSION) {
-				player.interruptPlugins();
-			}
-			return;
 		}
-
 		player.resetAll();
 		player.resetPath();
 

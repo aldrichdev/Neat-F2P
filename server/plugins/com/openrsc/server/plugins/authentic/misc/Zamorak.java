@@ -5,6 +5,7 @@ import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.model.entity.GroundItem;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.update.ChatMessage;
 import com.openrsc.server.plugins.triggers.*;
@@ -15,23 +16,22 @@ public class Zamorak implements TalkNpcTrigger, TakeObjTrigger, AttackNpcTrigger
 
 	@Override
 	public void onTakeObj(Player owner, GroundItem item) {
-		if ((item.getID() == ItemId.WINE_OF_ZAMORAK.id() || (item.getID() == ItemId.HALF_FULL_WINE_JUG.id() && owner.getConfig().BASED_MAP_DATA <= 28))
-			&& item.getX() == 333 && item.getY() == 434) {
-			Npc zam = ifnearvisnpc(owner, 7, NpcId.MONK_OF_ZAMORAK.id(), NpcId.MONK_OF_ZAMORAK_MACE.id());
-			if (zam != null && !zam.inCombat()) {
-				owner.face(zam);
-				zam.face(owner);
-				applyCurse(owner, zam);
-			}
-			else {
-				owner.groundItemTake(item);
-			}
+		Npc zam = ifnearvisnpc(owner, 7, NpcId.MONK_OF_ZAMORAK.id(), NpcId.MONK_OF_ZAMORAK_MACE.id());
+		if (zam != null && !zam.inCombat()) {
+			NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+			NpcInteraction.setInteractions(zam, owner, interaction);
+			applyCurse(owner, zam);
+		}
+		else {
+			owner.groundItemTake(item);
 		}
 	}
 
 	@Override
-	public boolean blockTakeObj(Player player, GroundItem i) {
-		return i.getID() == ItemId.WINE_OF_ZAMORAK.id() || i.getID() == ItemId.HALF_FULL_WINE_JUG.id();
+	public boolean blockTakeObj(Player player, GroundItem item) {
+		return (item.getID() == ItemId.WINE_OF_ZAMORAK.id()
+			|| (item.getID() == ItemId.HALF_FULL_WINE_JUG.id()&& player.getConfig().BASED_MAP_DATA <= 28))
+			&& item.getX() == 333 && item.getY() == 434;
 	}
 
 	@Override

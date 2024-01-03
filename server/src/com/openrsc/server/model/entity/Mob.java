@@ -3,6 +3,7 @@ package com.openrsc.server.model.entity;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.event.rsc.DuplicationStrategy;
 import com.openrsc.server.event.rsc.GameTickEvent;
+import com.openrsc.server.event.rsc.handler.GameEventHandler;
 import com.openrsc.server.event.rsc.impl.PoisonEvent;
 import com.openrsc.server.event.rsc.impl.StatRestorationEvent;
 import com.openrsc.server.event.rsc.impl.combat.CombatEvent;
@@ -11,6 +12,7 @@ import com.openrsc.server.model.*;
 import com.openrsc.server.model.Path.PathType;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.update.Damage;
 import com.openrsc.server.model.entity.update.UpdateFlags;
@@ -104,7 +106,11 @@ public abstract class Mob extends Entity {
 	/**
 	 * Event to handle possessing
 	 */
-	private GameTickEvent possesionEvent;
+	private GameTickEvent possessionEvent = null;
+	/**
+	 * Event to handle automatic possession
+	 */
+	private GameTickEvent LAINEvent = null;
 	/**
 	 * Who we are currently possessing (if anyone)
 	 */
@@ -145,6 +151,14 @@ public abstract class Mob extends Entity {
 	 * Tiles around us that we can see
 	 */
 	private ViewArea viewArea = new ViewArea(this);
+
+	private NpcInteraction npcInteraction = null;
+
+	/**
+	 * How many tiles away do we want to end the following event?
+	 */
+	private int endFollowRadius = -1;
+
 
 	public Mob(final World world, final EntityType type) {
 		super(world, type);
@@ -381,6 +395,10 @@ public abstract class Mob extends Entity {
 	}
 
 	public void face(final Entity entity) {
+		/* Now that NPCs are processed first, face() *should not* be used in Plugins for NPCs unless you are certain that the NPC does not move.
+		This causes desyncs in clients, since they will process the changing sprite while the NPC is moving.
+		Instead, use NpcInteractions if you need the player and NPC to face each other and handle other logic in their movement processing.
+		*/
 		if (entity != null && entity.getLocation() != null) {
 			final int dir = Formulae.getDirection(this, entity.getX(), entity.getY());
 			if (dir != -1) {
@@ -404,17 +422,23 @@ public abstract class Mob extends Entity {
 	}
 
 	public void setFollowing(final Mob mob, final int radius) {
-		setFollowing(mob, radius, true);
+		setFollowing(mob, radius, true, false);
 	}
 
 	public void setFollowing(final Mob mob, final int radius, final boolean canInterrupt) {
+		setFollowing(mob, radius, canInterrupt, false);
+	}
+
+	public void setFollowing(final Mob mob, final int radius, final boolean canInterrupt, final boolean stopAtEnd) {
 		if (isFollowing()) resetFollowing();
+		if (stopAtEnd) setEndFollowRadius(radius);
 		following = mob;
 		followEvent = new GameTickEvent(getWorld(), this, 0, "Mob Following Mob", DuplicationStrategy.ONE_PER_MOB) {
+
 			public void run() {
 				if (getDelayTicks() == 0) setDelayTicks(1);
 
-				if (mob.isRemoved()) {
+				if (mob.isRemoved() || inCombat()) {
 					resetFollowing();
 					return;
 				}
@@ -426,16 +450,22 @@ public abstract class Mob extends Entity {
 				//   4. Mob is not following something.
 				boolean duelActive = (isPlayer() && ((Player) Mob.this).getDuel().isDuelActive());
 				boolean shouldInterrupt = canInterrupt && (!duelActive && isBusy());
+				//In range and adjacent, and we ran this event more than once.
+				boolean shouldStopWalking = withinRange(mob, radius)
+					&& PathValidation.checkAdjacentDistance(getWorld(), getLocation(), mob.getLocation(), true, false)
+					&& getTimesRan() >= 1;
+
 				if (!withinRange(mob) || shouldInterrupt) {
 					if (!mob.isFollowing()) {
 						resetFollowing();
 					}
+				} else if ((radius > 0 && getWalkingQueue().getNextMovement().equals(mob.getLocation())) || shouldStopWalking) {
+					//Don't allow more walking if the radius is more than 0 and the next step will move the follower onto the followee's tile.
+					//Also don't allow more if the conditionals are fulfilled.
+					resetPath();
 				} else if (finishedPath()) {
 					// We have finished the current follow path, but we need to keep walking to get to the target.
-					if (!withinRange(mob, radius)) walkToEntity(mob.getX(), mob.getY());
-				} else {
-					// We have not finished the current follow path, but we are in range!
-					if (withinRange(mob, radius)) resetPath();
+					walkToEntity(mob.getX(), mob.getY());
 				}
 			}
 		};
@@ -449,7 +479,7 @@ public abstract class Mob extends Entity {
 		} else {
 			possessingUsername = ((Npc) possessing).getDef().getName();
 		}
-		possesionEvent = new GameTickEvent(getWorld(), this, 0, "Moderator possessing Mob", DuplicationStrategy.ALLOW_MULTIPLE) {
+		possessionEvent = new GameTickEvent(getWorld(), this, 0, "Moderator possessing Mob", DuplicationStrategy.ALLOW_MULTIPLE) {
 			public void run() {
 				setDelayTicks(1);
 				Player moderator = (Player)getOwner();
@@ -488,8 +518,77 @@ public abstract class Mob extends Entity {
 				}
 			}
 		};
-		getWorld().getServer().getGameEventHandler().add(possesionEvent);
+		getWorld().getServer().getGameEventHandler().add(possessionEvent);
 
+	}
+
+	public void becomeLain(boolean serial, int interval) {
+		if (!(this instanceof Player)) {
+			return;
+		}
+		Player lain = (Player) this;
+		lain.setCacheInvisible(true);
+		lain.message("@yel@Lain: Hello, Navi.");
+		lain.message("@whi@Navi: Hello, Lain.");
+		if (LAINEvent != null) {
+			LAINEvent.stop();
+		}
+		if (serial) {
+			// automates ::pn command
+			LAINEvent = new GameTickEvent(getWorld(), this, 0, "Lain Automatic Possession", DuplicationStrategy.ALLOW_MULTIPLE) {
+				public void run() {
+					setDelayTicks(interval);
+
+					int preferredPid;
+					if (lain.getPossessing() instanceof Player) {
+						preferredPid = lain.getPossessing().getIndex() + 1;
+					} else {
+						// not currently possessing anything
+						preferredPid = 0;
+					}
+
+
+					Player targetPlayer = lain.getWorld().getNextPlayer(preferredPid, lain.getIndex());
+
+					if (targetPlayer == null || targetPlayer.getUsername().equals(lain.getUsername())) {
+						lain.message("You are alone and disconnected, lain.");
+						this.stop();
+						return;
+					} else {
+						lain.setPossessing(targetPlayer);
+					}
+				}
+			};
+		} else {
+			// random experiments lain?
+			// automates ::pr command
+			LAINEvent = new GameTickEvent(getWorld(), this, 0, "Lain Automatic Possession", DuplicationStrategy.ALLOW_MULTIPLE) {
+				public void run() {
+					setDelayTicks(interval);
+
+					Player targetPlayer = null;
+					int retries = 0;
+					while ((targetPlayer == null || targetPlayer.getUsername().equals(lain.getUsername())) && retries++ < 30) {
+						targetPlayer = this.getWorld().getRandomPlayer();
+					}
+					if (targetPlayer == null || targetPlayer.getUsername().equals(lain.getUsername())) {
+						lain.message("Everyone has forgotten you, lain.");
+						this.stop();
+						return;
+					} else {
+						lain.setPossessing(targetPlayer);
+					}
+				}
+			};
+		}
+		getWorld().getServer().getGameEventHandler().add(LAINEvent);
+	}
+
+	public void resetLain() {
+		if (LAINEvent != null) {
+			LAINEvent.stop();
+			LAINEvent = null;
+		}
 	}
 
 	public void setFollowingAstar(final Mob mob, final int radius) {
@@ -522,12 +621,23 @@ public abstract class Mob extends Entity {
 
 	public void resetFollowing(boolean tellLeft) {
 		following = null;
+		setEndFollowRadius(-1);
 		if (followEvent != null) {
 			followEvent.stop();
+			//Need to remove this *now*, otherwise it's too late. Can only have one follow event per mob.
+			GameEventHandler geh = getWorld().getServer().getGameEventHandler();
+			if (geh.has(followEvent)) {
+				geh.remove(followEvent);
+			}
 			followEvent = null;
 		}
 
-		if (possesionEvent != null) {
+		if (LAINEvent != null) {
+			LAINEvent.stop();
+			LAINEvent = null;
+		}
+
+		if (possessionEvent != null) {
 			if (tellLeft) {
 				if (this instanceof Player) {
 					if (possessing instanceof Player) {
@@ -538,8 +648,8 @@ public abstract class Mob extends Entity {
 					}
 				}
 			}
-			possesionEvent.stop();
-			possesionEvent = null;
+			possessionEvent.stop();
+			possessionEvent = null;
 			possessing = null;
 			possessingUsername = null;
 		}
@@ -640,7 +750,7 @@ public abstract class Mob extends Entity {
 				ourSprite = 8;
 			}
 
-			victim.setBusy(true);
+			//victim.setBusy(true);
 			victim.setSprite(victimSprite);
 			victim.setOpponent(this);
 			victim.setCombatTimer();
@@ -684,10 +794,15 @@ public abstract class Mob extends Entity {
 
 			setLocation(victim.getLocation(), false);
 
-			setBusy(true);
+			//setBusy(true);
 			setSprite(ourSprite);
 			setOpponent(victim);
 			setCombatTimer();
+
+			NpcInteraction interaction = NpcInteraction.NPC_ATTACK;
+			if (victim.isPlayer() && this.isNpc()) {
+				npcInteraction.setInteractions(((Npc)this), ((Player)victim), interaction);
+			}
 
 			combatEvent = new CombatEvent(getWorld(), this, victim);
 			victim.setCombatEvent(combatEvent);
@@ -717,7 +832,7 @@ public abstract class Mob extends Entity {
 				}
 			}*/
 			if (!missile) {
-				if (System.currentTimeMillis() - mob.getCombatTimer() < getWorld().getServer().getConfig().GAME_TICK * 5) {
+				if (!((Player)mob).canBeReattacked()) {
 					return false;
 				}
 			}
@@ -894,6 +1009,10 @@ public abstract class Mob extends Entity {
 		return possessing;
 	}
 
+	public boolean isLain() {
+		return LAINEvent != null;
+	}
+
 	public int getHitsMade() {
 		return hitsMade;
 	}
@@ -927,8 +1046,10 @@ public abstract class Mob extends Entity {
 	}
 
 	public void setSprite(final int x) {
-		setSpriteChanged();
-		mobSprite = x;
+		if (mobSprite != x) {
+			setSpriteChanged();
+			mobSprite = x;
+		}
 	}
 
 	public StatRestorationEvent getStatRestorationEvent() {
@@ -1011,6 +1132,10 @@ public abstract class Mob extends Entity {
 
 	public void setRanAwayTimer() {
 		this.ranAwayTimer = getWorld().getServer().getCurrentTick();
+	}
+
+	public void resetRanAwayTimer() {
+		this.ranAwayTimer = 0;
 	}
 
 	public void setLocation(final Point point) {
@@ -1140,4 +1265,21 @@ public abstract class Mob extends Entity {
 		}
 		return false;
 	}
+
+	public void setNpcInteraction(NpcInteraction interaction) {
+		this.npcInteraction = interaction;
+	}
+
+	public NpcInteraction getNpcInteraction() {
+		return npcInteraction;
+	}
+
+	public void setEndFollowRadius(int endFollowRadius) {
+		this.endFollowRadius = endFollowRadius;
+	}
+
+	public int getEndFollowRadius() {
+		return endFollowRadius;
+	}
+
 }

@@ -15,8 +15,8 @@ import com.openrsc.server.database.impl.mysql.queries.logging.LiveFeedLog;
 import com.openrsc.server.database.struct.PlayerInventory;
 import com.openrsc.server.event.DelayedEvent;
 import com.openrsc.server.event.rsc.DuplicationStrategy;
-import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.event.rsc.PluginTask;
+import com.openrsc.server.event.rsc.impl.DesertHeatEvent;
 import com.openrsc.server.event.rsc.impl.PoisonEvent;
 import com.openrsc.server.event.rsc.impl.PrayerDrainEvent;
 import com.openrsc.server.event.rsc.impl.projectile.*;
@@ -27,7 +27,9 @@ import com.openrsc.server.model.*;
 import com.openrsc.server.model.action.WalkToAction;
 import com.openrsc.server.model.container.*;
 import com.openrsc.server.model.entity.*;
+import com.openrsc.server.model.entity.UnregisterForcefulness;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.struct.UnequipRequest;
 import com.openrsc.server.model.world.World;
 import com.openrsc.server.net.Packet;
@@ -78,7 +80,6 @@ public final class Player extends Mob {
 	// so everything is multiplied by 2 to avoid decimals
 	private final int KITTEN_ACTIVITY_THRESHOLD = 50;
 	public int sessionId;
-	private int totalLevel = 0;
 	private Queue<PrivateMessage> privateMessageQueue = new LinkedList<PrivateMessage>();
 	private int actionsMouseStill = 0;
 	private long lastMouseMoved = 0;
@@ -143,9 +144,7 @@ public final class Player extends Mob {
 	private int saveAttempts = 0;
 	private int sceneryMorph = -1;
 
-	public int desertHeatCounter = Integer.MIN_VALUE;
-	private boolean desertHeatMessaged = false;
-	public GameTickEvent desertHeatEvent = null;
+	public DesertHeatEvent desertHeatEvent = null;
 
 	public boolean canceledMenuHandler = false;
 
@@ -230,6 +229,10 @@ public final class Player extends Mob {
 	 */
 	private long lastAntidote = 0;
 	/**
+	 * How long the poison protection should last
+	 */
+	private int poisonProtectionTime = 0;
+	/**
 	 * Stores the last IP address used
 	 */
 	private String lastIP = "0.0.0.0";
@@ -289,10 +292,6 @@ public final class Player extends Mob {
 	 * The ID of the owning account
 	 */
 	private int owner = 1;
-	/**
-	 * The player's password
-	 */
-	private String password;
 	/**
 	 * Total quest points
 	 */
@@ -383,6 +382,9 @@ public final class Player extends Mob {
 	 */
 	private Map<UUID, Pair<Integer, Integer>> trackedDamageFromMob = new HashMap<UUID, Pair<Integer, Integer>>();
 
+	private Npc interactingNpc = null;
+	private int lastNpcKilledId = -1;
+
 	/*
 	 * Restricts P2P stuff in F2P wilderness.
 	 */
@@ -425,7 +427,6 @@ public final class Player extends Mob {
 	public Player(final World world, final LoginRequest request) {
 		super(world, EntityType.PLAYER);
 
-		password = request.getPassword();
 		usernameHash = DataConversions.usernameToHash(request.getUsername());
 		username = DataConversions.hashToUsername(usernameHash);
 		sessionStart = System.currentTimeMillis();
@@ -457,7 +458,6 @@ public final class Player extends Mob {
 	public Player(final World world, final long hash) {
 		super(world, EntityType.PLAYER);
 
-		password = "";
 		usernameHash = hash;
 		username = DataConversions.hashToUsername(usernameHash);
 		sessionStart = System.currentTimeMillis();
@@ -511,9 +511,9 @@ public final class Player extends Mob {
 	}
 
 	/**
-	 * Checks if the player is any type of Iron Man (except a transfer character)
+	 * Checks if the player is any type of Ironman (except a transfer character)
 	 *
-	 * @return True if the player is any type of Iron Man, false otherwise
+	 * @return True if the player is any type of Ironman, false otherwise
 	 */
 	public boolean isIronMan() {
 		return getIronMan() == IronmanMode.Ironman.id()
@@ -522,10 +522,10 @@ public final class Player extends Mob {
 	}
 
 	/**
-	 * Checks if the player is the specified type of Iron Man
+	 * Checks if the player is the specified type of Ironman
 	 *
-	 * @param mode The Iron Man type to check for
-	 * @return True if the player is of the specified Iron Man Type, false otherwise
+	 * @param mode The Ironman type to check for
+	 * @return True if the player is of the specified Ironman Type, false otherwise
 	 */
 	public boolean isIronMan(final int mode) {
 		if (mode == IronmanMode.Ironman.id() && getIronMan() == IronmanMode.Ironman.id()) {
@@ -809,6 +809,10 @@ public final class Player extends Mob {
 		return ownedPlugins.remove(plugin);
 	}
 
+	public Collection<PluginTask> getOwnedPlugins() {
+		return ownedPlugins;
+	}
+
 	public void interruptPlugins() {
 		try {
 			for (final PluginTask ownedPlugin : ownedPlugins) {
@@ -837,7 +841,7 @@ public final class Player extends Mob {
 				}
 			}
 			if (!missile) {
-				if (System.currentTimeMillis() - mob.getCombatTimer() < getWorld().getServer().getConfig().GAME_TICK * 5) {
+				if (!((Player)mob).canBeReattacked()) {
 					return false;
 				}
 			}
@@ -920,10 +924,10 @@ public final class Player extends Mob {
 	/**
 	 * Sets a request to unregister this player instance from the server at the end of the tick.
 	 *
-	 * @param force  - if false wait until combat is over
+	 * @param force  - UnregisterForcefulness enum. FAIL_IN_COMBAT, WAIT_UNTIL_COMBAT_ENDS, or FORCED.
 	 * @param reason - reason why the player was unregistered.
 	 */
-	public void unregister(final boolean force, final String reason) {
+	public void unregister(final UnregisterForcefulness force, final String reason) {
 		if (this.isUnregistering() || this.hasUnregisterRequest()) {
 			return;
 		}
@@ -1337,10 +1341,6 @@ public final class Player extends Mob {
 		return owner;
 	}
 
-	public String getPassword() {
-		return password;
-	}
-
 	public int getQuestPoints() {
 		return questPoints;
 	}
@@ -1723,8 +1723,8 @@ public final class Player extends Mob {
 		boolean doubledXp = false;
 
 		if (useFatigue && !fromQuest
-			&& !inArray(skill, Skill.ATTACK.id(), Skill.DEFENSE.id(), Skill.STRENGTH.id(), Skill.HITS.id(), Skill.RANGED.id(),
-			Skill.MAGIC.id(), Skill.EVILMAGIC.id(), Skill.GOODMAGIC.id(), Skill.PRAYER.id(), Skill.PRAYEVIL.id(), Skill.PRAYGOOD.id())
+			&& inArray(skill, Skill.HERBLAW.id(), Skill.CRAFTING.id(), Skill.FLETCHING.id(),
+			Skill.SMITHING.id(), Skill.RUNECRAFT.id(), Skill.COOKING.id())
 			&& EnchantedCrowns.shouldActivate(this, ItemId.CROWN_OF_THE_ARTISAN)) {
 			skillXP *= 2;
 			doubledXp = true;
@@ -1779,7 +1779,7 @@ public final class Player extends Mob {
 		// enough, this player will get all the XP.
 		int thisXp = skillXP;
 
-		// Check if the player is an Iron Man and in a party
+		// Check if the player is an Ironman and in a party
 		final boolean notIronMan = getConfig().PARTY_IRON_MAN_CAN_SHARE || !this.isIronMan();
 		if (this.getParty() != null && notIronMan) {
 			ArrayList<PartyPlayer> sharers = new ArrayList<PartyPlayer>();
@@ -1797,7 +1797,7 @@ public final class Player extends Mob {
 				// Make sure the player isn't on the same IP
 				final boolean notSameIp = getConfig().PARTY_SHARE_WITH_SAME_IP || !this.getCurrentIP().equals(partyMemberPlayer.getCurrentIP());
 
-				// Make sure the player isn't an Iron Man
+				// Make sure the player isn't an Ironman
 				final boolean isntIronMan = getConfig().PARTY_IRON_MAN_CAN_SHARE || !partyMemberPlayer.isIronMan();
 
 				// Make sure the party member isn't this!!
@@ -2010,7 +2010,7 @@ public final class Player extends Mob {
 	}
 
 	public boolean isAntidoteProtected() {
-		return System.currentTimeMillis() - lastAntidote < 90000;
+		return System.currentTimeMillis() - lastAntidote < poisonProtectionTime;
 	}
 
 	public boolean isInBank() {
@@ -2151,6 +2151,18 @@ public final class Player extends Mob {
 		ActionSender.sendSound(this, "death");
 		ActionSender.sendDied(this);
 
+		// Cabbage tutorial skip
+		if (this.getLocation().onTutorialIsland()
+			&& (mob.isNpc() && mob.getID() == NpcId.PETER_SKIPPIN.id())) {
+			killed = false;
+			resetCombatEvent();
+			setLastOpponent(null);
+			getSkills().setLevel(Skill.HITS.id(), getSkills().getMaxStat(Skill.HITS.id()));
+			setBusy(false);
+			skipTutorial();
+			return;
+		}
+
 		// Seems to never be set
 		final ProjectileEvent projectileEvent = getAttribute("projectile");
 		if (projectileEvent != null) projectileEvent.setCanceled(true);
@@ -2222,7 +2234,7 @@ public final class Player extends Mob {
 		if (isIronMan(IronmanMode.Hardcore.id())) {
 			updateHCIronman(IronmanMode.Ironman.id());
 			ActionSender.sendIronManMode(this);
-			getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(this, "has died and lost the HC Iron Man Rank!"));
+			getWorld().getServer().getGameLogger().addQuery(new LiveFeedLog(this, "has died and lost the HC Ironman Rank!"));
 		}
 
 		resetCombatEvent();
@@ -2361,6 +2373,34 @@ public final class Player extends Mob {
 			getWorld().getServer().getGameUpdater().processMessageQueue(this));
 	}
 
+	public void updatePosition() {
+		Npc npc = getInteractingNpc();
+		NpcInteraction interaction = getNpcInteraction();
+		super.updatePosition();
+
+		if (npc != null) {
+			switch (interaction) {
+				case NPC_TALK_TO:
+				case NPC_GNOMEBALL_OP:
+				case NPC_USE_ITEM:
+					if (!inCombat() && finishedPath()) face(npc);
+					break;
+				case NPC_OP:
+				default:
+					break;
+			}
+		}
+
+		if (isFollowing()
+			&& getEndFollowRadius() > -1
+			&& getFollowEvent().getTimesRan() >= 1
+			&& withinRange(getFollowing(), getEndFollowRadius())
+			&& PathValidation.checkAdjacentDistance(getWorld(), getLocation(), getFollowing().getLocation(), true, false)) {
+			resetFollowing();
+			resetPath();
+		}
+	}
+
 	public void processLogout() {
 		// any time that `Player.unregister(force, reason)` was called throughout a tick,
 		// now is the time to process the logic for if they are allowed to log out.
@@ -2401,6 +2441,8 @@ public final class Player extends Mob {
 								parser = new Payload69Parser();
 							} else if (isUsing233CompatibleClient()) {
 								parser = new Payload235Parser();
+							} else if (isUsing203CompatibleClient()) {
+								parser = new Payload203Parser();
 							} else if (isUsing177CompatibleClient()) {
 								parser = new Payload177Parser();
 							} else if (isUsing140CompatibleClient()) {
@@ -2420,7 +2462,7 @@ public final class Player extends Mob {
 									couldProcess = false;
 								}
 								if (!couldProcess) {
-									unregister(false, "Malformed packet!");
+									unregister(UnregisterForcefulness.WAIT_UNTIL_COMBAT_ENDS, "Malformed packet!");
 								}
 							}
 						}
@@ -2485,6 +2527,13 @@ public final class Player extends Mob {
 
 	public void resetAll(boolean resetWalkAction, boolean resetFollowing) {
 		interruptPlugins();
+		Npc npc = getInteractingNpc();
+		if (npc != null && npc.getInteractingPlayer() == this) {
+			npc.setNpcInteraction(null);
+			npc.setInteractingPlayer(null);
+		}
+		setNpcInteraction(null);
+		setInteractingNpc(null);
 		resetAllExceptTradeOrDuel(true, resetWalkAction, resetFollowing);
 		getTrade().resetAll();
 		getDuel().resetAll();
@@ -2690,8 +2739,22 @@ public final class Player extends Mob {
 		lastChargeEvent = timer;
 	}
 
-	public void setAntidoteProtection() {
+	public void setCurePoisonProtection() {
+		// Cure poison last for 3 minutes
+		// But we don't want to override a poison antidote
+		long remainingProtection = (lastAntidote + poisonProtectionTime) - System.currentTimeMillis();
+		if (remainingProtection > 180000) {
+			return;
+		}
+
 		lastAntidote = System.currentTimeMillis();
+		poisonProtectionTime = 180000;
+	}
+
+	public void setAntidoteProtection() {
+		// Poison antidote last for 6 minutes
+		lastAntidote = System.currentTimeMillis();
+		poisonProtectionTime = 360000;
 	}
 
 	public void setLastReport() {
@@ -2953,6 +3016,11 @@ public final class Player extends Mob {
 
 	public int getNpcKills() {
 		return npcKills;
+	}
+
+	public int getRecentNpcKills() {
+		if (getLastNpcKilledId() == -1) return 0;
+		return getKillCache().get(getLastNpcKilledId());
 	}
 
 	public int getExpShared() {
@@ -3266,6 +3334,13 @@ public final class Player extends Mob {
 		return 3;
 	}
 
+	public int getStatusBar() {
+		if (getCache().hasKey("setting_status_bar")) {
+			return getCache().getInt("setting_status_bar");
+		}
+		return 0;
+	}
+
 	public Boolean getHoldAndChoose() {
 		if (getCache().hasKey("setting_hold_choose")) {
 			return getCache().getBoolean("setting_hold_choose");
@@ -3296,6 +3371,13 @@ public final class Player extends Mob {
 	public boolean getShowNPCKC() {
 		if (getCache().hasKey("show_npc_kc")) {
 			return getCache().getBoolean("show_npc_kc");
+		}
+		return false;
+	}
+
+	public boolean getShowRecentNPCKC() {
+		if (getCache().hasKey("show_recent_npc_kc")) {
+			return getCache().getBoolean("show_recent_npc_kc");
 		}
 		return false;
 	}
@@ -3741,11 +3823,7 @@ public final class Player extends Mob {
 	}
 
 	public int getTotalLevel() {
-		return this.totalLevel;
-	}
-
-	public void setTotalLevel(int total) {
-		this.totalLevel = total;
+		return getSkills().getTotalLevel();
 	}
 
 	public long getLastExchangeTime() {
@@ -3784,6 +3862,10 @@ public final class Player extends Mob {
 
 	public boolean isUsing177CompatibleClient() {
 		return this.clientVersion == 177;
+	}
+
+	public boolean isUsing203CompatibleClient() {
+		return this.clientVersion == 203;
 	}
 
 	public boolean isUsing233CompatibleClient() {
@@ -3893,9 +3975,11 @@ public final class Player extends Mob {
 				message("You cannot do that whilst fighting!");
 				return false;
 			}
+
 			if (isBusy()) {
 				return false;
 			}
+
 			if (getCache().hasKey("tutorial")) {
 				getCache().remove("tutorial");
 			}
@@ -3926,6 +4010,12 @@ public final class Player extends Mob {
 
 	public boolean getBankPinOptOut() {
 		return getCache().hasKey("bankpin_optout");
+	}
+
+	public boolean getBankPinOptIn() { return getCache().hasKey("bankpin_optin") || getCache().hasKey("bank_pin"); }
+
+	public boolean getBankPinOption() {
+		return (getConfig().WANT_BANK_PINS && !getBankPinOptOut()) || (getConfig().TOLERATE_BANK_PINS && getBankPinOptIn());
 	}
 
 	public boolean isUsingAndroidClient() {
@@ -3967,183 +4057,12 @@ public final class Player extends Mob {
 			ActionSender.sendUnlockedAppearances(this);
 	}
 
-	//Calculate how many ticks until the player has a "heat stroke"
-	private int calculateHeatDelay() {
-		//Default tick delay of 140
-		//On base tick rate (0.64) this is 89.6 seconds
-		//On cabbage tick rate (0.43) this is 60.2 seconds
-
-		//Possible tick delay range depending on equipped items: 40-190
-		int tickDelay = 140;
-
-		Item item = this.getEquippedChest();
-		if (item != null) {
-			if (item.getCatalogId() == ItemId.DESERT_SHIRT.id())
-				tickDelay += 20;
-			else if (item.getDef(getWorld()).getArmourBonus() > 0)
-				tickDelay -= 40;
-		}
-
-		item = this.getEquippedLegs();
-		if (item != null) {
-			if (item.getCatalogId() == ItemId.DESERT_ROBE.id())
-				tickDelay += 20;
-			else if (item.getDef(getWorld()).getArmourBonus() > 0)
-				tickDelay -= 30;
-		}
-
-		item = this.getEquippedBoots();
-		if (item != null) {
-			if (item.getCatalogId() == ItemId.DESERT_BOOTS.id())
-				tickDelay += 10;
-			else if (item.getDef(getWorld()).getArmourBonus() > 0)
-				tickDelay -= 10;
-		}
-
-		item = this.getEquippedGloves();
-		if (item != null) {
-			if (item.getDef(getWorld()).getArmourBonus() > 0)
-				tickDelay -= 10;
-		}
-
-		item = this.getEquippedHelmet();
-		if (item != null) {
-			if (item.getDef(getWorld()).getArmourBonus() > 0)
-				tickDelay -= 10;
-		}
-
-		return tickDelay;
-	}
-
-	//Check if the player is in a location that experiences the desert heat effect
-	private boolean inDesert() {
-		Point loc = this.getLocation();
-		int x = loc.getX();
-		int y = loc.getY();
-
-		//Check if they could be in the desert
-		if (loc.inBounds(48, 721, 189, 815)) {
-
-			//Check if they are standing in Shantay pass
-			if (loc.inBounds(59, 721, 67, 732))
-				return false;
-
-			//Check if they are along the dunes of Al Kharid
-			else if (y <= 722 && x <= 82)
-				return false;
-
-			//Check if they are in the mining camp
-			else if (loc.inBounds(80, 799, 91, 812))
-				return false;
-
-			//Check if they are in Bedabin camp
-			else if (x >= 160 && y >= 784)
-				return false;
-
-			return true;
-		}
-
-		return false;
-	}
-
-	//The desert heat has ticked. Look for water or cause damage.
-	private void doHeatStroke() {
-		CarriedItems ci = this.getCarriedItems();
-
-		if (ci.remove(new Item(ItemId.WATER_SKIN_MOUTHFUL_LEFT.id(), 1)) >= 0)
-			ci.getInventory().add(new Item(ItemId.EMPTY_WATER_SKIN.id(), 1));
-		else if (ci.remove(new Item(ItemId.WATER_SKIN_MOSTLY_EMPTY.id(), 1)) >= 0)
-			ci.getInventory().add(new Item(ItemId.WATER_SKIN_MOUTHFUL_LEFT.id(), 1));
-		else if (ci.remove(new Item(ItemId.WATER_SKIN_MOSTLY_FULL.id(), 1)) >= 0)
-			ci.getInventory().add(new Item(ItemId.WATER_SKIN_MOSTLY_EMPTY.id(), 1));
-		else if (ci.remove(new Item(ItemId.FULL_WATER_SKIN.id(), 1)) >= 0)
-			ci.getInventory().add(new Item(ItemId.WATER_SKIN_MOSTLY_FULL.id(), 1));
-		else {
-			if (!this.desertHeatMessaged) {
-				this.message("You start dying of thirst while you're in the desert.");
-				this.desertHeatMessaged = true;
-			}
-
-			int damage = DataConversions.getRandom().nextInt(10);
-			this.damage(damage + 1);
-			return;
-		}
-
-		this.desertHeatMessaged = false;
-	}
-
-	public void doEvaporate() {
-		CarriedItems ci = this.getCarriedItems();
-		int jugCount = 0;
-		int bowlCount = 0;
-		int bucketCount = 0;
-		//Jugs
-		while (ci.remove(new Item(ItemId.JUG_OF_WATER.id(), 1), false) >= 0) {
-			++jugCount;
-			ci.getInventory().add(new Item(ItemId.JUG.id(), 1), false);
-		}
-
-		//Bowls
-		while (ci.remove(new Item(ItemId.BOWL_OF_WATER.id(), 1), false) >= 0) {
-			++bowlCount;
-			ci.getInventory().add(new Item(ItemId.BOWL.id(), 1), false);
-		}
-
-		//Buckets
-		while (ci.remove(new Item(ItemId.BUCKET_OF_WATER.id(), 1), false) >= 0) {
-			++bucketCount;
-			ci.getInventory().add(new Item(ItemId.BUCKET.id(), 1), false);
-		}
-
-		if (jugCount > 1)
-			this.message("The water in your jugs evaporates in the desert heat.");
-		else if (jugCount > 0)
-			this.message("The water in your jug evaporates in the desert heat.");
-
-		if (bowlCount > 1)
-			this.message("The water in your bowls evaporates in the desert heat.");
-		else if (bowlCount > 0)
-			this.message("The water in your bowl evaporates in the desert heat.");
-
-		if (bucketCount > 1)
-			this.message("The water in your buckets evaporates in the desert heat.");
-		else if (bucketCount > 0)
-			this.message("The water in your bucket evaporates in the desert heat.");
-
-		if (jugCount > 0 || bowlCount > 0 || bucketCount > 0)
-			ActionSender.sendInventory(this);
-	}
 	public void desertHeatInit() {
 		if (getWorld().getServer().getConfig().WANT_FIXED_BROKEN_MECHANICS) {
 			if (!this.hasElevatedPriveledges()) {
-				if (this.getCache().hasKey("desert_heat_counter")) {
-					this.desertHeatCounter = (int)this.getCache().getLong("desert_heat_counter");
-					this.getCache().remove("desert_heat_counter");
-				}
-
-				this.desertHeatEvent = new GameTickEvent(getWorld(), this, 0, "Desert Heat", DuplicationStrategy.ONE_PER_MOB) {
-					public void run() {	getPlayerOwner().doDesertHeat(); }
-				};
+				this.desertHeatEvent = new DesertHeatEvent(getWorld(), this);
 				getWorld().getServer().getGameEventHandler().add(this.desertHeatEvent);
 			}
-		}
-	}
-	public void doDesertHeat() {
-		if (this.inDesert()) {
-			if (this.desertHeatCounter == Integer.MIN_VALUE) {
-				this.desertHeatCounter = calculateHeatDelay();
-				this.doEvaporate();
-			}
-
-			this.desertHeatCounter -= 1;
-
-			if (this.desertHeatCounter <= 0) {
-				this.doHeatStroke();
-				this.desertHeatCounter = calculateHeatDelay();
-			}
-		} else if (this.desertHeatCounter != Integer.MIN_VALUE) {
-			this.desertHeatCounter = Integer.MIN_VALUE;
-			this.desertHeatMessaged = false;
 		}
 	}
 
@@ -4308,6 +4227,7 @@ public final class Player extends Mob {
 			message(messagePrefix + "You are " + (globalMuteDelay == -1 ? "permanently muted" : "temporary muted for " + (int) ((globalMuteDelay - System.currentTimeMillis()) / 1000 / 60) + " minutes") + " from global chat.");
 			return false;
 		}
+
 		long sayDelay = 0;
 		if (getCache().hasKey("say_delay")) {
 			sayDelay = getCache().getLong("say_delay");
@@ -4331,6 +4251,18 @@ public final class Player extends Mob {
 
 		if (getLocation().onTutorialIsland() && !isMod()) {
 			message("@cya@Once you finish the tutorial, this lets you send messages to everyone on the server");
+			return false;
+		}
+
+		if (isBabyModeFiltered()) {
+			message("Sorry, but someone we banned for breaking our rules is actively throwing a tantrum right now.");
+			message("New accounts are not allowed to speak until they've reached " + getConfig().BABY_MODE_LEVEL_THRESHOLD + " total level during this time.");
+			return false;
+		}
+
+		if (getConfig().WANT_GLOBAL_RULES_AGREEMENT && !getCache().hasKey("accepted_global_rules") && !isPlayerMod()) {
+			message("@cya@You must agree to the global chat rules before using global chat");
+			message("@cya@Use the ::globalrules command to view them.");
 			return false;
 		}
 
@@ -4397,5 +4329,36 @@ public final class Player extends Mob {
 
 	public void resetTrackedDamageAndBlockedDamage(Mob damageInflictingMob) {
 		trackedDamageFromMob.remove(damageInflictingMob.getUUID());
+	}
+
+	public boolean canBeReattacked() {
+		return this.getRanAwayTimer() + getConfig().PVP_REATTACK_TIMER <= getWorld().getServer().getCurrentTick();
+	}
+
+	public boolean canSeeBiggum() {
+		int prestige = getCache().hasKey("co_prestige") ? getCache().getInt("co_prestige") : 0;
+		boolean playerHasBiggum = getCarriedItems().hasCatalogID(ItemId.BIGGUM_FLODROT.id()) || getBank().hasItemId(ItemId.BIGGUM_FLODROT.id());
+
+		return prestige >= 1 && !playerHasBiggum;
+	}
+
+	public void setInteractingNpc(Npc npc) {
+		this.interactingNpc = npc;
+	}
+
+	public Npc getInteractingNpc() {
+		return this.interactingNpc;
+	}
+
+	public boolean isBabyModeFiltered() {
+		return getTotalLevel() < getConfig().BABY_MODE_LEVEL_THRESHOLD;
+	}
+
+	public int getLastNpcKilledId() {
+		return this.lastNpcKilledId;
+	}
+
+	public void setLastNpcKilledId(int npcId) {
+		this.lastNpcKilledId = npcId;
 	}
 }

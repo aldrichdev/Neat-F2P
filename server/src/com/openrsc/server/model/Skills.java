@@ -232,7 +232,6 @@ public class Skills {
 			newLevel = getLevelForExperience(exps[skill], oldLevel);
 		}
 		int levelDiff = newLevel - oldLevel;
-		String skillName;
 
 		if (getMob().isPlayer()) {
 			Player player = (Player) getMob();
@@ -254,7 +253,15 @@ public class Skills {
 				} catch (GameDatabaseException e) {
 					LOGGER.catching(e);
 				}
-				skillName = getWorld().getServer().getConstants().getSkills().getSkill(skill).getShortName().toLowerCase();
+				final String skillName;
+				// Yes, this is authentic...
+				if (skill == Skill.DEFENSE.id()) {
+					skillName = "defence";
+				} else if (skill == Skill.HITS.id()) {
+					skillName = "hitpoints";
+				} else {
+					skillName = getWorld().getServer().getConstants().getSkills().getSkill(skill).getLongName().toLowerCase();
+				}
 				if (!((Player) getMob()).getConfig().WANT_OPENPK_POINTS) {
 					if (newLevel >= getWorld().getServer().getConfig().PLAYER_LEVEL_LIMIT - (getWorld().getServer().getConfig().SKILLING_EXP_RATE > 1.0 && !player.isOneXp() ? 9 : 19)
 						&& newLevel <= getWorld().getServer().getConfig().PLAYER_LEVEL_LIMIT - 1) {
@@ -420,5 +427,15 @@ public class Skills {
 
 	public Mob getMob() {
 		return mob;
+	}
+
+	public Skill[] getMagicSkills() {
+		return mob.getConfig().DIVIDED_GOOD_EVIL ?
+			new Skill[] { Skill.GOODMAGIC, Skill.EVILMAGIC } : new Skill[] { Skill.MAGIC };
+	}
+
+	public Skill[] getPrayerSkills() {
+		return mob.getConfig().DIVIDED_GOOD_EVIL ?
+			new Skill[] { Skill.PRAYGOOD, Skill.PRAYEVIL } : new Skill[] { Skill.PRAYER };
 	}
 }

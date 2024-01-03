@@ -1,6 +1,7 @@
 package com.openrsc.server.util.rsc;
 
 import java.util.regex.Pattern;
+import java.util.Arrays;
 
 public class StringUtil {
 
@@ -274,5 +275,113 @@ public class StringUtil {
 		ret += "" + mins + ":" + (secs < 10 ? "0" : "");
 		ret += "" + secs;
 		return ret;
+	}
+
+	/**
+	 * Message compression algorithm used at least between clients 177-204.
+	 */
+	public static byte[] compressMessage(String messageToSend) {
+		final byte[] pmMessage = new byte[100];
+		final char[] characterDictionary = new char[] { ' ', 'e', 't', 'a', 'o', 'i', 'h', 'n', 's', 'r', 'd', 'l', 'u', 'm', 'w', 'c', 'y', 'f', 'g', 'p', 'b', 'v', 'k', 'x', 'j', 'q', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ' ', '!', '?', '.', ',', ':', ';', '(', ')', '-', '&', '*', '\\', '\'', '@', '#', '+', '=', '£', '$', '%', '\"', '[', ']' };
+
+		if (messageToSend.length() > 80) {
+			messageToSend = messageToSend.substring(0, 80);
+		}
+
+		messageToSend = messageToSend.toLowerCase();
+		int messageLength = 0;
+		int aFlag = -1;
+		for (int messageIdx = 0; messageIdx < messageToSend.length(); messageIdx++) {
+			char curChar = messageToSend.charAt(messageIdx);
+			int charIdx = 0;
+			for (int i = 0; i < characterDictionary.length; i++) {
+				if (curChar == characterDictionary[i]) {
+					charIdx = i;
+					break;
+				}
+			}
+
+			if (charIdx > 12) {
+				charIdx += 195;
+			}
+
+			if (aFlag == -1) {
+				if (charIdx < 13) {
+					aFlag = charIdx;
+				} else {
+					pmMessage[messageLength++] = (byte) charIdx;
+				}
+			} else {
+				if (charIdx < 13) {
+					pmMessage[messageLength++] = (byte) ((aFlag << 4) + charIdx);
+					aFlag = -1;
+				} else {
+					pmMessage[messageLength++] = (byte) ((aFlag << 4) + (charIdx >> 4));
+					aFlag = charIdx & 15;
+				}
+			}
+		}
+
+		if (aFlag != -1) {
+			pmMessage[messageLength++] = (byte)(aFlag << 4);
+		}
+
+		return Arrays.copyOf(pmMessage, messageLength);
+	}
+
+	public static String decompressMessage(byte[] data) {
+		int formattedLength = 0;
+		int aFlag = -1;
+		final char[] stringBuilder = new char[100];
+		final char[] characterDictionary = new char[]{' ', 'e', 't', 'a', 'o', 'i', 'h', 'n', 's', 'r', 'd', 'l', 'u', 'm', 'w', 'c', 'y', 'f', 'g', 'p', 'b', 'v', 'k', 'x', 'j', 'q', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ' ', '!', '?', '.', ',', ':', ';', '(', ')', '-', '&', '*', '\\', '\'', '@', '#', '+', '=', '£', '$', '%', '\"', '[', ']'};
+		for (byte charByte : data) {
+			int character = charByte & 255;
+			int charIdx = character >> 4 & 15;
+			if (aFlag == -1) {
+				if (charIdx < 13) {
+					stringBuilder[formattedLength++] = characterDictionary[charIdx];
+				} else {
+					aFlag = charIdx;
+				}
+			} else {
+				stringBuilder[formattedLength++] = characterDictionary[(aFlag << 4) + charIdx - 195];
+				aFlag = -1;
+			}
+
+			charIdx = character & 15;
+			if (aFlag == -1) {
+				if (charIdx < 13) {
+					stringBuilder[formattedLength++] = characterDictionary[charIdx];
+				} else {
+					aFlag = charIdx;
+				}
+			} else {
+				stringBuilder[formattedLength++] = characterDictionary[(aFlag << 4) + charIdx - 195];
+				aFlag = -1;
+			}
+		}
+
+		boolean forceCapital = true;
+		for (int charIdx = 0; charIdx < formattedLength; charIdx++) {
+			char asciiChar = stringBuilder[charIdx];
+			if (charIdx > 4 && asciiChar == '@') {
+				stringBuilder[charIdx] = ' ';
+			}
+
+			if (asciiChar == '%') {
+				stringBuilder[charIdx] = ' ';
+			}
+
+			if (forceCapital && asciiChar >= 'a' && asciiChar <= 'z') {
+				stringBuilder[charIdx] = (char) (stringBuilder[charIdx] - 32); // make uppercase
+				forceCapital = false;
+			}
+
+			if (asciiChar == '.' || asciiChar == '!') {
+				forceCapital = true;
+			}
+		}
+
+		return new String(stringBuilder, 0, formattedLength);
 	}
 }

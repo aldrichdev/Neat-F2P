@@ -6,6 +6,7 @@ import com.openrsc.server.constants.Quests;
 import com.openrsc.server.database.GameDatabase;
 import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.database.struct.*;
+import com.openrsc.server.event.rsc.impl.DesertHeatEvent;
 import com.openrsc.server.external.ItemDefinition;
 import com.openrsc.server.login.LoginRequest;
 import com.openrsc.server.model.PlayerAppearance;
@@ -77,42 +78,47 @@ public class PlayerService implements IPlayerService {
         }
     }
 
-    @Override
-    public boolean savePlayer(final Player player) throws GameDatabaseException {
-        try {
-            if (!database.playerExists(player.getDatabaseID())) {
-                LOGGER.error("ERROR SAVING : PLAYER DOES NOT EXIST : {}", player.getUsername());
-                return player.checkAndIncrementSaveAttempts();
-            }
-            boolean realSuccess = database.atomically(() -> {
-                savePlayerBankPresets(player);
-                savePlayerInventory(player);
-                savePlayerEquipment(player);
-                savePlayerBank(player);
-                //savePlayerAchievements(player);
-                savePlayerQuests(player);
-                savePlayerCastTime(player);
-                savePlayerCache(player);
-                savePlayerNpcKills(player);
-                savePlayerData(player);
-                savePlayerSkills(player);
-                savePlayerSocial(player);
-            });
-            if (realSuccess) {
-                if (null != player.getUsernameChangePending()) {
-			        player.getUsernameChangePending().doChangeUsername();
-                }
-                player.resetSaveAttempts();
+	@Override
+	public boolean savePlayer(final Player player) throws GameDatabaseException {
+		try {
+			if (!database.playerExists(player.getDatabaseID())) {
+				LOGGER.error("ERROR SAVING : PLAYER DOES NOT EXIST : {}", player.getUsername());
+				return player.checkAndIncrementSaveAttempts();
 			}
-            return realSuccess;
-        } catch (final Exception ex) {
-            LOGGER.error(
-                    MessageFormat.format("Unable to save player to database: {}", player.getUsername()),
-                    ex
-            );
-			return player.checkAndIncrementSaveAttempts();
-        }
-    }
+			boolean realSuccess = database.atomically(() -> {
+				savePlayerBankPresets(player);
+				savePlayerInventory(player);
+				savePlayerEquipment(player);
+				savePlayerBank(player);
+				//savePlayerAchievements(player);
+				savePlayerQuests(player);
+				savePlayerCastTime(player);
+				savePlayerCache(player);
+				savePlayerNpcKills(player);
+				savePlayerData(player);
+				savePlayerSkills(player);
+				savePlayerSocial(player);
+			});
+			if (realSuccess) {
+				if (null != player.getUsernameChangePending()) {
+					player.getUsernameChangePending().doChangeUsername();
+				}
+				player.resetSaveAttempts();
+			}
+			return realSuccess;
+		} catch (final Exception ex) {
+			if (player != null) {
+				LOGGER.error(
+					MessageFormat.format("Unable to save player to database: {}", player.getUsername()),
+					ex
+				);
+				return player.checkAndIncrementSaveAttempts();
+			} else {
+				LOGGER.error("Player reference lost and failed to save.", ex);
+				return false;
+			}
+		}
+	}
 
 	@Override
 	public void savePlayerMaxStats(final Player player) throws GameDatabaseException {
@@ -163,7 +169,6 @@ public class PlayerService implements IPlayerService {
         player.setGroupID(playerData.groupId);
         player.setUsername(playerData.username);
         player.setFormerName(playerData.former_name);
-        player.setTotalLevel(playerData.totalLevel);
         /*if (player.isUsingCustomClient()) {
             player.setCombatStyle((byte) playerData.combatStyle);
         } else {
@@ -425,8 +430,11 @@ public class PlayerService implements IPlayerService {
     @Override
     public void savePlayerCache(final Player player) throws GameDatabaseException {
         player.getCache().store("last_spell_cast", player.getCastTimer());
-		if (player.desertHeatCounter > 0)
-			player.getCache().store("desert_heat_counter", player.desertHeatCounter);
+		DesertHeatEvent desertHeatEvent = player.getAttribute("Desert Heat", null);
+		if (desertHeatEvent != null) {
+			if (desertHeatEvent.desertHeatCounter > 0)
+				player.getCache().store("desert_heat_counter", desertHeatEvent.desertHeatCounter);
+		}
         database.querySavePlayerCache(player);
     }
 

@@ -1,5 +1,6 @@
 package com.openrsc.server.plugins.authentic.commands;
 
+import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.content.clan.ClanInvite;
 import com.openrsc.server.content.party.PartyPlayer;
 import com.openrsc.server.content.party.PartyRank;
@@ -15,6 +16,7 @@ import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.PlayerSettings;
 import com.openrsc.server.model.snapshot.Chatlog;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.plugins.custom.minigames.CombatOdyssey;
 import com.openrsc.server.plugins.triggers.CommandTrigger;
 import com.openrsc.server.util.MessageFilter;
 import com.openrsc.server.util.languages.PreferredLanguage;
@@ -85,7 +87,9 @@ public final class RegularPlayer implements CommandTrigger {
 		} else if (command.equalsIgnoreCase("shareexp")) {
 			toggleExperienceShare(player);
 		} else if (command.equalsIgnoreCase("onlinelist")) {
-			queryOnlinePlayers(player, args);
+			queryOnlinePlayers(player, args, false);
+		} else if (command.equalsIgnoreCase("onlinelistlocs")) {
+			queryOnlinePlayers(player, args, true);
 		} else if (command.equalsIgnoreCase("groups") || command.equalsIgnoreCase("ranks")) {
 			queryGroupIDs(player);
 		} else if (command.equalsIgnoreCase("time") || command.equalsIgnoreCase("date") || command.equalsIgnoreCase("datetime")) {
@@ -158,10 +162,167 @@ public final class RegularPlayer implements CommandTrigger {
 			setGlobalOutput(player, MessageType.QUEST);
 		} else if (command.equalsIgnoreCase("globalprivate") || command.equalsIgnoreCase("gp")) {
 			setGlobalOutput(player, MessageType.PRIVATE_RECIEVE);
+		} else if (command.equalsIgnoreCase("globalrules")) {
+			displayGlobalRules(player);
+		} else if (command.equalsIgnoreCase("i_have_read_and_agree_to_the_global_chat_rules")
+			|| command.equalsIgnoreCase("i_have_read_and_agreed_to_the_global_chat_rules")
+			|| command.equalsIgnoreCase("ihavereadandagreetotheglobalchatrules")
+			|| command.equalsIgnoreCase("ihavereadandagreedtotheglobalchatrules")) {
+			acceptGlobalChatRules(player);
+		} else if (command.equalsIgnoreCase("minigamelog")) {
+			queryMinigameLog(player, args);
+		} else if (command.equalsIgnoreCase("togglenpckcmessages")) {
+			toggleNpcKcMessages(player);
+		} else if (command.equalsIgnoreCase("bankpinoptin") || command.equalsIgnoreCase("bankpin_optin") || command.equalsIgnoreCase("bank_pin_opt_in")) {
+			bankPinOptIn(player);
+		} else if (command.equalsIgnoreCase("bankpinoptout") || command.equalsIgnoreCase("bankpin_optout") || command.equalsIgnoreCase("bank_pin_opt_out")) {
+			bankPinOptOut(player);
+		} else if (command.equalsIgnoreCase("rename")) {
+			renameSelf(player, args);
+		}
+	}
+
+	private void renameSelf(Player player, String[] args) {
+		if (player.isMod()) return;
+		// Not yet implemented
+	}
+
+	private void bankPinOptIn(Player player) {
+		if (!config().WANT_BANK_PINS && !config().TOLERATE_BANK_PINS) {
+			return;
+		}
+		if (config().TOLERATE_BANK_PINS) {
+			if (player.getBankPinOptIn()) {
+				player.playerServerMessage(MessageType.QUEST, "You already have opted into bank pins!");
+			} else {
+				player.getCache().store("bankpin_optin", true);
+				player.playerServerMessage(MessageType.QUEST, "You have successfully opted into bank pins!");
+			}
+			player.playerServerMessage(MessageType.QUEST, "Talk to a banker to get started.");
+		} else if (config().WANT_BANK_PINS) {
+			if (player.getBankPinOptOut()) {
+				player.getCache().remove("bankpin_optout");
+				if (!player.getBankPinOptOut()) {
+					player.playerServerMessage(MessageType.QUEST, "You can now talk to the banker about bank pins again!");
+				} else {
+					player.playerServerMessage(MessageType.QUEST, "Something went wrong opting-in to bankpins.");
+					player.playerServerMessage(MessageType.QUEST, "Please try opting-in again.");
+				}
+			} else {
+				player.playerServerMessage(MessageType.QUEST, "This server has bank pins enabled by default.");
+				player.playerServerMessage(MessageType.QUEST, "Talk to a banker to get started.");
+			}
+		}
+	}
+
+	private void bankPinOptOut(Player player) {
+		if (!config().WANT_BANK_PINS && !config().TOLERATE_BANK_PINS) {
+			return;
+		}
+		if (player.getCache().hasKey("bank_pin")) {
+			player.playerServerMessage(MessageType.QUEST, "You must first remove your bank pin to do that!");
+			return;
+		}
+		if (config().TOLERATE_BANK_PINS) {
+			if (!player.getCache().hasKey("bankpin_optin")) {
+				player.playerServerMessage(MessageType.QUEST, "You are already opted out of bank pins!");
+				return;
+			}
+			player.playerServerMessage(MessageType.QUEST, "You have successfully opted out of bank pins!");
+			player.getCache().remove("bankpin_optin");
+		} else if (config().WANT_BANK_PINS) {
+			if (player.getCache().hasKey("bankpin_optout")) {
+				player.playerServerMessage(MessageType.QUEST, "You are already opted out of bank pins!");
+				return;
+			}
+			player.playerServerMessage(MessageType.QUEST, "You have successfully opted out of bank pins!");
+			player.getCache().store("bankpin_optout", 3);
+		}
+	}
+
+	private void toggleNpcKcMessages(Player player) {
+		if (config().NPC_KILL_MESSAGES) {
+			if (player.getCache().hasKey("npc_kc_messages")) {
+				boolean currentValue = player.getCache().getBoolean("npc_kc_messages");
+				player.getCache().store("npc_kc_messages", !currentValue);
+				if (currentValue) {
+					// Switching them off
+					player.message(config().MESSAGE_PREFIX + "You have turned @red@off @whi@NPC kill count messages");
+				} else {
+					player.message(config().MESSAGE_PREFIX + "You have turned @gre@on @whi@NPC kill count messages");
+				}
+			} else {
+				player.getCache().store("npc_kc_messages", true);
+				player.message(config().MESSAGE_PREFIX + "You have turned @gre@on @whi@NPC kill count messages");
+			}
+		}
+	}
+
+	private void acceptGlobalChatRules(Player player) {
+		if (!config().WANT_GLOBAL_CHAT && !config().WANT_GLOBAL_FRIEND) return;
+		if (!config().WANT_GLOBAL_RULES_AGREEMENT) return;
+		if (player.getCache().hasKey("accepted_global_rules")) {
+			player.message(messagePrefix + "You have already agreed to the global chat rules");
+			if (config().WANT_GLOBAL_FRIEND) {
+				player.message("You can use ::g or the Global$ friend to speak in global chat");
+			} else {
+				player.message("You can use ::g to speak in global chat");
+			}
+			player.message("If you wish to view the global chat rules again, you can use the @cya@::globalrules @whi@command");
+		} else {
+			player.getCache().store("accepted_global_rules", true);
+			player.playerServerMessage(MessageType.QUEST, "Thank you for agreeing to the Global chat rules!");
+			if (config().WANT_GLOBAL_FRIEND) {
+				player.message("You can now use ::g or the Global$ friend to speak in global chat");
+			} else {
+				player.message("You can now use ::g to speak in global chat");
+			}
+		}
+	}
+
+	private void displayGlobalRules(Player player) {
+		if (!config().WANT_GLOBAL_CHAT && !config().WANT_GLOBAL_FRIEND) return;
+		if (!config().WANT_GLOBAL_RULES_AGREEMENT) return;
+
+		if (player.getClientLimitations().supportsMessageBox) {
+			StringBuilder rulesBuilder = new StringBuilder();
+			for (String rule : config().GLOBAL_RULES) {
+				rulesBuilder.append(rule);
+				rulesBuilder.append(" %");
+			}
+			ActionSender.sendBox(player, rulesBuilder.toString(), true);
+		} else {
+			for (String rule : config().GLOBAL_RULES) {
+				// Skip whitespace-only lines
+				if (rule.trim().equals("")) {
+					continue;
+				}
+				// We need to keep track of how many characters we've printed to the screen
+				int charCount = 0;
+				StringBuilder lineBuilder = new StringBuilder();
+				for (String word : rule.split(" ")) {
+					// See how many characters will be on the screen if we were to add this word
+					// Don't forget to add 1 for the space
+					charCount += word.length() + 1;
+					// If it will be more than 85, then we will empty the buffer to the screen and move on to the next line
+					if (charCount >= 85) {
+						player.playerServerMessage(MessageType.QUEST, lineBuilder.toString());
+						charCount = word.length() + 1;
+						lineBuilder.setLength(0);
+					}
+					lineBuilder.append(word);
+					lineBuilder.append(" ");
+				}
+				// If there is anything left afterwards, dump it to the screen
+				if (lineBuilder.length() > 0) {
+					player.playerServerMessage(MessageType.QUEST, lineBuilder.toString());
+				}
+			}
 		}
 	}
 
 	private void setGlobalOutput(Player player, MessageType questOrPrivate) {
+		if (!config().WANT_GLOBAL_CHAT && !config().WANT_GLOBAL_FRIEND) return;
 		if (questOrPrivate.equals(MessageType.QUEST)) {
 			if (player.getCache().hasKey("private_message_global")) {
 				player.getCache().remove("private_message_global");
@@ -182,6 +343,7 @@ public final class RegularPlayer implements CommandTrigger {
 	}
 
 	private void setGlobalMessageColor(Player player, String[] args) {
+		if (!config().WANT_GLOBAL_CHAT && !config().WANT_GLOBAL_FRIEND) return;
 		if (args.length >= 1) {
 			player.getCache().store("global_message_color", args[0]);
 			player.message("@cya@Global message color set to " + args[0] + "This color.");
@@ -363,17 +525,20 @@ public final class RegularPlayer implements CommandTrigger {
 		long sessionPlay = player.getSessionPlay();
 		long timePlayed = (player.getCache().hasKey("total_played") ?
 			player.getCache().getLong("total_played") : 0) + sessionPlay;
+		long creationDate = player.getWorld().getServer().getDatabase().queryLoadPlayerData(player).creationDate * 1000;
 
 		if (player.getClientLimitations().supportsMessageBox) {
 			ActionSender.sendBox(player,
 				"@lre@Player Information: %"
 					+ " %"
 					+ "@gre@Coordinates:@whi@ " + player.getLocation().toString() + " %"
+					+ "@gre@Creation Date:@whi@ " + DataConversions.dateFormat(creationDate) + " %"
 					+ "@gre@Total Time Played:@whi@ " + DataConversions.getDateFromMsec(timePlayed) + " %"
 				, true);
 		} else {
 			player.playerServerMessage(MessageType.QUEST,"@lre@Player Information:");
 			player.playerServerMessage(MessageType.QUEST,"@gre@Coordinates:@whi@ " + player.getLocation().toString());
+			player.playerServerMessage(MessageType.QUEST,"@gre@Creation Date:@whi@ " + DataConversions.dateFormat(creationDate));
 			player.playerServerMessage(MessageType.QUEST,"@gre@Total Time Played:@whi@ " + DataConversions.getDateFromMsec(timePlayed));
 		}
 	}
@@ -589,21 +754,21 @@ public final class RegularPlayer implements CommandTrigger {
 		}
 	}
 
-	public static void queryOnlinePlayers(Player player, String[] args) {
+	public static void queryOnlinePlayers(Player player, String[] args, boolean wantLocations) {
 		if (args.length > 0) {
 			if (args[0].equalsIgnoreCase("all") || args[0].equalsIgnoreCase("yes") || args[0].equals("1") || args[0].equalsIgnoreCase("true")) {
-				queryOnlinePlayers(player, true);
+				queryOnlinePlayers(player, true, wantLocations);
 				return;
 			}
 		}
-		queryOnlinePlayers(player, false);
+		queryOnlinePlayers(player, false, wantLocations);
 	}
 
-	public static void queryOnlinePlayers(Player player, boolean retroClientListsAll) {
+	public static void queryOnlinePlayers(Player player, boolean retroClientListsAll, boolean wantLocations) {
 		int online = 0;
 		ArrayList<Player> players = new ArrayList<>();
 		ArrayList<String> locations = new ArrayList<>();
-		if (player.isMod()) {
+		if (player.isMod() && wantLocations) {
 			for (Player targetPlayer : player.getWorld().getPlayers()) {
 				if (targetPlayer.getGroupID() >= player.getGroupID()) {
 					players.add(targetPlayer);
@@ -626,10 +791,13 @@ public final class RegularPlayer implements CommandTrigger {
 						privacyAllows = true;
 					}
 				}
+				if (targetPlayer.isInvisibleTo(player)) {
+					privacyAllows = false;
+				}
 
-				if (privacyAllows) {
+				if (privacyAllows || player.isMod()) {
 					players.add(targetPlayer);
-					locations.add(""); // No locations for regular players.
+					locations.add(""); // No locations.
 					online++;
 				}
 			}
@@ -815,6 +983,101 @@ public final class RegularPlayer implements CommandTrigger {
 		ActionSender.sendBox(player, "@whi@Server Groups:%" + StringUtils.join(groups, "%"), true);
 	}
 
+	private void queryMinigameLog(Player recipient, String[] args) {
+		Player target;
+		final String noData = "Invalid name or player is not online";
+
+		if (args.length > 0) {
+			target = recipient.getWorld().getPlayer(DataConversions.usernameToHash(args[0]));
+		} else {
+			target = recipient;
+		}
+
+		if (target == null) {
+			recipient.message(noData);
+			return;
+		}
+
+		boolean blockAll = target.getSettings().getPrivacySetting(PlayerSettings.PRIVACY_BLOCK_PRIVATE_MESSAGES, target.isUsingCustomClient())
+			== PlayerSettings.BlockingMode.All.id();
+		boolean blockNonFriend = target.getSettings().getPrivacySetting(PlayerSettings.PRIVACY_BLOCK_PRIVATE_MESSAGES, target.isUsingCustomClient())
+			== PlayerSettings.BlockingMode.NonFriends.id();
+		if (!recipient.getUsername().equals(target.getUsername())) {
+			if ((blockAll ||
+				(blockNonFriend && !target.getSocial().isFriendsWith(recipient.getUsernameHash())) ||
+				target.getSocial().isIgnoring(recipient.getUsernameHash())) &&
+				!recipient.isMod()) {
+				recipient.message(noData);
+				return;
+			}
+		}
+
+		StringBuilder sb = new StringBuilder();
+		sb.append(String.format("@yel@Minigame Log for %s", target.getUsername()));
+		sb.append(" % %@whi@");
+
+		if (target.getWorld().canYield(new Item(ItemId.BAILING_BUCKET.id()))) {
+			int trawlerSuccess = 0, trawlerFailures = 0;
+			if (target.getCache().hasKey("fishing_trawler_success")) {
+				trawlerSuccess = target.getCache().getInt("fishing_trawler_success");
+			}
+			if (target.getCache().hasKey("fishing_trawler_failures")) {
+				trawlerFailures = target.getCache().getInt("fishing_trawler_failures");
+			}
+			sb.append(String.format("Fishing Trawler - successful trips: %d%%", trawlerSuccess));
+			sb.append(String.format("Fishing Trawler - failed trips: %d%%", trawlerFailures));
+			sb.append(" %");
+		}
+
+		if (target.getWorld().canYield(new Item(ItemId.GNOME_BALL.id()))) {
+			int gnomeballGoals = 0;
+			if (target.getCache().hasKey("gnomeball_total_goals")) {
+				gnomeballGoals = target.getCache().getInt("gnomeball_total_goals");
+			}
+			sb.append(String.format("Gnomeball - total goals: %d%%", gnomeballGoals));
+			sb.append(" %");
+		}
+
+		if (target.getWorld().canYield(new Item(ItemId.GIANNE_COOK_BOOK.id()))) {
+			int gnomeRestaurantOrders = 0;
+			if (target.getCache().hasKey("gianne_jobs_completed")) {
+				gnomeRestaurantOrders = target.getCache().getInt("gianne_jobs_completed");
+			}
+			sb.append(String.format("Gnome restaurant - orders delivered: %d%%", gnomeRestaurantOrders));
+			sb.append(" %");
+		}
+
+		if (target.getWorld().canYield(new Item(ItemId.GNOME_COCKTAIL_GUIDE.id()))) {
+			int gnomeBarOrders = 0;
+			if (target.getCache().hasKey("blurberry_jobs_completed")) {
+				gnomeBarOrders = target.getCache().getInt("blurberry_jobs_completed");
+			}
+			sb.append(String.format("Gnome bar - orders delivered: %d%%", gnomeBarOrders));
+			sb.append(" %");
+		}
+
+		if (target.getWorld().canYield(new Item(ItemId.KITTEN.id()))) {
+			int kittensRaised = 0, kittensReleased = 0;
+			if (target.getCache().hasKey("kittens_raised")) {
+				kittensRaised = target.getCache().getInt("kittens_raised");
+			}
+			if (target.getCache().hasKey("kittens_released")) {
+				kittensReleased = target.getCache().getInt("kittens_released");
+			}
+			sb.append(String.format("Kittens - raised to adult cats: %d%%", kittensRaised));
+			sb.append(String.format("Kittens - released to the wild: %d%%", kittensReleased));
+			sb.append(" %");
+		}
+
+		if (target.getConfig().WANT_COMBAT_ODYSSEY) {
+			int odysseyCompletions = CombatOdyssey.getPrestige(target);
+			sb.append(String.format("Odyssey - completions: %d%%", odysseyCompletions));
+			sb.append(" %");
+		}
+
+		ActionSender.sendBox(recipient, sb.toString(), true);
+	}
+
 	private void queryKillList(Player player, String[] args) {
 		if (args.length == 0) {
 			StringBuilder kills = new StringBuilder("NPC Kill List for " + player.getUsername() + " % %");
@@ -964,7 +1227,7 @@ public final class RegularPlayer implements CommandTrigger {
 		if (player.getLocation().onTutorialIsland()) {
 			player.setBusy(false);
 			if (!player.skipTutorial()) {
-				player.message("Couldn't skip tutorial.");
+				player.message("Unable to skip tutorial at this time.");
 			}
 		}
 	}

@@ -164,6 +164,9 @@ public final class Development implements CommandTrigger {
 		if (!MessageFilter.goodwordsContains("hello")) {
 			MessageFilter.addGoodWord("hello");
 		}
+		if (!MessageFilter.goodwordsContains("one")) {
+			MessageFilter.addGoodWord("one");
+		}
 
 		final String[] testStrings = {
 			"Hello",
@@ -188,10 +191,13 @@ public final class Development implements CommandTrigger {
 			"@ran@",
 			"@cow@",
 			"you are a @cow@",
+			"Hi everyone, how is everyone doing?",
+			"one one hell hello one one cow class sucks class hello"
 		};
 		for (String testString : testStrings) {
 			player.playerServerMessage(MessageType.QUEST, "@red@" + testString);
 			player.playerServerMessage(MessageType.QUEST, "@gre@" + MessageFilter.filter(player, testString, "filtertest"));
+			delay();
 		}
 
 	}
@@ -713,6 +719,7 @@ public final class Development implements CommandTrigger {
 		TileValue tv = player.getWorld().getTile(player.getLocation());
 		player.message(messagePrefix + "traversal: " + tv.traversalMask + ", vertVal:" + (tv.verticalWallVal & 0xff) + ", horiz: "
 			+ (tv.horizontalWallVal & 0xff) + ", diagVal: " + (tv.diagWallVal & 0xff) + ", projectile: " + tv.projectileAllowed);
+		player.message("originalProjectileAllowed: " + tv.originalProjectileAllowed);
 	}
 
 	private void regionInformation(Player player, String command, String[] args) {
@@ -985,7 +992,7 @@ class DropTest implements Runnable {
 	@Override
 	public void run() {
 		if (args.length < 1) {
-			player.playerServerMessage(MessageType.QUEST, "::droptest [npc_id]  or  ::droptest [npc_id] [count]");
+			player.playerServerMessage(MessageType.QUEST, "::droptest [npc_id] (count) (ring of wealth)");
 			return;
 		}
 		int npcId = Integer.parseInt(args[0]);
@@ -1017,6 +1024,16 @@ class DropTest implements Runnable {
 					droppedCount.getOrDefault(-4294967296L, 0) + 1);
 			} else {
 				for (Item item : items) {
+					droppedCount.put(packCatalogAmount(item.getCatalogId(), item.getAmount()),
+						droppedCount.getOrDefault(packCatalogAmount(item.getCatalogId(), item.getAmount()), 0) + 1);
+				}
+			}
+		}
+
+		if (player.getConfig().WANT_CUSTOM_SPRITES && npcId == 477) {
+			System.out.println("Doing KBD custom drop test");
+			for (long i = 0; i < count; i++) {
+				for (Item item : Npc.calculateCustomKingBlackDragonDropTest(player, ringOfWealth)) {
 					droppedCount.put(packCatalogAmount(item.getCatalogId(), item.getAmount()),
 						droppedCount.getOrDefault(packCatalogAmount(item.getCatalogId(), item.getAmount()), 0) + 1);
 				}

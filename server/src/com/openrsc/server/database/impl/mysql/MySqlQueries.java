@@ -8,7 +8,7 @@ public class MySqlQueries {
 	public final String NAME;
 
 	public String updateExperience, updateStats, updateMaxStats, updateMaxStat, updateExpCapped, playerExpCapped, playerExp, playerCurExp, playerMaxExp;
-	public final String createPlayer, recentlyRegistered, initMaxStats, initStats, initExp, initExpCapped;
+	public final String copyPassword, createPlayer, recentlyRegistered, initMaxStats, initStats, initExp, initExpCapped;
 	public final String save_AddFriends, save_DeleteFriends, save_AddIgnored, save_DeleteIgnored;
 	public final String playerExists, playerInvItems, playerEquipped, playerBankItems, playerBankPresets;
 	public final String playerFriends, playerIgnored, playerQuests, playerAchievements, playerCache;
@@ -17,7 +17,7 @@ public class MySqlQueries {
 	public final String save_DeleteInv, save_InventoryAdd, save_InventoryRemove, save_DeleteEquip, save_EquipmentAdd, save_EquipmentRemove, save_UpdateBasicInfo;
 	public final String save_DeleteQuests, save_DeleteAchievements, save_DeleteCache, save_AddCache, save_AddQuest, save_AddAchievement;
 	public final String save_Password, save_PreviousPasswords, previousPassword, achievements, rewards, tasks;
-	public final String playerLoginData, fetchLoginIp, fetchLinkedPlayers, playerPendingRecovery, playerChangeRecoveryInfo, playerRecoveryInfo, newPlayerRecoveryInfo, newPlayerChangeRecoveryInfo, playerRecoveryAttempt;
+	public final String playerLoginData, fetchPlayerIps, fetchLinkedPlayers, playerPendingRecovery, playerChangeRecoveryInfo, playerRecoveryInfo, newPlayerRecoveryInfo, newPlayerChangeRecoveryInfo, playerRecoveryAttempt;
 	public final String playerLoginDataByFormerName, userToId, usernameToProperUsername, idToUser, initializeOnlineUsers;
 	public final String npcKillSelectAll, npcKillSelect, npcKillInsert, npcKillUpdate, playerLastRecoveryTryId, cancelRecoveryChangeRequest;
 	public final String contactDetails, newContactDetails, updateContactDetails;
@@ -27,7 +27,7 @@ public class MySqlQueries {
 	public final String clans, clanMembers, newClan, saveClanMember, deleteClan, deleteClanMembers, updateClan, updateClanMember;
 	public final String expiredAuction, collectibleItems, collectItem, newAuction, cancelAuction, auctionCount, playerAuctionCount, auctionItem, auctionItems, auctionSellOut, updateAuction;
 	public final String discordIdToPlayerId, playerIdFromPairToken, pairDiscord, deleteTokenFromCache, watchlist, watchlists, updateWatchlist, deleteWatchlist;
-	public final String save_IronMan, updateMute;
+	public final String save_IronMan, checkMute, updateMute, updatePlayerLocation;
 	public final String selectFriendNameUsername, fixFriendNameCapitalization, insertFormerName, insertLoginAttempt, playerGetFormerNameInvoluntaryChange;
 	private final Server server;
 
@@ -78,8 +78,9 @@ public class MySqlQueries {
 		playerCurExp = playerCurExp + "FROM `" + PREFIX + "curstats` WHERE `playerID`=?";
 		playerMaxExp = playerMaxExp + "FROM `" + PREFIX + "maxstats` WHERE `playerID`=?";
 
+		copyPassword = "UPDATE `" + PREFIX + "players` SET `pass` = ?, `salt` = ? WHERE `username` = ?";
 		createPlayer = "INSERT INTO `" + PREFIX + "players` (`username`, `email`, `pass`, `creation_date`, `creation_ip`) VALUES (?, ?, ?, ?, ?)";
-		recentlyRegistered = "SELECT 1 FROM `" + PREFIX + "players` WHERE `creation_ip`=?" +
+		recentlyRegistered = "SELECT count(*) AS count FROM `" + PREFIX + "players` WHERE `creation_ip`=?" +
 			" AND `creation_date` > ?";
 		initMaxStats = "INSERT INTO `" + PREFIX + "maxstats` (`playerID`) VALUES (?)";
 		initStats = "INSERT INTO `" + PREFIX + "curstats` (`playerID`) VALUES (?)";
@@ -167,8 +168,10 @@ public class MySqlQueries {
 		banPlayer = "UPDATE `" + PREFIX + "players` SET `banned`=?, offences = offences + 1 WHERE `username` LIKE ?";
 		unbanPlayer = "UPDATE `" + PREFIX + "players` SET `banned`= 0 WHERE `username` LIKE ?";
 		initializeOnlineUsers = "UPDATE `" + PREFIX + "players` SET `online`='0' WHERE online='1'";
-		fetchLoginIp = "SELECT `login_ip` FROM `" + PREFIX + "players` WHERE `username` like ?";
-		fetchLinkedPlayers = "SELECT `username`, `group_id` FROM `" + PREFIX + "players` WHERE `login_ip` LIKE ?";
+		fetchPlayerIps = "SELECT `login_ip`, `creation_ip` FROM `" + PREFIX + "players` WHERE `username` like ?";
+		fetchLinkedPlayers = "SELECT p.`id`, p.`username`, p.`banned`, gm.`key` AS `global_mute_key`, gm.`value` AS `global_mute_value`, me.`key` AS `mute_expires_key`, me.`value` AS `mute_expires_value` FROM `"
+			+ PREFIX + "players` p LEFT JOIN `" + PREFIX + "player_cache` gm ON p.`id` = gm.`playerId` AND gm.`key` = 'global_mute' LEFT JOIN `"
+			+ PREFIX + "player_cache` me ON p.`id` = me.`playerId` AND me.`key` = 'mute_expires' WHERE (p.`login_ip` LIKE ? OR p.`login_ip` LIKE ? OR p.`creation_ip` LIKE ? OR p.`creation_ip` LIKE ?)";
 		addNpcSpawn = "INSERT INTO `" + PREFIX + "npclocs`(`id`,`startX`,`minX`,`maxX`,`startY`,`minY`,`maxY`) VALUES(?, ?, ?, ?, ?, ?, ?)";
 		removeNpcSpawn = "DELETE FROM `" + PREFIX + "npclocs` WHERE id=? AND startX=? AND startY=? AND minX=? AND maxX=? AND minY=? AND maxY=?";
 		addObjectSpawn = "INSERT INTO `" + PREFIX + "objects`(`x`, `y`, `id`, `direction`, `type`) VALUES (?, ?, ?, ?, ?)";
@@ -204,7 +207,9 @@ public class MySqlQueries {
 			+ "auctions` WHERE `sold-out`='0'";
 		auctionSellOut = "UPDATE `" + PREFIX + "auctions` SET `amount_left`=?, `sold-out`=?, `buyer_info`=? WHERE `auctionID`=?";
 		updateAuction = "UPDATE `" + PREFIX + "auctions` SET `amount_left`=?, `price` = ?, `buyer_info`=? WHERE `auctionID`= ?";
+		checkMute = "SELECT `value` FROM `" + PREFIX + "player_cache` WHERE `key` = ? AND `playerID` = ?";
 		updateMute = "UPDATE `" + PREFIX + "player_cache` SET `value` = ? WHERE `key` = ? AND `playerID` = ?";
+		updatePlayerLocation = "UPDATE `" + PREFIX + "players` SET `x` = ?, `y` = ? WHERE `id` = ?";
 
 		discordIdToPlayerId = "SELECT `playerID` FROM `" + PREFIX + "player_cache` WHERE `value` = ?";
 		playerIdFromPairToken = "SELECT `playerID` FROM `" + PREFIX + "player_cache` WHERE `value` = ?";

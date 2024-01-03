@@ -1,5 +1,8 @@
 package com.openrsc.server;
 
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.openrsc.server.constants.Constants;
 import com.openrsc.server.content.achievement.AchievementSystem;
 import com.openrsc.server.database.GameDatabase;
@@ -43,10 +46,8 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static org.apache.logging.log4j.util.Unbox.box;
@@ -86,7 +87,7 @@ public class Server implements Runnable {
 	private EventLoopGroup workerGroup;
 	private EventLoopGroup bossGroup;
 
-	private volatile Boolean running = false;
+	private volatile AtomicBoolean running = new AtomicBoolean(false);
 	private boolean restarting = false;
 	private boolean shuttingDown = false;
 
@@ -113,6 +114,9 @@ public class Server implements Runnable {
 	private int privateMessagesSent = 0;
 
 	private volatile int maxItemId;
+
+	private final ListeningExecutorService sqlLoggingThreadPool;
+	private final ListeningExecutorService sqlThreadPool;
 
 	static {
 		Thread.currentThread().setName("InitThread");
@@ -262,6 +266,18 @@ public class Server implements Runnable {
 		achievementSystem = new AchievementSystem(this);
 		playerService = new PlayerService(world, config, database);
 		i18nService = new I18NService(this);
+		ThreadPoolExecutor sqlLoggingExecutor = new ThreadPoolExecutor(
+			1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()
+		);
+		sqlLoggingExecutor.allowCoreThreadTimeOut(false);
+		sqlLoggingExecutor.setThreadFactory(new NamedThreadFactory(getName() + " : SqlLoggingThread", getConfig()));
+		sqlLoggingThreadPool = MoreExecutors.listeningDecorator(sqlLoggingExecutor);
+		ThreadPoolExecutor sqlExecutor = new ThreadPoolExecutor(
+			1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()
+		);
+		sqlExecutor.allowCoreThreadTimeOut(false);
+		sqlExecutor.setThreadFactory(new NamedThreadFactory(getName() + " : SqlThread", getConfig()));
+		sqlThreadPool = MoreExecutors.listeningDecorator(sqlExecutor);
 		MessageFilter.loadGoodAndBadWordsFromDisk();
 
 		maxItemId = 0;
@@ -430,7 +446,7 @@ public class Server implements Runnable {
 				}
 
 				lastTickTimestamp = serverStartedTime = System.nanoTime();
-				running = true;
+				running.set(true);
 			} catch (final Throwable t) {
 				LOGGER.catching(t);
 				SystemUtil.exit(1);
@@ -501,7 +517,7 @@ public class Server implements Runnable {
 					serversList.remove(this.getName());
 				}
 
-				running = false;
+				running.set(false);
 
 				LOGGER.info("Server unloaded");
 			} catch (final Throwable t) {
@@ -533,6 +549,7 @@ public class Server implements Runnable {
 							resetBenchmarkDurations();
 							incrementLastEventsDuration(getGameEventHandler().processNonPlayerEvents());
 							incrementLastWorldUpdateDuration(getGameUpdater().updateWorld());
+							incrementLastProcessNpcsDuration(getGameUpdater().processNpcs());
 							if (config.SHUFFLE_PID_ORDER) {
 								for (int curPid : PidShuffler.pidProcessingOrder) {
 									Player player = getWorld().getPlayer(curPid);
@@ -551,7 +568,6 @@ public class Server implements Runnable {
 
 							incrementLastExecuteWalkToActionsDuration(getGameUpdater().executePidlessCatching());
 							incrementLastProcessMessageQueuesDuration(getWorld().processGlobalMessageQueue());
-							incrementLastProcessNpcsDuration(getGameUpdater().processNpcs());
 							for (final Player player : getWorld().getPlayers()) {
 								player.processLogout();
 							}
@@ -574,6 +590,9 @@ public class Server implements Runnable {
 
 					// Set us to be in the next tick.
 					advanceTicks(1);
+
+					// allow more players to login now that a tick has been processed
+					getWorld().getServer().getLoginExecutor().resetRequestsThisTick();
 
 					// Clear out the outgoing and incoming packet processing time frames
 					incomingTimePerPacketOpcode.clear();
@@ -767,6 +786,22 @@ public class Server implements Runnable {
 		return discordService;
 	}
 
+	public ListenableFuture<?> submitSqlLogging(Runnable runnable) {
+		return sqlLoggingThreadPool.submit(runnable);
+	}
+
+	public <V> ListenableFuture<V> submitSqlLogging(Callable<V> callable) {
+		return sqlLoggingThreadPool.submit(callable);
+	}
+
+	public ListenableFuture<?> submitSql(Runnable runnable) {
+		return sqlThreadPool.submit(runnable);
+	}
+
+	public <V> ListenableFuture<V> submitSql(Callable<V> callable) {
+		return sqlThreadPool.submit(callable);
+	}
+
 	public final LoginExecutor getLoginExecutor() {
 		return loginExecutor;
 	}
@@ -844,7 +879,7 @@ public class Server implements Runnable {
 	}
 
 	public final boolean isRunning() {
-		return running;
+		return running.get();
 	}
 
 	public final Constants getConstants() {

@@ -7,6 +7,7 @@ import com.openrsc.server.database.GameDatabaseException;
 import com.openrsc.server.event.DelayedEvent;
 import com.openrsc.server.event.custom.NpcLootEvent;
 import com.openrsc.server.event.rsc.DuplicationStrategy;
+import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.event.rsc.ImmediateEvent;
 import com.openrsc.server.external.NPCDef;
 import com.openrsc.server.external.NPCLoc;
@@ -18,6 +19,7 @@ import com.openrsc.server.model.entity.KillType;
 import com.openrsc.server.model.entity.Mob;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.world.World;
+import com.openrsc.server.model.world.region.TileValue;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.plugins.triggers.KillNpcTrigger;
 import com.openrsc.server.plugins.triggers.TalkNpcTrigger;
@@ -53,7 +55,10 @@ public class Npc extends Mob {
 		NpcId.CHRONOZON.id(),
 		NpcId.SIR_MORDRED.id(),
 		NpcId.LUCIEN_EDGE.id(),
-		NpcId.BLACK_KNIGHT_TITAN.id()
+		NpcId.BLACK_KNIGHT_TITAN.id(),
+		NpcId.PETER_SKIPPIN.id(),
+		NpcId.SPOOKIE.id(),
+		NpcId.SCARIE.id()
 	};
 
 	/**
@@ -78,10 +83,6 @@ public class Npc extends Mob {
 	 */
 	private Map<UUID, Pair<Integer, Long>> rangeDamagers = new HashMap<UUID, Pair<Integer,Long>>();
 
-	/**
-	 * The player object that is actively talking to us.
-	 */
-	private Player playerBeingTalkedTo;
 
 	/**
 	 * Tracking for timing out the multi menu if another player attempts to talk to an NPC locked in dialog
@@ -92,6 +93,10 @@ public class Npc extends Mob {
 	 * Another player wants to access the NPC, and can't access it right now.
 	 */
 	private boolean playerWantsNpc = false;
+
+	private NpcInteraction npcInteraction = null;
+
+	private Player interactingPlayer = null;
 
 
 	public Npc(final World world, final int id, final int x, final int y) {
@@ -336,6 +341,7 @@ public class Npc extends Mob {
 			owner.playerServerMessage(MessageType.QUEST, "@dcy@Your defense cape blocked " + totalBlockedDamage + " damage!");
 		}
 
+		owner.setLastNpcKilledId(this.getID());
 
 		Pair<UUID, Long> ownerInfo = handleXpDistribution(mob);
 		owner = getWorld().getPlayerByUUID(ownerInfo.getLeft());
@@ -352,7 +358,6 @@ public class Npc extends Mob {
 		ActionSender.sendSound(owner, "victory");
 		owner.getWorld().getServer().getAchievementSystem().checkAndIncSlayNpcTasks(owner, this);
 		owner.incNpcKills();
-		ActionSender.sendNpcKills(owner);
 
 		//If NPC kill messages are enabled and the filter is enabled and the NPC is in the list of NPCs, display the messages,
 		//otherwise we will display the message for all NPCs if NPC kill messages are enabled if there is no filter.
@@ -360,6 +365,8 @@ public class Npc extends Mob {
 		if (getConfig().NPC_KILL_LOGGING) {
 			logNpcKill(owner);
 		}
+
+		ActionSender.sendNpcKills(owner);
 
 		/** Item Drops **/
 		dropItems(owner);
@@ -373,7 +380,7 @@ public class Npc extends Mob {
 	}
 
 	private void logNpcKill(Player owner) {
-		if (owner.getCache().hasKey("show_npc_kc") && owner.getCache().getBoolean("show_npc_kc")
+		if (owner.getCache().hasKey("npc_kc_messages") && (owner.getCache().getBoolean("npc_kc_messages"))
 			&& getConfig().NPC_KILL_MESSAGES) {
 			owner.addNpcKill(this, !getConfig().NPC_KILL_MESSAGES_FILTER
 				|| getConfig().NPC_KILL_MESSAGES_NPCs.contains(this.getDef().getName()));
@@ -498,19 +505,31 @@ public class Npc extends Mob {
 					GroundItem groundItem = new GroundItem(getWorld(), item.getCatalogId(), getX(), getY(), item.getAmount(), owner);
 					groundItem.setAttribute("npcdrop", true);
 					getWorld().registerItem(groundItem);
-					try {
-
-						getWorld().getServer().getDatabase().addDropLog(
-							owner, this, item.getCatalogId(), item.getAmount());
-					} catch (final GameDatabaseException ex) {
-						LOGGER.catching(ex);
-					}
+					getWorld().getServer().submitSqlLogging(() -> {
+						try {
+							getWorld().getServer().getDatabase().addDropLog(
+								owner, this, item.getCatalogId(), item.getAmount());
+						} catch (final GameDatabaseException ex) {
+							LOGGER.catching(ex);
+						}
+					});
 					if (item.getCatalogId() == ItemId.DRAGON_2_HANDED_SWORD.id()) {
 						owner.message("Congratulations! You have received a dragon 2-Handed Sword!");
 					}
 				}
 			}
 		}
+	}
+
+	public static ArrayList<Item> calculateCustomKingBlackDragonDropTest(Player owner, boolean ringOfWealth) {
+		ArrayList<Item> returnMe = new ArrayList<Item>();
+		if (owner.getWorld().getNpcDrops().getKbdTableCustom().rollAccess(NpcId.KING_BLACK_DRAGON.id(), ringOfWealth)) {
+			ArrayList<Item> kbdSpecificLoot = owner.getWorld().getNpcDrops().getKbdTableCustom().rollItem(ringOfWealth, owner);
+			if (kbdSpecificLoot != null) {
+				return kbdSpecificLoot;
+			}
+		}
+		return returnMe;
 	}
 
 	private int getBonesDrop() {
@@ -548,12 +567,14 @@ public class Npc extends Mob {
 			amount += Formulae.getSplendorBoost(amount);
 			owner.message("Your ring of splendor shines brightly!");
 		}
-
-		try {
-			getWorld().getServer().getDatabase().addDropLog(owner, this, dropID, amount);
-		} catch (final GameDatabaseException ex) {
-			LOGGER.catching(ex);
-		}
+		final int finalAmount = amount;
+		getWorld().getServer().submitSqlLogging(() -> {
+			try {
+				getWorld().getServer().getDatabase().addDropLog(owner, this, dropID, finalAmount);
+			} catch (final GameDatabaseException ex) {
+				LOGGER.catching(ex);
+			}
+		});
 
 		if (!DropTable.handleRingOfAvarice(owner, new Item(dropID, amount))) {
 			GroundItem groundItem = new GroundItem(owner.getWorld(), dropID, getX(), getY(), amount, owner);
@@ -565,11 +586,14 @@ public class Npc extends Mob {
 	private void dropStandardItem(Item item, Player owner) {
 		int dropID = item.getCatalogId();
 		int amount = item.getAmount();
-		try {
-			getWorld().getServer().getDatabase().addDropLog(owner, this, dropID, amount);
-		} catch (final GameDatabaseException ex) {
-			LOGGER.catching(ex);
-		}
+		final int finalAmount = amount;
+		getWorld().getServer().submitSqlLogging(() -> {
+			try {
+				getWorld().getServer().getDatabase().addDropLog(owner, this, dropID, finalAmount);
+			} catch (final GameDatabaseException ex) {
+				LOGGER.catching(ex);
+			}
+		});
 		GroundItem groundItem;
 
 		// We need to drop multiple counts of "1" item if it's not a stack
@@ -738,6 +762,10 @@ public class Npc extends Mob {
 		getWorld().getServer().getGameEventHandler().add(new ImmediateEvent(getWorld(), "Init Talk Script") {
 			@Override
 			public void action() {
+				NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+				NpcInteraction.setInteractions(npc, player, interaction);
+				npc.setMultiTimeout(-1);
+				npc.setPlayerWantsNpc(false);
 				getWorld().getServer().getPluginHandler().handlePlugin(TalkNpcTrigger.class, player, new Object[]{player, npc});
 			}
 		});
@@ -747,8 +775,8 @@ public class Npc extends Mob {
 		this.multiTimeout = currentTimeMillis;
 	}
 
-	public void setPlayerBeingTalkedTo(Player player) {
-		this.playerBeingTalkedTo = player;
+	public void setInteractingPlayer(Player player) {
+		this.interactingPlayer = player;
 	}
 
 	public void setPlayerWantsNpc(boolean wantsNpc) {
@@ -758,16 +786,25 @@ public class Npc extends Mob {
 	public void remove() {
 		this.killed = true;
 		double respawnMult = getConfig().NPC_RESPAWN_MULTIPLIER;
-		/*
-		In RSC, combat events don't necessarily end instantly after the mob dies.
-		TODO: Review this further. Right now we clear the combat event immediately, which isn't authentic.
-		*/
-		resetCombatEvent();
+		Npc n = this;
+		//In RSC, the player only gets updated about combat ending the tick after the kill.
+		//Causes issues with retro clients.
+		//TODO: Come up with a solution that works with retro clients? May not be authentic for older clients anyway.
+		if(getConfig().BASED_CONFIG_DATA > 18) {
+			getWorld().getServer().getGameEventHandler().add(new GameTickEvent(getWorld(), null, 0, "Remove Combat Event", DuplicationStrategy.ONE_PER_MOB) {
+				@Override
+				public void run() {
+					n.resetCombatEvent();
+					running = false;
+				}
+			});
+		} else {
+			n.resetCombatEvent();
+		}
 		this.setLastOpponent(null);
 		if (!isRemoved() && shouldRespawn && def.respawnTime() > 0) {
 			super.remove();
 			startRespawning();
-			Npc n = this;
 			setRespawning(true);
 			getWorld().getServer().getGameEventHandler().add(new DelayedEvent(getWorld(), null, (long) (def.respawnTime() * respawnMult * 1000), "Respawn NPC", DuplicationStrategy.ONE_PER_MOB) {
 				public void run() {
@@ -816,9 +853,149 @@ public class Npc extends Mob {
 		return "[NPC:" + getIndex() + ":" + getDef().getName() + " @ (" + getX() + ", " + getY() + ")]";
 	}
 
+	/**
+	 * Gets the NPC to move to an adjacent tile, with a priority system.
+	 */
+	public void moveToAdjacentTile() {
+		ArrayList<Point> possiblePoints = new ArrayList<>();
+		//Walk priority seems to be positives first? This is different from the client pathfinding.
+		//TODO: More investigation on the direction an NPC would move towards in this case.
+		for (int x = 1; x >= -1; x = x - 2) {
+			possiblePoints.add(new Point(getX() + x, getY()));
+		}
+		for (int y = 1; y >= -1; y = y - 2) {
+			possiblePoints.add(new Point(getX(), getY() + y));
+		}
+
+		possiblePoints.add(new Point(getX() + 1, getY() + 1));
+		possiblePoints.add(new Point(getX() + 1, getY() - 1));
+		possiblePoints.add(new Point(getX() - 1, getY() + 1));
+		possiblePoints.add(new Point(getX() - 1, getY() - 1));
+
+		for (Point possiblePoint : possiblePoints) {
+			if (possiblePoint.inBounds(getLoc().minX(), getLoc().minY(), getLoc().maxX(), getLoc().maxY())
+				&& canWalk(getWorld(), possiblePoint.getX(), possiblePoint.getY())) {
+				walk(possiblePoint.getX(), possiblePoint.getY());
+				break;
+			}
+		}
+	}
+
 	public void updatePosition() {
-		getNpcBehavior().tick();
+		NpcInteraction interaction = getNpcInteraction();
+		Player player = getInteractingPlayer();
+		if (player != null && player.getInteractingNpc() == this) {
+			switch (interaction) {
+				//Interactions that should reset the NPC's path.
+				case NPC_TALK_TO:
+				case NPC_USE_ITEM:
+					resetPath();
+					resetRange();
+				default:
+					break;
+			}
+
+			switch (interaction) {
+				//Other interaction specific handling.
+				case NPC_TALK_TO:
+					// NPCs on the same tile as you will walk somewhere else.
+					if (player.getLocation().equals(getLocation())) {
+						moveToAdjacentTile();
+					}
+				case NPC_USE_ITEM:
+				case NPC_GNOMEBALL_OP:
+					if (finishedPath() && !inCombat()) face(player);
+					break;
+				case NPC_OP:
+				default:
+					break;
+			}
+		} else {
+			getNpcBehavior().tick();
+		}
 		super.updatePosition();
+	}
+
+	private boolean canWalk(World world, int x, int y) {
+		int myX = getX();
+		int myY = getY();
+		int newX = x;
+		int newY = y;
+		boolean myXBlocked = false, myYBlocked = false, newXBlocked = false, newYBlocked = false;
+		if (myX > x) {
+			myXBlocked = checkBlocking(world,myX - 1, myY, 8); // Check right
+			// tiles
+			newX = myX - 1;
+		} else if (myX < x) {
+			myXBlocked = checkBlocking(world,myX + 1, myY, 2); // Check left
+			// tiles
+			newX = myX + 1;
+		}
+		if (myY > y) {
+			myYBlocked = checkBlocking(world, myX, myY - 1, 4); // Check top tiles
+			newY = myY - 1;
+		} else if (myY < y) {
+			myYBlocked = checkBlocking(world, myX, myY + 1, 1); // Check bottom
+			// tiles
+			newY = myY + 1;
+		}
+
+		if ((myXBlocked && myYBlocked) || (myXBlocked && myY == newY) || (myYBlocked && myX == newX)) {
+			return false;
+		}
+
+		if (newX > myX) {
+			newXBlocked = checkBlocking(world, newX, newY, 2);
+		} else if (newX < myX) {
+			newXBlocked = checkBlocking(world, newX, newY, 8);
+		}
+
+		if (newY > myY) {
+			newYBlocked = checkBlocking(world, newX, newY, 1);
+		} else if (newY < myY) {
+			newYBlocked = checkBlocking(world, newX, newY, 4);
+		}
+		if ((newXBlocked && newYBlocked) || (newXBlocked && myY == newY) || (myYBlocked && myX == newX)) {
+			return false;
+		}
+		if ((myXBlocked && newXBlocked) || (myYBlocked && newYBlocked)) {
+			return false;
+		}
+		return true;
+	}
+
+	private boolean checkBlocking(World world, int x, int y, int bit) {
+		TileValue t = world.getTile(x, y);
+		Point point = new Point(x, y);
+		for (Npc n : getViewArea().getNpcsInView()) {
+			if (n.getLocation().equals(point)) {
+				return true;
+			}
+		}
+		for (Player areaPlayer : getViewArea().getPlayersInView()) {
+			if (areaPlayer.getLocation().equals(point)) {
+				return true;
+			}
+		}
+		return isBlocking(t.traversalMask, (byte) bit);
+	}
+
+	private boolean isBlocking(int objectValue, byte bit) {
+		if ((objectValue & bit) != 0) { // There is a wall in the way
+			return true;
+		}
+		if ((objectValue & 16) != 0) { // There is a diagonal wall here:
+			// \
+			return true;
+		}
+		if ((objectValue & 32) != 0) { // There is a diagonal wall here:
+			// /
+			return true;
+		}
+		if ((objectValue & 64) != 0) { // This tile is unwalkable
+			return true;
+		}
+		return false;
 	}
 
 	public void produceUnderAttack() {
@@ -910,12 +1087,11 @@ public class Npc extends Mob {
 		return multiTimeout;
 	}
 
-	public Player getPlayerBeingTalkedTo() {
-		return playerBeingTalkedTo;
-	}
-
 	public boolean getPlayerWantsNpc() {
 		return playerWantsNpc;
 	}
 
+	public Player getInteractingPlayer() {
+		return interactingPlayer;
+	}
 }

@@ -1,4 +1,6 @@
-image: openjdk:8-jdk
+image: eclipse-temurin:8-jdk
+
+# Packages installation before running script
 before_script:
 - apt-get --quiet update --yes
 - apt-get --quiet install --yes ant
@@ -8,6 +10,6 @@ stages:
 build:
   stage: build
   script:
-  - cd server && ant compile_core && ant compile_plugins && cd ../
-  - cd Client_Base && ant compile && cd ../
-  - cd PC_Launcher && ant compile && cd ../
+    - cd server && ant compile_core && ant compile_plugins && cd ../
+    - cd Client_Base && ant compile && cd ../
+    - cd PC_Launcher && ant compile && cd ../

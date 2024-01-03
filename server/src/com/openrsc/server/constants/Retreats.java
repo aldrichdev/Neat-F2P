@@ -35,7 +35,7 @@ public class Retreats {
 			put(NpcId.MONK.id(), 5);
 			put(NpcId.GIANT_BAT.id(), 5);
 			put(NpcId.DEATH_WING.id(), 5);
-			put(NpcId.IMP.id(), 4);
+			put(NpcId.IMP.id(), 5);
 			put(NpcId.PLATFORM_FISHERMAN_GOLDEN.id(), 3);
 			put(NpcId.PLATFORM_FISHERMAN_GRAY.id(), 3);
 			put(NpcId.PLATFORM_FISHERMAN_PURPLE.id(), 3);
@@ -72,15 +72,25 @@ public class Retreats {
 			put(NpcId.SHADOW_SPIDER.id(), 1);
 			put(NpcId.POISON_SPIDER.id(), 1);
 			put(NpcId.ICE_SPIDER.id(), 1);
+			put(NpcId.BANDIT_PACIFIST.id(), 1);
+			put(NpcId.NOTERAZZO.id(), 1);
 			put(NpcId.DONNY_THE_LAD.id(), 1);
 			put(NpcId.SPEEDY_KEITH.id(), 1);
 			put(NpcId.BLACK_HEATHER.id(), 1);
 			put(NpcId.WYSON_THE_GARDENER.id(), 1);
 			put(NpcId.STRAVEN.id(), 1);
 			put(NpcId.JONNY_THE_BEARD.id(), 1);
+			put(NpcId.WEAPONSMASTER.id(), 1);
 			put(NpcId.KALRAG.id(), 1);
 			put(NpcId.PKBOT.id(), Constants.PKBOT_MEDIUM_RETREATS);
 		}};
+
+		if (constants.getServer().getConfig().BASED_CONFIG_DATA == 46) {
+			//Config46 is the only known one with Shapeshifter forms with retreat data. By the end of RSC, they did not retreat
+			//(see /ShaunDreclin/06-08-2018 21.46.28 finish witches house AND grand tree quest AND barcrawl)
+			npcData.put(NpcId.SHAPESHIFTER_BEAR.id(), 5);
+			npcData.put(NpcId.SHAPESHIFTER_SPIDER.id(), 1);
+		}
 	}
 
 }

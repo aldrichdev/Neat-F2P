@@ -17,6 +17,7 @@ import com.openrsc.server.database.utils.SQLUtils;
 import com.openrsc.server.external.GameObjectLoc;
 import com.openrsc.server.external.ItemLoc;
 import com.openrsc.server.external.NPCLoc;
+import com.openrsc.server.model.Point;
 import com.openrsc.server.model.container.BankPreset;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.container.ItemStatus;
@@ -347,6 +348,19 @@ public class MySqlGameDatabase extends JDBCDatabase {
 	}
 
 	@Override
+	public void queryCopyPassword(final String username, final String hash, final String salt) throws GameDatabaseException {
+		try (final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().copyPassword)) {
+			statement.setString(1, hash);
+			statement.setString(2, salt);
+			statement.setString(3, username);
+
+			statement.executeUpdate();
+		} catch (final SQLException ex) {
+			throw new GameDatabaseException(MySqlGameDatabase.class, ex.getMessage());
+		}
+	}
+
+	@Override
 	public PlayerLoginData queryPlayerLoginData(final String username) throws GameDatabaseException {
 		final PlayerLoginData loginData = new PlayerLoginData();
 		boolean hasData = true;
@@ -441,7 +455,7 @@ public class MySqlGameDatabase extends JDBCDatabase {
 			statement.setLong(2, (System.currentTimeMillis() / 1000) - ((long)minutes * 60L));
 
 			try (final ResultSet result = statement.executeQuery()) {
-				if (result.next()) {
+				if (result.next() && result.getInt("count") >= server.getConfig().REGISTRATION_LIMIT_COUNT) {
 					recentlyRegistered = true;
 				}
 			}
@@ -516,6 +530,7 @@ public class MySqlGameDatabase extends JDBCDatabase {
 						playerData.combatLevel = result.getInt("combat");
 						playerData.totalLevel = result.getInt("skill_total");
 						playerData.loginDate = result.getLong("login_date");
+						playerData.creationDate = result.getLong("creation_date");
 						playerData.loginIp = result.getString("login_ip");
 						playerData.xLocation = result.getInt("x");
 						playerData.yLocation = result.getInt("y");
@@ -2249,37 +2264,54 @@ public class MySqlGameDatabase extends JDBCDatabase {
 	}
 
 	@Override
-	public String queryPlayerLoginIp(final String username) throws GameDatabaseException {
-		String ip = null;
-		try (final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().fetchLoginIp)) {
+	public PlayerIps queryPlayerIps(final String username) throws GameDatabaseException {
+		PlayerIps playerIps = null;
+		try (final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().fetchPlayerIps)) {
 			statement.setString(1, SQLUtils.escapeLikeParameter(username));
 
 			try (final ResultSet result = statement.executeQuery()) {
 				if (result.next()) {
-					ip = result.getString("login_ip");
+					playerIps = new PlayerIps();
+					playerIps.loginIp = result.getString("login_ip");
+					playerIps.creationIp = result.getString("creation_ip");
 				}
 			}
 		} catch (final SQLException ex) {
 			// Convert SQLException to a general usage exception
 			throw new GameDatabaseException(MySqlGameDatabase.class, ex.getMessage());
 		}
-		return ip;
+		return playerIps;
 	}
 
 	@Override
-	public LinkedPlayer[] queryLinkedPlayers(final String ip) throws GameDatabaseException {
-		final ArrayList<LinkedPlayer> list = new ArrayList<>();
+	public LinkedPlayer[] queryLinkedPlayers(final String loginIp, String creationIp) throws GameDatabaseException {
+		final ArrayList<LinkedPlayer> list = new ArrayList<LinkedPlayer>();
 		try (final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().fetchLinkedPlayers)) {
-			statement.setString(1, ip);
+			statement.setString(1, "%" + loginIp + "%");
+			statement.setString(2, "%" + creationIp + "%");
+			statement.setString(3, "%" + loginIp + "%");
+			statement.setString(4, "%" + creationIp + "%");
 
 			try (final ResultSet result = statement.executeQuery()) {
 				while (result.next()) {
-					final int group = result.getInt("group_id");
+					final int id = result.getInt("id");
 					final String user = result.getString("username");
+					final long banned = result.getLong("banned");
+					final String globalMuteKey = result.getString("global_mute_key");
+					final long globalMuteValue = result.getLong("global_mute_value");
+					final String muteExpiresKey = result.getString("mute_expires_key");
+					final long muteExpiresValue = result.getLong("mute_expires_value");
 
-					final LinkedPlayer linkedPlayer = new LinkedPlayer();
-					linkedPlayer.groupId = group;
+					LinkedPlayer linkedPlayer = new LinkedPlayer();
+					linkedPlayer.id = id;
 					linkedPlayer.username = user;
+					linkedPlayer.banned = banned;
+					if (globalMuteKey != null) {
+						linkedPlayer.global_mute = globalMuteValue;
+					}
+					if (muteExpiresKey != null) {
+						linkedPlayer.mute_expires = muteExpiresValue;
+					}
 
 					list.add(linkedPlayer);
 				}
@@ -2518,16 +2550,73 @@ public class MySqlGameDatabase extends JDBCDatabase {
 		return Item.ITEM_ID_UNASSIGNED;
 	}
 
+	public long queryCheckPlayerMute(int playerId, int muteType) {
+		final int REGULAR_MUTE = 0;
+		long muteExpiration = Integer.MIN_VALUE;
+		try (final PreparedStatement statement = getConnection().prepareStatement(mySqlQueries.checkMute)) {
+			if (muteType == REGULAR_MUTE) {
+				statement.setString(1, "mute_expires");
+			} else {
+				statement.setString(1, "global_mute");
+			}
+			statement.setInt(2, playerId);
+
+			try (final ResultSet resultSet = statement.executeQuery()) {
+				if (resultSet.next()) {
+					muteExpiration = resultSet.getLong(1);
+				}
+			}
+		} catch (final SQLException ex) {
+			throw new GameDatabaseException(MySqlGameDatabase.class, ex.getMessage());
+		}
+		return muteExpiration;
+	}
+
+	@Override
+	public void queryInsertPlayerMute(final int playerId, final long time, final int muteType) throws GameDatabaseException {
+		final int REGULAR_MUTE = 0;
+		try (
+			final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().save_AddCache)) {
+			statement.setInt(1, playerId);
+			statement.setInt(2, 3); // Type
+			if (muteType == REGULAR_MUTE) { // Key
+				statement.setString(3, "mute_expires");
+			} else {
+				statement.setString(3, "global_mute");
+			}
+			statement.setLong(4, time); // Value
+			statement.executeUpdate();
+
+		} catch (final SQLException ex) {
+			throw new GameDatabaseException(MySqlGameDatabase.class, ex.getMessage());
+		}
+	}
+
 	@Override
 	public void queryUpdatePlayerMute(int playerId, long time, int muteType) throws GameDatabaseException {
+		final int REGULAR_MUTE = 0;
 		try (
 			final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().updateMute)) {
 			statement.setLong(1, time);
-			if (muteType == 0) {
+			if (muteType == REGULAR_MUTE) {
 				statement.setString(2, "mute_expires");
 			} else {
 				statement.setString(2, "global_mute");
 			}
+			statement.setInt(3, playerId);
+
+			statement.executeUpdate();
+		} catch (final SQLException ex) {
+			throw new GameDatabaseException(MySqlGameDatabase.class, ex.getMessage());
+		}
+	}
+
+	@Override
+	public void queryUpdatePlayerLocation(final int playerId, final Point newLocation) throws GameDatabaseException {
+		try (
+			final PreparedStatement statement = getConnection().prepareStatement(getMySqlQueries().updatePlayerLocation)) {
+			statement.setInt(1, newLocation.getX());
+			statement.setInt(2, newLocation.getY());
 			statement.setInt(3, playerId);
 
 			statement.executeUpdate();

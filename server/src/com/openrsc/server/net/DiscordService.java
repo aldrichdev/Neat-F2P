@@ -12,6 +12,7 @@ import com.openrsc.server.external.SkillDef;
 import com.openrsc.server.model.entity.player.Group;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.ActionSender;
+import com.openrsc.server.util.MessageFilterType;
 import com.openrsc.server.util.ServerAwareThreadFactory;
 import com.openrsc.server.util.rsc.MessageType;
 import com.vdurmont.emoji.EmojiParser;
@@ -30,7 +31,6 @@ import org.gitlab4j.api.GitLabApi;
 import org.gitlab4j.api.GitLabApiException;
 
 import javax.security.auth.login.LoginException;
-import java.awt.*;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URLConnection;
@@ -51,6 +51,7 @@ public class DiscordService implements Runnable{
 	private ScheduledExecutorService scheduledExecutor;
 
 	private final Queue<String> staffCommandRequests = new ConcurrentLinkedQueue<String>();
+	private final Queue<String> generalLogs = new ConcurrentLinkedQueue<String>();
 	private final Queue<String> auctionRequests = new ConcurrentLinkedQueue<String>();
 	private final Queue<String> monitoringRequests = new ConcurrentLinkedQueue<String>();
 	private final Queue<DiscordEmbed> reportAbuseRequests = new ConcurrentLinkedQueue<DiscordEmbed>();
@@ -465,6 +466,26 @@ public class DiscordService implements Runnable{
 		}
 	}
 
+	public void playerLog(final Player player, final String text) {
+		DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+		Calendar calendar = Calendar.getInstance();
+		final String playerMessage = String.format("%s %s %s: %s %s: %s",
+				"[" + dateFormat.format(calendar.getTime()) +  "]",
+				"[" + player.getWorld().getServer().getConfig().SERVER_NAME + "]",
+				player.getUsername(),
+				"[X: " + player.getX() + ", Y: " + player.getY() + "]",
+				"[Client Version: " + player.getClientVersion() + "]",
+				text
+		);
+		generalLog(playerMessage);
+	}
+
+	private void generalLog(final String message) {
+		if (getServer().getConfig().WANT_DISCORD_GENERAL_LOGGING) {
+			generalLogs.add(message);
+		}
+	}
+
 	public void monitoringSendServerBehind(final String message, final boolean showEventData) {
 		monitoringSendToDiscord(message + (showEventData ? "\r\n" + getServer().getGameEventHandler().buildProfilingDebugInformation(false) : ""));
 	}
@@ -625,62 +646,61 @@ public class DiscordService implements Runnable{
 
 	@Override
 	public void run()  {
-		synchronized(running) {
-			String message = null;
-			DiscordEmbed embed = null;
+		String message = null;
+		DiscordEmbed embed = null;
 
-			try {
-				while ((message = auctionRequests.poll()) != null) {
-					sendToDiscord(getServer().getConfig().DISCORD_AUCTION_WEBHOOK_URL, message);
-				}
-				while ((message = staffCommandRequests.poll()) != null) {
-					sendToDiscord(getServer().getConfig().DISCORD_STAFF_COMMANDS_WEBHOOK_URL, message);
-				}
-				while ((message = monitoringRequests.poll()) != null) {
-					sendToDiscord(getServer().getConfig().DISCORD_MONITORING_WEBHOOK_URL, message);
-				}
-				while ((embed = reportAbuseRequests.poll()) != null) {
-					sendEmbedToDiscord(getServer().getConfig().DISCORD_REPORT_ABUSE_WEBHOOK_URL, embed);
-				}
-				while ((embed = naughtyWordsRequests.poll()) != null) {
-					sendEmbedToDiscord(getServer().getConfig().DISCORD_NAUGHTY_WORDS_WEBHOOK_URL, embed);
-				}
-			} catch (final Exception e) {
-				LOGGER.catching(e);
+		try {
+			while ((message = auctionRequests.poll()) != null) {
+				sendToDiscord(getServer().getConfig().DISCORD_AUCTION_WEBHOOK_URL, message);
 			}
+			while ((message = staffCommandRequests.poll()) != null) {
+				sendToDiscord(getServer().getConfig().DISCORD_STAFF_COMMANDS_WEBHOOK_URL, message);
+			}
+			while ((message = monitoringRequests.poll()) != null) {
+				sendToDiscord(getServer().getConfig().DISCORD_MONITORING_WEBHOOK_URL, message);
+			}
+			while ((embed = reportAbuseRequests.poll()) != null) {
+				sendEmbedToDiscord(getServer().getConfig().DISCORD_REPORT_ABUSE_WEBHOOK_URL, embed);
+			}
+			while ((embed = naughtyWordsRequests.poll()) != null) {
+				sendEmbedToDiscord(getServer().getConfig().DISCORD_NAUGHTY_WORDS_WEBHOOK_URL, embed);
+			}
+			while ((message = generalLogs.poll()) != null) {
+				sendToDiscord(getServer().getConfig().DISCORD_GENERAL_WEBHOOK_URL, message);
+			}
+		} catch (final Exception e) {
+			LOGGER.catching(e);
 		}
+
 	}
 
 	public void start() {
-		synchronized(running) {
-			scheduledExecutor = Executors.newSingleThreadScheduledExecutor(
-					new ServerAwareThreadFactory(
-							server.getName()+" : DiscordServiceThread",
-							server.getConfig()
-					)
-			);
-			scheduledExecutor.scheduleAtFixedRate(this, 0, 50, TimeUnit.MILLISECONDS);
-			running = true;
-		}
+		scheduledExecutor = Executors.newSingleThreadScheduledExecutor(
+				new ServerAwareThreadFactory(
+						server.getName()+" : DiscordServiceThread",
+						server.getConfig()
+				)
+		);
+		scheduledExecutor.scheduleAtFixedRate(this, 0, 50, TimeUnit.MILLISECONDS);
+		running = true;
 	}
 
 	public void stop() {
-		synchronized(running) {
-			scheduledExecutor.shutdown();
-			try {
-				final boolean terminationResult = scheduledExecutor.awaitTermination(1, TimeUnit.MINUTES);
-				if (!terminationResult) {
-					LOGGER.error("DiscordService thread termination failed");
-					List<Runnable> skippedTasks = scheduledExecutor.shutdownNow();
-					LOGGER.error("{} task(s) never commenced execution", skippedTasks.size());
-				}
-			} catch (final InterruptedException e) {
-				LOGGER.catching(e);
+		scheduledExecutor.shutdown();
+		try {
+			final boolean terminationResult = scheduledExecutor.awaitTermination(1, TimeUnit.MINUTES);
+			if (!terminationResult) {
+				LOGGER.error("DiscordService thread termination failed");
+				List<Runnable> skippedTasks = scheduledExecutor.shutdownNow();
+				LOGGER.error("{} task(s) never commenced execution", skippedTasks.size());
 			}
-			clearRequests();
-			scheduledExecutor = null;
-			running = false;
+		} catch (final InterruptedException e) {
+			LOGGER.catching(e);
 		}
+		running = false;
+		run();
+		clearRequests();
+		scheduledExecutor = null;
 	}
 
 	private void clearRequests() {
@@ -689,6 +709,7 @@ public class DiscordService implements Runnable{
 		staffCommandRequests.clear();
 		reportAbuseRequests.clear();
 		naughtyWordsRequests.clear();
+		generalLogs.clear();
 	}
 
 	public final boolean isRunning() {
@@ -699,6 +720,15 @@ public class DiscordService implements Runnable{
 		if(!getServer().getConfig().WANT_DISCORD_NAUGHTY_WORDS_UPDATES) {
 			return;
 		}
+
+		if (context.contains("private messages")) {
+			// Reporting private messages turned out to be too detrimental for user privacy.
+			// It also increases moderator workload, which is the opposite of what this feature should do.
+			return;
+		}
+		String titleContent;
+		String embedColour;
+
 		StringBuilder mainContent = new StringBuilder();
 		mainContent.append("**");
 		mainContent.append(sender.getUsername());
@@ -715,25 +745,76 @@ public class DiscordService implements Runnable{
 		}
 		mainContent.append("\n```\n");
 		mainContent.append(originalMessage);
-		mainContent.append("\n\n```\n**This message was sent instead:**\n```\n");
-		mainContent.append(message);
-		mainContent.append("\n\n```\n**Filtering rules triggered:**\n```\n");
+		if (originalMessage.equals(message)) {
+			mainContent.append("\n\n```\n**Their message was sent unaltered.**\n");
+			titleContent = "**===  Message by " + sender.getUsername() + " was flagged on " + sender.getConfig().SERVER_NAME + "  ===**";
+			embedColour = "13851276"; // average of colour between yellow & report abuse button. Turns out to be pink.
+		} else {
+			mainContent.append("\n\n```\n**This message was sent instead:**\n```\n");
+			mainContent.append(message);
+			mainContent.append("\n\n```");
+			titleContent = "**===  Message by " + sender.getUsername() + " was censored on " + sender.getConfig().SERVER_NAME + "  ===**";
+			embedColour = "10949120"; // same colour as the report abuse button
+		}
+		mainContent.append("\n**Filtering rules triggered:**\n```\n");
 		for (String problem : stringProblems) {
 			mainContent.append(problem).append("\n");
 		}
 		mainContent.append("```");
 
 		DiscordEmbed embed = new DiscordEmbed(
-			"**===  Message by " + sender.getUsername() + " was censored on " + sender.getConfig().SERVER_NAME + "  ===**",
+			titleContent,
 			"",
-			"10949120", // same colour as the report abuse button
+			embedColour,
 			mainContent.toString()
 		);
 
 		naughtyWordsRequests.add(embed);
 	}
 
-	public void reportNaughtyWordChangedToDiscord(Player sender, String word, boolean goodWord, boolean added) {
+	public void reportAlertWordToDiscord(Player sender, String originalMessage, ArrayList<String> alertWords, String context) {
+		if(!getServer().getConfig().WANT_DISCORD_NAUGHTY_WORDS_UPDATES) {
+			return;
+		}
+
+		if (context.contains("private messages")) {
+			// Reporting private messages turned out to be too detrimental for user privacy.
+			return;
+		}
+
+		StringBuilder mainContent = new StringBuilder();
+		mainContent.append("**");
+		mainContent.append(sender.getUsername());
+		mainContent.append("** sent the following message to **");
+		mainContent.append(context);
+		if (context.equals("public chat")) {
+			mainContent.append("** near (");
+			mainContent.append(sender.getX());
+			mainContent.append(", ");
+			mainContent.append(sender.getY());
+			mainContent.append("):");
+		} else {
+			mainContent.append(":**");
+		}
+		mainContent.append("\n```\n");
+		mainContent.append(originalMessage);
+		mainContent.append("\n\n```\n**Alertwords found:**\n```\n");
+		for (String alertWord : alertWords) {
+			mainContent.append(alertWord).append("\n");
+		}
+		mainContent.append("```");
+
+		DiscordEmbed embed = new DiscordEmbed(
+			"**===  Message by " + sender.getUsername() + " contained alertword on " + sender.getConfig().SERVER_NAME + "  ===**",
+			"",
+			"16753433", // yellow
+			mainContent.toString()
+		);
+
+		naughtyWordsRequests.add(embed);
+	}
+
+	public void reportNaughtyWordChangedToDiscord(Player sender, String word, int wordType, boolean added) {
 		if(!getServer().getConfig().WANT_DISCORD_NAUGHTY_WORDS_UPDATES) {
 			return;
 		}
@@ -754,10 +835,12 @@ public class DiscordService implements Runnable{
 		} else {
 			mainContent.append("from");
 		}
-		if (goodWord) {
+		if (wordType == MessageFilterType.goodword) {
 			mainContent.append(" **goodwords.txt**");
-		} else {
+		} else if (wordType == MessageFilterType.badword) {
 			mainContent.append(" **badwords.txt**");
+		} else {
+			mainContent.append(" **alertwords.txt**");
 		}
 		mainContent.append("\n\nThis change was made on the **");
 		mainContent.append(sender.getWorld().getServer().getName());
@@ -765,10 +848,12 @@ public class DiscordService implements Runnable{
 
 
 		StringBuilder titleBuilder = new StringBuilder("**===  ");
-		if (goodWord) {
+		if (wordType == MessageFilterType.goodword) {
 			titleBuilder.append("goodword");
-		} else {
+		} else if (wordType == MessageFilterType.badword) {
 			titleBuilder.append("badword");
+		} else {
+			titleBuilder.append("alertword");
 		}
 		if (added) {
 			titleBuilder.append(" added by ");
@@ -781,6 +866,104 @@ public class DiscordService implements Runnable{
 
 		DiscordEmbed embed = new DiscordEmbed(
 			titleBuilder.toString(),
+			"",
+			"1087508", // pleasant green colour, taken from RSC tree
+			mainContent.toString()
+		);
+
+		naughtyWordsRequests.add(embed);
+	}
+
+	public void reportBabyModeFilteredMessageToDiscord(Player sender, String originalMessage, String context) {
+		if(!getServer().getConfig().WANT_DISCORD_NAUGHTY_WORDS_UPDATES) {
+			return;
+		}
+
+		if (context.contains("private messages")) {
+			// Reporting private messages turned out to be too detrimental for user privacy.
+			return;
+		}
+
+		StringBuilder mainContent = new StringBuilder();
+		mainContent.append("**");
+		mainContent.append(sender.getUsername());
+		mainContent.append("** sent the following message to **");
+		mainContent.append(context);
+		if (context.equals("public chat")) {
+			mainContent.append("** near (");
+			mainContent.append(sender.getX());
+			mainContent.append(", ");
+			mainContent.append(sender.getY());
+			mainContent.append("):");
+		} else {
+			mainContent.append(":**");
+		}
+		mainContent.append("\n```\n");
+		mainContent.append(originalMessage);
+		mainContent.append("```\n");
+
+		DiscordEmbed embed = new DiscordEmbed(
+			"**===  Message by " + sender.getUsername() + " was filtered on " + sender.getConfig().SERVER_NAME + " due to **Baby Mode**  ===**",
+			"",
+			"8942042", // purple
+			mainContent.toString()
+		);
+
+		naughtyWordsRequests.add(embed);
+	}
+
+	public void reportSpaceFilteringConfigChangeToDiscord(Player sender) {
+		if(!getServer().getConfig().WANT_DISCORD_NAUGHTY_WORDS_UPDATES || !getServer().getConfig().SERVER_SIDED_WORD_FILTERING) {
+			return;
+		}
+
+		StringBuilder mainContent = new StringBuilder();
+		mainContent.append("**");
+		mainContent.append(sender.getUsername());
+		mainContent.append("** ");
+		if (getServer().getConfig().SERVER_SIDED_WORD_SPACE_FILTERING) {
+			mainContent.append("enabled");
+		} else {
+			mainContent.append("disabled");
+		}
+		mainContent.append(" **S P A C E   F I L T E R I N G** ");
+
+		mainContent.append("\n\nThis change was made on the **");
+		mainContent.append(sender.getWorld().getServer().getName());
+		mainContent.append("** server.");
+
+		DiscordEmbed embed = new DiscordEmbed(
+			"",
+			"",
+			"1087508", // pleasant green colour, taken from RSC tree
+			mainContent.toString()
+		);
+
+		naughtyWordsRequests.add(embed);
+	}
+
+	public void reportBabyModeChangeToDiscord(Player sender) {
+		if(!getServer().getConfig().WANT_DISCORD_NAUGHTY_WORDS_UPDATES || !getServer().getConfig().SERVER_SIDED_WORD_FILTERING) {
+			return;
+		}
+
+		StringBuilder mainContent = new StringBuilder();
+		mainContent.append("**");
+		mainContent.append(sender.getUsername());
+		if (getServer().getConfig().BABY_MODE_LEVEL_THRESHOLD > 0) {
+			mainContent.append("** set Baby Mode level threshold to: **");
+			mainContent.append(getServer().getConfig().BABY_MODE_LEVEL_THRESHOLD);
+			mainContent.append("**");
+		} else {
+			mainContent.append("** disabled Baby Mode.");
+		}
+
+		mainContent.append("\n\nThis change was made on the **");
+		mainContent.append(sender.getWorld().getServer().getName());
+		mainContent.append("** server.");
+
+		DiscordEmbed embed = new DiscordEmbed(
+			"",
 			"",
 			"1087508", // pleasant green colour, taken from RSC tree
 			mainContent.toString()

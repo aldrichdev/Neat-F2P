@@ -9,6 +9,7 @@ import com.openrsc.server.model.action.ActionType;
 import com.openrsc.server.model.action.WalkToMobAction;
 import com.openrsc.server.model.entity.Mob;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.PayloadProcessor;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
@@ -21,6 +22,7 @@ import static com.openrsc.server.plugins.Functions.inArray;
 public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn> {
 	public void process(TargetMobStruct payload, Player player) throws Exception {
 		OpcodeIn pID = payload.getOpcode();
+
 
 		if (player.inCombat()) {
 			player.message("You are already busy fighting!");
@@ -57,8 +59,9 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 		if (affectedMob.isPlayer()) {
 			assert affectedMob instanceof Player;
 			Player pl = (Player) affectedMob;
-			if (System.currentTimeMillis() - pl.getCombatTimer() < player.getConfig().GAME_TICK * 5) {
-				if (pl.getLocation().inWilderness()) {
+			//Immune players cannot be attacked until their immunity wears off.
+			if (!pl.canBeReattacked()) {
+				if (pl.getLocation().inWilderness() || player.getConfig().USES_PK_MODE) {
 					player.resetPath();
 				}
 				return;
@@ -66,6 +69,8 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 		} else {
 			assert affectedMob instanceof Npc;
 			Npc n = (Npc) affectedMob;
+			long curTick = player.getWorld().getServer().getCurrentTick();
+			long runTick = n.getRanAwayTimer();
 			if (n.isRespawning()) return;
 			if (n.getX() == 0 && n.getY() == 0)
 				return;
@@ -81,18 +86,18 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 				&& (!player.getCache().hasKey("mage_arena") || player.getCache().getInt("mage_arena") < 2)) {
 				player.message("you are not yet ready to fight the battle mages");
 				return;
-			} else if (player.getWorld().getServer().getCurrentTick() <= n.getRanAwayTimer()) {
-				//TODO: more research on this. At the very least, NPCs on the same tile as you could be attacked one tick after they retreated, but not the same tick.
+			} else if (curTick <= runTick || (curTick <= runTick + 1 && !n.finishedPath())) {
+				//Moving retreating enemies are immune from attack requests for an extra tick.
 				player.resetPath();
 				return;
 			}
 		}
 
 		if (player.getRangeEquip() < 0 && player.getThrowingEquip() < 0) {
-			player.setFollowing(affectedMob, 0, false);
+			player.setFollowing(affectedMob, 0, false, true);
 
 			int radius = affectedMob.isPlayer() ? player.getConfig().PVP_CATCHING_DISTANCE : player.getConfig().PVM_CATCHING_DISTANCE;
-			player.setWalkToAction(new WalkToMobAction(player, affectedMob, radius, false, ActionType.ATTACK, true) {
+			player.setWalkToAction(new WalkToMobAction(player, affectedMob, radius, true, ActionType.ATTACK) {
 				public void executeInternal() {
 					getPlayer().resetFollowing();
 
@@ -100,11 +105,12 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 						getPlayer().message("I can't get close enough");
 						return;
 					}
-					if (getPlayer().isBusy() || mob.isBusy() || !getPlayer().canReach(mob)
-						|| !getPlayer().checkAttack(mob, false)) {
+					if (getPlayer().isBusy() || mob.isBusy() || !getPlayer().checkAttack(mob, false)) {
 						return;
 					}
 					if (mob.isNpc()) {
+						NpcInteraction interaction = NpcInteraction.NPC_ATTACK;
+						NpcInteraction.setInteractions(((Npc)mob), getPlayer(), interaction);
 						getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(AttackNpcTrigger.class, getPlayer(), new Object[]{getPlayer(), (Npc) mob}, this);
 					} else {
 						getPlayer().getWorld().getServer().getPluginHandler().handlePlugin(AttackPlayerTrigger.class, getPlayer(), new Object[]{getPlayer(), mob}, this);

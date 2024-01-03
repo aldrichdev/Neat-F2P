@@ -1,7 +1,7 @@
 package com.openrsc.server.util;
 
 import com.openrsc.server.model.entity.player.Player;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,15 +22,18 @@ public class MessageFilter {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static ArrayList<String> badwords = new ArrayList<String>();
 	private static ArrayList<String> goodwords = new ArrayList<String>();
+	private static ArrayList<String> alertwords = new ArrayList<String>();
 
-	public static Pair<Integer, Integer> loadGoodAndBadWordsFromDisk() {
+	public static Triple<Integer, Integer, Integer> loadGoodAndBadWordsFromDisk() {
 		List<String> lines = Collections.emptyList();
 
 		// reinitialize in case this function has been called post-server boot
 		badwords = new ArrayList<String>();
 		goodwords = new ArrayList<String>();
+		alertwords = new ArrayList<String>();
 		int goodwordCount = 0;
 		int badwordCount = 0;
+		int alertwordCount = 0;
 
 		// BADWORDS
 		try {
@@ -70,7 +73,31 @@ public class MessageFilter {
 			LOGGER.warn("Could not find goodwords.txt near server config file.");
 		}
 
-		return Pair.of(goodwordCount, badwordCount);
+		// ALERTWORDS
+		try {
+			lines = Files.readAllLines(Paths.get("alertwords.txt"));
+
+			for (String line : lines) {
+				line = line.toLowerCase();
+				if (line.length() >= 3) {
+					alertwords.add(line);
+					++alertwordCount;
+				} else {
+					LOGGER.info("Skipped word \"" + line + "\" for being too short.");
+				}
+			}
+
+			LOGGER.info("Successfully loaded " + alertwordCount + " alertwords.");
+		} catch (IOException e) {
+			LOGGER.warn("Could not find alertwords.txt near server config file.");
+		}
+
+		// Longest words must go first to match first before being censored
+		goodwords.sort((s1, s2) -> s2.length() - s1.length());
+		badwords.sort((s1, s2) -> s2.length() - s1.length());
+		alertwords.sort((s1, s2) -> s2.length() - s1.length());
+
+		return Triple.of(goodwordCount, alertwordCount, badwordCount);
 	}
 
 	public static boolean addBadWord(String badword) {
@@ -88,6 +115,15 @@ public class MessageFilter {
 	public static boolean removeGoodWord(String oldgoodword) {
 		return goodwords.remove(oldgoodword.toLowerCase());
 	}
+
+	public static boolean addAlertWord(String alertword) {
+		return alertwords.add(alertword.toLowerCase());
+	}
+
+	public static boolean removeAlertWord(String oldalertword) {
+		return alertwords.remove(oldalertword.toLowerCase());
+	}
+
 
 	public static String filter(Player sender, String message, String context) {
 		if (!sender.getConfig().SERVER_SIDED_WORD_FILTERING) {
@@ -114,6 +150,35 @@ public class MessageFilter {
 			message = message.replaceAll("@...@|~...~", "");
 			String messageLowercase = message.toLowerCase();
 
+			// check for words/phrases to alert on, but not censor.
+			ArrayList<String> alertwordsTriggered = new ArrayList<String>();
+			for (final String alertword : alertwords) {
+				boolean exactMatch = alertword.charAt(0) == '"' && alertword.charAt(alertword.length() - 1) == '"';
+				if (exactMatch) {
+					final String alertwordExact = alertword.substring(1,alertword.length() - 1);
+					for (int charIndex = messageLowercase.indexOf(alertwordExact); charIndex > -1 && charIndex < message.length(); ) {
+						// check that we are either at beginning of message, or preceding character is non-alphanumeric
+						boolean precedingCharacterNonAlphanumeric = charIndex < 1 || !messageLowercase.substring(charIndex - 1, charIndex).matches("[a-z]");
+						boolean proceedingCharacterNonAlphanumeric = charIndex + alertwordExact.length() >= messageLowercase.length() || !messageLowercase.substring(charIndex + alertwordExact.length(), charIndex + alertwordExact.length() + 1).matches("[a-z]");
+						if (precedingCharacterNonAlphanumeric && proceedingCharacterNonAlphanumeric) {
+							alertwordsTriggered.add(alertword);
+						}
+						charIndex = messageLowercase.indexOf(alertwordExact, charIndex + alertwordExact.length());
+					}
+				} else {
+					if (messageLowercase.contains(alertword)) {
+						alertwordsTriggered.add(alertword);
+					}
+				}
+			}
+			if (alertwordsTriggered.size() > 0) {
+				if (sender.getWorld().getServer().getDiscordService() != null) {
+					sender.getWorld().getServer().getDiscordService().reportAlertWordToDiscord(sender, originalMessage, alertwordsTriggered, context);
+				} else {
+					LOGGER.info("Alertword \"" + alertwordsTriggered.get(0) + "\" found in message sent by \"" + sender.getUsername() + "\": " + originalMessage);
+				}
+			}
+
 			// check for and save goodword matches
 			HashMap<Integer, String> goodwordsReplacements = new HashMap<>();
 			for (String goodword : goodwords) {
@@ -122,7 +187,7 @@ public class MessageFilter {
 					String originalGoodwordUserCapitalization = message.substring(goodwordIndex, goodwordIndex + goodword.length());
 
 					goodwordsReplacements.put(goodwordIndex, originalGoodwordUserCapitalization);
-					message = message.replace(originalGoodwordUserCapitalization, padAsterisk(originalGoodwordUserCapitalization.length()));
+					message = message.replaceFirst(originalGoodwordUserCapitalization, padAsterisk(originalGoodwordUserCapitalization.length()));
 					messageLowercase = message.toLowerCase();
 				}
 			}
@@ -139,7 +204,9 @@ public class MessageFilter {
 
 				if (alphaNumericMessageContains(messageLowercase, badword)) {
 					stringProblems.add("b a d w o r d: " + badword);
-					message = filterSpaces(message, badword, false);
+					if (sender.getConfig().SERVER_SIDED_WORD_SPACE_FILTERING) {
+						message = filterSpaces(message, badword, false);
+					}
 				}
 			}
 
@@ -163,7 +230,9 @@ public class MessageFilter {
 
 					if (alphaNumericMessageContains(de1337(message), de1337(badword))) {
 						stringProblems.add("1 3 3 7   b a d w o r d: " + badword);
-						message = filterSpaces(message, badword, true);
+						if (sender.getConfig().SERVER_SIDED_WORD_SPACE_FILTERING) {
+							message = filterSpaces(message, badword, true);
+						}
 					}
 				}
 			}
@@ -193,13 +262,17 @@ public class MessageFilter {
 			}
 
 			if (stringProblems.size() > 0) {
-				sender.getWorld().getServer().getDiscordService().reportNaughtyWordToDiscord(sender, originalMessage, message, stringProblems, context);
+				if (sender.getWorld().getServer().getDiscordService() != null) {
+					sender.getWorld().getServer().getDiscordService().reportNaughtyWordToDiscord(sender, originalMessage, message, stringProblems, context);
+				}
 			}
 		} catch (Exception e) {
 			StringWriter sw = new StringWriter();
 			e.printStackTrace(new PrintWriter(sw));
 			stringProblems.add("error filtering string: " + sw.toString());
-			sender.getWorld().getServer().getDiscordService().reportNaughtyWordToDiscord(sender, originalMessage, "Cabbage", stringProblems, context);
+			if (sender.getWorld().getServer().getDiscordService() != null) {
+				sender.getWorld().getServer().getDiscordService().reportNaughtyWordToDiscord(sender, originalMessage, "Cabbage", stringProblems, context);
+			}
 			e.printStackTrace();
 			return "Cabbage";
 		}
@@ -323,6 +396,9 @@ public class MessageFilter {
 	public static boolean goodwordsContains(String newGoodWord) {
 		return goodwords.contains(newGoodWord);
 	}
+	public static boolean alertwordsContains(String newAlertWord) {
+		return alertwords.contains(newAlertWord);
+	}
 
 	public static void syncBadwordsToDisk() {
 		Path out = Paths.get("badwords.txt");
@@ -339,6 +415,15 @@ public class MessageFilter {
 			Files.write(out, goodwords, Charset.defaultCharset());
 		} catch (IOException ex) {
 			LOGGER.error("Unable to save goodwords.txt!");
+		}
+	}
+
+	public static void syncAlertwordsToDisk() {
+		Path out = Paths.get("alertwords.txt");
+		try {
+			Files.write(out, alertwords, Charset.defaultCharset());
+		} catch (IOException ex) {
+			LOGGER.error("Unable to save alertwords.txt!");
 		}
 	}
 }

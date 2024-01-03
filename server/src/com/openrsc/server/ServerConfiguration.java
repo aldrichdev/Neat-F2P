@@ -8,8 +8,8 @@ import com.openrsc.server.util.YMLReader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -67,6 +67,7 @@ public class ServerConfiguration {
 	public int MAX_CONNECTIONS_PER_SECOND;
 	public int MAX_PACKETS_PER_SECOND;
 	public int MAX_LOGINS_PER_SECOND;
+	public int MAX_LOGINS_PER_SERVER_PER_TICK;
 	public int MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES;
 	public int NETWORK_FLOOD_IP_BAN_MINUTES;
 	public boolean WANT_PCAP_LOGGING;
@@ -106,6 +107,8 @@ public class ServerConfiguration {
 	public boolean SHOW_TUTORIAL_SKIP_OPTION;
 	public boolean WANT_GLOBAL_CHAT;
 	public boolean WANT_GLOBAL_FRIEND;
+	public boolean WANT_GLOBAL_RULES_AGREEMENT;
+	public String[] GLOBAL_RULES;
 	public int GLOBAL_MESSAGE_COOLDOWN;
 	public int GLOBAL_MESSAGE_TOTAL_LEVEL_REQ;
 	public boolean WANT_SKILL_MENUS;
@@ -114,6 +117,7 @@ public class ServerConfiguration {
 	public int WANT_KEYBOARD_SHORTCUTS;
 	public boolean WANT_CUSTOM_BANKS;
 	public boolean WANT_BANK_PINS;
+	public boolean TOLERATE_BANK_PINS;
 	public boolean WANT_BANK_NOTES;
 	public boolean WANT_CERT_DEPOSIT;
 	public boolean CUSTOM_FIREMAKING;
@@ -128,6 +132,7 @@ public class ServerConfiguration {
 	public boolean NPC_KILL_LIST;
 	public boolean NPC_KILL_MESSAGES;
 	public boolean NPC_KILL_MESSAGES_FILTER;
+	public boolean NPC_KILL_COUNTERS;
 	public String NPC_KILL_MESSAGES_NPCs;
 	public boolean NPC_KILL_LOGGING;
 	public boolean VALUABLE_DROP_MESSAGES;
@@ -171,6 +176,8 @@ public class ServerConfiguration {
 	public String DISCORD_REPORT_ABUSE_WEBHOOK_URL;
 	public boolean WANT_DISCORD_NAUGHTY_WORDS_UPDATES;
 	public String DISCORD_NAUGHTY_WORDS_WEBHOOK_URL;
+	public boolean WANT_DISCORD_GENERAL_LOGGING;
+	public String DISCORD_GENERAL_WEBHOOK_URL;
 	public boolean WANT_DISCORD_BOT;
 	public long CROSS_CHAT_CHANNEL;
 	public boolean WANT_EQUIPMENT_TAB;
@@ -182,6 +189,10 @@ public class ServerConfiguration {
 	public boolean WANT_PK_BOTS;
 	public int RESPAWN_LOCATION_X;
 	public int RESPAWN_LOCATION_Y;
+	public boolean FORM_FITTING_CHAINMAIL;
+	public boolean WANT_COMBAT_ODYSSEY;
+	public boolean WANT_INSTANCED_NPCS;
+	public boolean EQUIP_QUEST_ITEMS_WITHOUT_QUESTS;
 	public double PARTY_ADDITIONAL_XP_PERCENT_PER_PLAYER;
 	public double PARTY_DISTANCE_PERCENT_DECREASE;
 	public double PARTY_SAVE_XP_FOR_SKILLER_PERCENT;
@@ -207,6 +218,7 @@ public class ServerConfiguration {
 	public int FPS;
 	public boolean WANT_EMAIL;
 	public boolean WANT_REGISTRATION_LIMIT;
+	public int REGISTRATION_LIMIT_COUNT;
 	public boolean ALLOW_RESIZE;
 	public boolean LENIENT_CONTACT_DETAILS;
 	//loosened checks
@@ -252,6 +264,9 @@ public class ServerConfiguration {
 	public boolean MICE_TO_MEET_YOU_EVENT = false;
 	public boolean WANT_MICE_TO_MEET_YOU_NO_RATS = false;
 	public boolean DEATH_ISLAND = false;
+	public boolean PRIDE_MONTH = false;
+	public boolean A_BONE_TO_PICK = false;
+	public boolean A_LUMBRIDGE_CAROL = false;
 	public int BASED_MAP_DATA = 64;
 	public int BASED_CONFIG_DATA = 85;
 	public boolean CAN_FEATURE_MEMBS;
@@ -290,6 +305,7 @@ public class ServerConfiguration {
 	public boolean LACKS_GOLD_SMITHING;
 	public boolean NPC_AGGRO_DONT_CHECK_LEVEL;
 	public boolean CANT_DYE_CAPES;
+	public boolean RETRO_RANGED_DAMAGE;
 
 	public boolean OSRS_COMBAT_MELEE;
 	public boolean OSRS_COMBAT_RANGED;
@@ -298,14 +314,19 @@ public class ServerConfiguration {
 	public boolean PIDLESS_CATCHING;
 	public int PVM_CATCHING_DISTANCE;
 	public int PVP_CATCHING_DISTANCE;
+	public int PVP_REATTACK_TIMER;
+	public int BABY_MODE_LEVEL_THRESHOLD;
 	public boolean SHUFFLE_PID_ORDER;
 	public int SHUFFLE_PID_ORDER_INTERVAL;
 	public int SPELL_RANGE_DISTANCE;
 	public boolean WANT_CORRECTED_SKILLING_XP;
 	public int SUMMON_ALL_PLAYER_LIMIT;
 	public boolean SERVER_SIDED_WORD_FILTERING;
-
+	public boolean SERVER_SIDED_WORD_SPACE_FILTERING;
 	public boolean DISABLE_MINIMAP_ROTATION;
+	public boolean ALLOW_BEARDED_LADIES;
+	public boolean WANT_BUGGED_CLAWS_XP;
+	public boolean HEALSTAT_ON_CURRENT_STAT;
 
 	public ImmutableList<String> IGNORED_NETWORK_EXCEPTIONS =
 		ImmutableList.of("An existing connection was forcibly closed by the remote host",
@@ -368,6 +389,7 @@ public class ServerConfiguration {
 		MAX_CONNECTIONS_PER_SECOND = tryReadInt("max_connections_per_second").orElse(20);
 		MAX_PACKETS_PER_SECOND = tryReadInt("max_packets_per_second").orElse(100);
 		MAX_LOGINS_PER_SECOND = tryReadInt("max_logins_per_second").orElse(2);
+		MAX_LOGINS_PER_SERVER_PER_TICK = tryReadInt("max_logins_per_server_per_tick").orElse(5);
 		MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES = tryReadInt("max_password_guesses_per_five_minutes").orElse(10);
 		NETWORK_FLOOD_IP_BAN_MINUTES = tryReadInt("network_flood_ip_ban_minutes").orElse(5);
 		int SUSPICIOUS_PLAYER_IP_BAN_MINUTES = tryReadInt("suspicious_player_ip_ban_minutes").orElse(60);
@@ -390,6 +412,7 @@ public class ServerConfiguration {
 		IS_DOUBLE_EXP = tryReadBool("double_exp").orElse(false);
 		NPC_RESPAWN_MULTIPLIER = tryReadDouble("npc_respawn_multiplier").orElse(1.0);
 		WANT_REGISTRATION_LIMIT = tryReadBool("want_registration_limit").orElse(false);
+		REGISTRATION_LIMIT_COUNT = tryReadInt("registration_limit_count").orElse(2);
 		PACKET_LIMIT = tryReadInt("packet_limit").orElse(100);
 		IS_LOCALHOST_RESTRICTED = tryReadBool("is_localhost_restricted").orElse(true);
 		GLOBAL_MESSAGE_COOLDOWN = tryReadInt("global_message_cooldown").orElse(0);
@@ -426,14 +449,17 @@ public class ServerConfiguration {
 		SANTA_GIVES_PRESENTS = tryReadBool("santa_gives_presents").orElse(false);
 		USES_RETRO_STOCK_SENSITIVITY = tryReadBool("uses_retro_stock_sensitivity").orElse(false);
 		PIDLESS_CATCHING = tryReadBool("pidless_catching").orElse(false);
-		PVM_CATCHING_DISTANCE = tryReadInt("pvm_catching_distance").orElse(2);
-		PVP_CATCHING_DISTANCE = tryReadInt("pvp_catching_distance").orElse(2);
+		PVM_CATCHING_DISTANCE = tryReadInt("pvm_catching_distance").orElse(1);
+		PVP_CATCHING_DISTANCE = tryReadInt("pvp_catching_distance").orElse(1);
+		PVP_REATTACK_TIMER = tryReadInt("pvp_reattack_timer").orElse(5);
+		BABY_MODE_LEVEL_THRESHOLD = tryReadInt("baby_mode_level_threshold").orElse(0);
 		SHUFFLE_PID_ORDER = tryReadBool("shuffle_pid_order").orElse(true);
 		SHUFFLE_PID_ORDER_INTERVAL = tryReadInt("shuffle_pid_order_interval").orElse(500);
 		SPELL_RANGE_DISTANCE = tryReadInt("spell_range_distance").orElse(4);
 		WANT_CORRECTED_SKILLING_XP = tryReadBool("want_corrected_skilling_xp").orElse(false);
 		SUMMON_ALL_PLAYER_LIMIT = tryReadInt("summon_all_player_limit").orElse(15);
 		SERVER_SIDED_WORD_FILTERING = tryReadBool("server_sided_word_filtering").orElse(true);
+		SERVER_SIDED_WORD_SPACE_FILTERING = tryReadBool("server_sided_word_space_filtering").orElse(false);
 
 		// Client
 		VIEW_DISTANCE = tryReadInt("view_distance").orElse(2);
@@ -459,6 +485,10 @@ public class ServerConfiguration {
 		CHAR_NAME_CAN_CONTAIN_MOD = tryReadBool("char_name_can_contain_mod").orElse(false);
 		CHAR_NAME_CAN_EQUAL_GLOBAL = tryReadBool("char_name_can_equal_global").orElse(false);
 		DISABLE_MINIMAP_ROTATION = tryReadBool("disable_minimap_rotation").orElse(true);
+		ALLOW_BEARDED_LADIES = tryReadBool("allow_bearded_ladies").orElse(false);
+		WANT_BUGGED_CLAWS_XP = tryReadBool("want_bugged_claws_xp").orElse(true);
+		HEALSTAT_ON_CURRENT_STAT = tryReadBool("healstat_on_current_stat").orElse(false);
+		NPC_KILL_COUNTERS = tryReadBool("npc_kill_counters").orElse(false);
 
 		// Retro features
 		GATHER_TOOL_ON_SCENERY = tryReadBool("gather_tool_on_scenery").orElse(false);
@@ -495,6 +525,7 @@ public class ServerConfiguration {
 		LACKS_GOLD_SMITHING = tryReadBool("lacks_gold_smithing").orElse(false);
 		NPC_AGGRO_DONT_CHECK_LEVEL = tryReadBool("npc_aggro_dont_check_level").orElse(false);
 		CANT_DYE_CAPES = tryReadBool("cant_dye_capes").orElse(false);
+		RETRO_RANGED_DAMAGE = tryReadBool("retro_ranged_damage").orElse(false);
 
 		// Custom features
 		WANT_CUSTOM_SPRITES = tryReadBool("custom_sprites").orElse(false);
@@ -514,6 +545,10 @@ public class ServerConfiguration {
 		SHOW_TUTORIAL_SKIP_OPTION = tryReadBool("show_tutorial_skip_option").orElse(true);
 		WANT_GLOBAL_CHAT = tryReadBool("want_global_chat").orElse(false);
 		WANT_GLOBAL_FRIEND = tryReadBool("want_global_friend").orElse(false);
+		WANT_GLOBAL_RULES_AGREEMENT = tryReadBool("want_global_rules_agreement").orElse(false);
+		if (WANT_GLOBAL_RULES_AGREEMENT) {
+			readGlobalRules("globalrules.txt");
+		}
 		WANT_EXPERIENCE_ELIXIRS = tryReadBool("want_experience_elixirs").orElse(false);
 		WANT_KEYBOARD_SHORTCUTS = tryReadInt("want_keyboard_shortcuts").orElse(0);
 		WANT_CUSTOM_RANK_DISPLAY = tryReadBool("want_custom_rank_display").orElse(false);
@@ -562,6 +597,10 @@ public class ServerConfiguration {
 		RESPAWN_LOCATION_Y = tryReadInt("respawn_location_y").orElse(648);
 		CAN_FEATURE_MEMBS = tryReadBool("can_feature_membs").orElse(true);
 		WANT_OPENPK_PRESETS = tryReadBool("want_openpk_presets").orElse(false);
+		FORM_FITTING_CHAINMAIL = tryReadBool("form_fitting_chainmail").orElse(false);
+		WANT_COMBAT_ODYSSEY = tryReadBool("want_combat_odyssey").orElse(false);
+		WANT_INSTANCED_NPCS = tryReadBool("want_instanced_npcs").orElse(false);
+		EQUIP_QUEST_ITEMS_WITHOUT_QUESTS = tryReadBool("equip_quest_items_without_quests").orElse(false);
 
 		// Party settings
 		WANT_PARTIES = tryReadBool("want_parties").orElse(false);
@@ -589,6 +628,7 @@ public class ServerConfiguration {
 		DISCORD_MONITORING_WEBHOOK_URL = tryReadString("discord_monitoring_webhook_url").orElse("null");
 		DISCORD_REPORT_ABUSE_WEBHOOK_URL = tryReadString("discord_report_abuse_webhook_url").orElse("null");
 		DISCORD_NAUGHTY_WORDS_WEBHOOK_URL = tryReadString("discord_naughty_words_webhook_url").orElse("null");
+		DISCORD_GENERAL_WEBHOOK_URL = tryReadString("discord_general_webhook_url").orElse("null");
 		CROSS_CHAT_CHANNEL = tryReadInt("cross_chat_channel").orElse(0);
 		WANT_DISCORD_AUCTION_UPDATES = tryReadBool("want_discord_auction_updates").orElse(false)
 			&& !DISCORD_AUCTION_WEBHOOK_URL.equals("null");
@@ -600,6 +640,8 @@ public class ServerConfiguration {
 			&& !DISCORD_REPORT_ABUSE_WEBHOOK_URL.equals("null");
 		WANT_DISCORD_NAUGHTY_WORDS_UPDATES = tryReadBool("want_discord_naughty_words_updates").orElse(false)
 			&& !DISCORD_NAUGHTY_WORDS_WEBHOOK_URL.equals("null");
+		WANT_DISCORD_GENERAL_LOGGING = tryReadBool("want_discord_general_logging").orElse(false)
+			&& !DISCORD_GENERAL_WEBHOOK_URL.equals("null");
 		WANT_DISCORD_BOT = tryReadBool("want_discord_bot").orElse(false)
 			&& CROSS_CHAT_CHANNEL != 0;
 
@@ -609,6 +651,11 @@ public class ServerConfiguration {
 		RIGHT_CLICK_BANK = tryReadBool("right_click_bank").orElse(false);
 		WANT_CUSTOM_BANKS = tryReadBool("want_custom_banks").orElse(false);
 		WANT_BANK_PINS = tryReadBool("want_bank_pins").orElse(false);
+		TOLERATE_BANK_PINS = tryReadBool("tolerate_bank_pins").orElse(false);
+		if (WANT_BANK_PINS && TOLERATE_BANK_PINS) {
+			// These shouldn't both be true, TOLERATE has different logic exclusive from when server WANTs bankpins
+			TOLERATE_BANK_PINS = false;
+		}
 		WANT_BANK_NOTES = tryReadBool("want_bank_notes").orElse(false);
 		WANT_CERT_DEPOSIT = tryReadBool("want_cert_deposit").orElse(false);
 		WANT_CERTER_BANK_EXCHANGE = tryReadBool("want_certer_bank_exchange").orElse(false);
@@ -650,6 +697,9 @@ public class ServerConfiguration {
 		MICE_TO_MEET_YOU_EVENT = tryReadBool("mice_to_meet_you").orElse(false);
 		WANT_MICE_TO_MEET_YOU_NO_RATS = tryReadBool("mice_to_meet_you_no_rats").orElse(false);
 		DEATH_ISLAND = tryReadBool("death_island").orElse(false);
+		PRIDE_MONTH = tryReadBool("pride_month").orElse(false) && SystemUtil.isJune();
+		A_BONE_TO_PICK = tryReadBool("a_bone_to_pick").orElse(false);
+		A_LUMBRIDGE_CAROL = tryReadBool("a_lumbridge_carol").orElse(false);
 
 		// adminIp = Arrays.asList(ADMIN_IP.split(","));
 	}
@@ -750,5 +800,30 @@ public class ServerConfiguration {
 		}
 		LOGGER.info("Key: \"" + key + "\" does not exist in the provided conf file. Using default.");
 		return Optional.empty();
+	}
+
+	private void readGlobalRules(final String fileName) {
+		File file = new File(fileName);
+
+		try {
+			ArrayList<String> globalRules = new ArrayList<String>();
+
+			BufferedReader reader = new BufferedReader(new FileReader(file));
+
+			String line = reader.readLine();
+			while (line != null) {
+				globalRules.add(line);
+				line = reader.readLine();
+			}
+
+			GLOBAL_RULES = globalRules.toArray(new String[0]);
+			return;
+		} catch (FileNotFoundException fileNotFoundException) {
+			LOGGER.info("globalrules.txt not found. Setting want_global_rules_agreement to false");
+		} catch (IOException ioException) {
+			LOGGER.info("IOException when reading globalrules.txt. Setting want_global_rules_agreement to false");
+		}
+		WANT_GLOBAL_RULES_AGREEMENT = false;
+		GLOBAL_RULES = null;
 	}
 }

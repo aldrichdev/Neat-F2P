@@ -43,17 +43,17 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 
 		int menu;
 
-		if (config().SPAWN_AUCTION_NPCS && config().WANT_BANK_PINS)
+		if (config().SPAWN_AUCTION_NPCS && player.getBankPinOption())
 			menu = multi(player, npc,
 				"I'd like to access my bank account please",
 				"What is this place?",
-				"I'd like to talk about bank pin",
+				"I'd like to inquire about bank pins",
 				"I'd like to collect my items from auction");
-		else if (config().WANT_BANK_PINS && !player.getBankPinOptOut())
+		else if (player.getBankPinOption())
 			menu = multi(player, npc,
 				"I'd like to access my bank account please",
 				"What is this place?",
-				"I'd like to talk about bank pin");
+				"I'd like to inquire about bank pins");
 		else if (config().SPAWN_AUCTION_NPCS)
 			menu = multi(player, npc,
 				"I'd like to access my bank account please",
@@ -66,7 +66,7 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 
 		if (menu == 0) {
 			if (player.isIronMan(IronmanMode.Ultimate.id())) {
-				player.message("As an Ultimate Iron Man, you cannot use the bank.");
+				player.message("As an Ultimate Ironman, you cannot use the bank.");
 				return;
 			}
 
@@ -125,9 +125,9 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 						"As if we didn't know what town we were in or something!");
 				}
 			}
-		} else if (menu == 2 && config().WANT_BANK_PINS && !player.getBankPinOptOut()) {
+		} else if (menu == 2 && player.getBankPinOption()) {
 			int bankPinMenu;
-			if (config().WANT_CUSTOM_SPRITES) {
+			if (config().WANT_CUSTOM_SPRITES || player.getBankPinOptIn()) {
 				bankPinMenu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin");
 			} else {
 				bankPinMenu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin", "Can you please never mention bank pins to me again?");
@@ -141,7 +141,7 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				changebankpin(player, npc);
 			} else if (bankPinMenu == 2) {
 				removebankpin(player, npc);
-			} else if (bankPinMenu == 3 && !config().WANT_CUSTOM_SPRITES) {
+			} else if (bankPinMenu == 3 && !config().WANT_CUSTOM_SPRITES && !player.getBankPinOptIn()) {
 				if (bankpinoptout(player, npc, true)) {
 					player.playerServerMessage(MessageType.QUEST, "You have successfully opted out of even THE MENTION of a bank pin.");
 				}
@@ -225,24 +225,6 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 				delay(1);
 				player.playerServerMessage(MessageType.QUEST, "Your bank seems to be too full to deposit these notes at this time.");
 			}
-		} else if (player.getIronMan() == IronmanMode.Ultimate.id()) {
-			// If a UIM uses a certable item on a banker (or a note cert of said item)
-			// they will be able to note cert/un-note cert it.
-			for (int[] ids : Certer.certerTable.values()) {
-				for (int id : ids) {
-					if (item.getCatalogId() == id) {
-						Certer.UIMCert(player, npc, item);
-						return;
-					}
-				}
-			}
-
-			// If a UIM uses a market cert on a banker, they will be able to exchange for
-			// bank certs.
-			if (Certer.certExchangeBlock(player, npc, item)) {
-				Certer.exchangeMarketForBankCerts(player, npc, item);
-			}
-
 		} else if (item.getDef(player.getWorld()).getName().toLowerCase().contains("key") && player.getBankPinOptOut()) {
 			if (!npc.getDef().getName().toLowerCase().contains("gundai")) {
 				player.playerServerMessage(MessageType.QUEST, "There is a twinkle in the banker's eye");
@@ -269,7 +251,7 @@ public class Bankers implements TalkNpcTrigger, OpNpcTrigger, UseNpcTrigger {
 
 	private void quickFeature(Npc npc, Player player, boolean auction) {
 		if (player.isIronMan(IronmanMode.Ultimate.id())) {
-			player.message("As an Ultimate Iron Man, you cannot use the bank.");
+			player.message("As an Ultimate Ironman, you cannot use the bank.");
 			return;
 		}
 

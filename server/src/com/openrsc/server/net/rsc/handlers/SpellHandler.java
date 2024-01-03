@@ -21,6 +21,7 @@ import com.openrsc.server.model.action.WalkToPointAction;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.*;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.update.ChatMessage;
 import com.openrsc.server.model.entity.update.Damage;
@@ -574,6 +575,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 	}
 
 	private boolean checkCastOnNpc(Player player, Npc affectedNpc, SpellDef spell) {
+		NpcInteraction interaction = NpcInteraction.NPC_CAST_SPELL;
 
 		// Demon Slayer
 		if (affectedNpc.getID() == NpcId.DELRITH.id()) {
@@ -613,6 +615,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			}
 		}
 
+		NpcInteraction.setInteractions(affectedNpc, player, interaction);
+
 		return player.getWorld().getServer().getPluginHandler()
 				.handlePlugin(SpellNpcTrigger.class, player, new Object[]{player, affectedNpc});
 	}
@@ -622,13 +626,17 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 	}
 
 	public static void finalizeSpell(Player player, SpellDef spell, String message) {
+		finalizeSpell(player, spell, message, true);
+	}
+
+	public static void finalizeSpell(Player player, SpellDef spell, String message, boolean giveExp) {
 		player.lastCast = System.currentTimeMillis();
 		player.playSound("spellok");
 		// don't display a message if message is null (example superheat)
 		if (message != null) {
 			player.playerServerMessage(MessageType.QUEST, message.trim().isEmpty() ? "Cast spell successfully" : message);
 		}
-		player.incExp(getMagicId(player, spell), spell.getExp(), true);
+		if (giveExp) player.incExp(getMagicId(player, spell), spell.getExp(), true);
 		player.setCastTimer();
 	}
 
@@ -656,35 +664,36 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 				break;
 		}
 		if (spellEnum != Spells.CHARGE) {
-			double lowersBy = -1;
 			int affectsStat = -1;
 			if (spellEnum == Spells.CLAWS_OF_GUTHIX) {
-				lowersBy = 0.02;
 				affectsStat = Skill.DEFENSE.id();
 			} else if (spellEnum == Spells.SARADOMIN_STRIKE) {
-				lowersBy = 1;
 				affectsStat = Skill.PRAYER.id();
 			} else if (spellEnum == Spells.FLAMES_OF_ZAMORAK) {
-				lowersBy = 0.02;
 				affectsStat = Skill.MAGIC.id();
 			}
-			/* How much to lower the stat */
-			int lowerBy = (spellEnum != Spells.SARADOMIN_STRIKE ? (int) Math.ceil((affectedMob.getSkills().getLevel(affectsStat) * lowersBy))
-				: (int) lowersBy);
-
+			final int lowerBy;
+			if (spellEnum != Spells.SARADOMIN_STRIKE) {
+				lowerBy = 1 + (int) (affectedMob.getSkills().getLevel(affectsStat) * 0.05);
+			} else {
+				lowerBy = 1;
+			}
 			/* New current level */
 			final int newStat = affectedMob.getSkills().getLevel(affectsStat) - lowerBy;
-			/* Lowest stat you can weaken to with this spell */
-			final int maxWeaken = affectedMob.getSkills().getMaxStat(affectsStat)
-				- (int) Math.ceil((affectedMob.getSkills().getLevel(affectsStat) * lowersBy) * 4);
 
-			if (newStat < maxWeaken && spellEnum != Spells.SARADOMIN_STRIKE) {
-				player.playerServerMessage(MessageType.QUEST, "Your opponent already has weakened " + player.getWorld().getServer().getConstants().getSkills().getSkillName(affectsStat));
-				return;
-			}
-			if (player.getDuel().isDuelActive() && affectedMob.isPlayer()) {
-				Player aff = (Player) affectedMob;
-				aff.message("Your " + aff.getWorld().getServer().getConstants().getSkills().getSkillName(affectsStat) + " has been reduced by the spell!");
+			if (spellEnum != Spells.SARADOMIN_STRIKE) {
+				if (affectedMob.getSkills().getLevel(affectsStat) < affectedMob.getSkills().getMaxStat(affectsStat)) {
+					final String skillName = player.getWorld().getServer().getConstants().getSkills().getSkill(affectsStat).getLongName().toLowerCase();
+					player.playerServerMessage(MessageType.QUEST, "Your opponent already has weakened " + skillName);
+					return;
+				}
+				if (affectedMob.isPlayer()) {
+					Player aff = (Player) affectedMob;
+					// Yes, it's authentic that it's spelled "defence"...
+					final String skillName = (spellEnum == Spells.CLAWS_OF_GUTHIX) ?
+						"defence" : "magic";
+					aff.message(String.format("Your %s has been reduced by the spell!", skillName));
+				}
 			}
 			affectedMob.getSkills().setLevel(affectsStat, newStat);
 		}
@@ -1171,6 +1180,24 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						for (int item : ungrabbableArr) {
 							ungrabbables.add(item);
 						}
+
+						int groundItemId = affectedItem.getID();
+						int groundItemX = affectedItem.getX();
+						int groundItemY = affectedItem.getY();
+
+						//Carved rock gems should not be able to be telegrabbed, per Shasta.
+						boolean isLegendsQuestGem = (groundItemId == ItemId.OPAL.id() && groundItemX == 471 && groundItemY == 3722)
+							|| (groundItemId == ItemId.EMERALD.id() && groundItemX == 474 && groundItemY == 3730)
+							|| (groundItemId == ItemId.RUBY.id() && groundItemX == 471 && groundItemY == 3734)
+							|| (groundItemId == ItemId.DIAMOND.id() && groundItemX == 466 && groundItemY == 3739)
+							|| (groundItemId == ItemId.SAPPHIRE.id() && groundItemX == 460 && groundItemY == 3737)
+							|| (groundItemId == ItemId.RED_TOPAZ.id() && groundItemX == 464 && groundItemY == 3730)
+							|| (groundItemId == ItemId.JADE.id() && groundItemX == 469 && groundItemY == 3728);
+
+						if (isLegendsQuestGem) {
+							return;
+						}
+
 						if (affectedItem.getID() == ItemId.PRESENT.id()) {
 							return;
 						} else if (ungrabbables.contains(affectedItem.getID())) { // list of ungrabbable items sharing this message
@@ -1224,13 +1251,13 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							&& affectedItem.getAttribute("playerKill", false)
 							&& (getPlayer().isIronMan(IronmanMode.Ironman.id()) || getPlayer().isIronMan(IronmanMode.Ultimate.id())
 							|| getPlayer().isIronMan(IronmanMode.Hardcore.id()) || getPlayer().isIronMan(IronmanMode.Transfer.id()))) {
-							getPlayer().message("You're an Iron Man, so you can't loot items from players.");
+							getPlayer().message("You're an Ironman, so you can't loot items from players.");
 							return;
 						}
 						if (!affectedItem.belongsTo(getPlayer())
 							&& (getPlayer().isIronMan(IronmanMode.Ironman.id()) || getPlayer().isIronMan(IronmanMode.Ultimate.id())
 							|| getPlayer().isIronMan(IronmanMode.Hardcore.id()) || getPlayer().isIronMan(IronmanMode.Transfer.id()))) {
-							getPlayer().message("You're an Iron Man, so you can't take items that other players have dropped.");
+							getPlayer().message("You're an Ironman, so you can't take items that other players have dropped.");
 							return;
 						}
 
@@ -1287,16 +1314,18 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 			player.resetPath();
 			return;
 		}
-		int timeToAllowAttacks = player.getConfig().GAME_TICK * 5;
+
 		if (affectedMob.isPlayer()) {
 			Player other = (Player) affectedMob;
-			if (player.getLocation().inWilderness() && System.currentTimeMillis() - other.getCombatTimer() < timeToAllowAttacks) {
+			boolean isInPkZone = player.getLocation().inWilderness() || player.getConfig().USES_PK_MODE;
+			if (isInPkZone && !other.canBeReattacked()) {
 				player.resetPath();
-				// Effectively remove the attack timer from the player casted on
+				// Effectively remove the attack timer from the player casting
 				// Authentic: see ticket #2579
-				player.setCombatTimer(-timeToAllowAttacks);
+				player.resetRanAwayTimer();
+				return;
 			}
-			if (player.getLocation().inWilderness() && System.currentTimeMillis() - player.getCombatTimer() < timeToAllowAttacks) {
+			if (isInPkZone && !player.canBeReattacked()) {
 				player.resetPath();
 				// TODO: ...? should probably display a message here instead of dying silently...?
 				System.out.println("Killed pvp cast silently because they shot too fast");
@@ -1316,7 +1345,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 		}
 
 		player.setFollowing(affectedMob);
-		player.setWalkToAction(new WalkToMobAction(player, affectedMob, 4, false, ActionType.ATTACK) {
+		player.setWalkToAction(new WalkToMobAction(player, affectedMob, 4, false, ActionType.ATTACKMAGIC) {
 			public void executeInternal() {
 				if (!PathValidation.checkPath(getPlayer().getWorld(), getPlayer().getLocation(), affectedMob.getLocation())) {
 					getPlayer().playerServerMessage(MessageType.QUEST, "I can't get a clear shot from here");
@@ -1409,6 +1438,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 				}
 				getPlayer().resetAllExceptDueling();
 				EntityType entityType = mob.isPlayer() ? EntityType.PLAYER : EntityType.NPC;
+				boolean isClaws = false;
 				switch (spellEnum) {
 					case FEAR:
 						if (!getPlayer().getConfig().HAS_FEAR_SPELL) {
@@ -1424,7 +1454,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							return;
 						}
 
-						if (affectedMob.inCombat() && affectedMob.getHitsMade() < 2) {
+						if (affectedMob.inCombat() && affectedMob.getOpponent().getHitsMade() < 3) {
 							getPlayer().message("Your opponent can't retreat during the first 3 rounds of combat");
 							return;
 						}
@@ -1435,9 +1465,10 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 								// https://www.tip.it/runescape/times/view/615-forever-runescape-part-1
 								// https://web.archive.org/web/20010410193705/http://www.geocities.com/ngrunescape/magic.html
 								if (affectedMob.inCombat()) {
-									affectedMob.getOpponent().resetCombatEvent();
-									affectedMob.resetCombatEvent();
-									getPlayer().message("Your opponent is retreating");
+									((Npc)affectedMob).getBehavior().retreat();
+									//This sends the message to the caster, which may not be the player in combat. Probably not correct?
+									//retreat() already sends the message to the actual opponent.
+									//getPlayer().message("Your opponent is retreating");
 								}
 							}
 						});
@@ -1448,16 +1479,8 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					case CONFUSE_R:
 						double reduceBy = 0.02; // to date not known percentage, but possible
 						int[] stats = {Skill.ATTACK.id(), Skill.DEFENSE.id()};
-						int lowerAmt, newLvl, maxLower;
 						for (int affectedStat : stats) {
-							lowerAmt = (int) Math.ceil((affectedMob.getSkills().getLevel(affectedStat) * reduceBy));
-							/* New current level */
-							newLvl = affectedMob.getSkills().getLevel(affectedStat) - lowerAmt;
-							/* Lowest stat you can weaken to with this spell */
-							maxLower = affectedMob.getSkills().getMaxStat(affectedStat)
-								- (int) Math.ceil((affectedMob.getSkills().getLevel(affectedStat) * reduceBy));
-							if (newLvl < maxLower || (affectedMob.getSkills().getLevel(affectedStat)
-								< affectedMob.getSkills().getMaxStat(affectedStat) && player.getConfig().WAIT_TO_REBOOST)) {
+							if (affectedMob.getSkills().getLevel(affectedStat) < affectedMob.getSkills().getMaxStat(affectedStat)) {
 								getPlayer().playerServerMessage(MessageType.QUEST, "Your opponent already has weakened stats");
 								return;
 							}
@@ -1500,35 +1523,43 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 					case STUN:
 						double lowersBy = 0.0;
 						int affectsStat = -1;
+						final String message;
+
 						if (spellEnum == Spells.CONFUSE) {
 							lowersBy = 0.05;
 							affectsStat = Skill.ATTACK.id();
+							message = "Your attack has been reduced by a confuse spell!";
 						} else if (spellEnum == Spells.WEAKEN) {
 							lowersBy = 0.05;
 							affectsStat = Skill.STRENGTH.id();
+							message = "Your strength has been reduced by a weaken spell!";
 						} else if (spellEnum == Spells.CURSE) {
 							lowersBy = 0.05;
 							affectsStat = Skill.DEFENSE.id();
+							message = "Your defense has been reduced by a curse spell!";
 						} else if (spellEnum == Spells.VULNERABILITY) {
 							lowersBy = 0.10;
 							affectsStat = Skill.DEFENSE.id();
+							message = "Your defense has been reduced by a vulnerability spell!";
 						} else if (spellEnum == Spells.ENFEEBLE) {
 							lowersBy = 0.10;
 							affectsStat = Skill.STRENGTH.id();
+							message = "Your strength has been reduced by an enfeeble spell!";
 						} else if (spellEnum == Spells.STUN) {
 							lowersBy = 0.10;
 							affectsStat = Skill.ATTACK.id();
+							message = "Your attack has been reduced by a stun spell!";
+						} else {
+							message = "Undefined spell";
 						}
 
 						/* How much to lower the stat */
 						int lowerBy = (int) Math.ceil((affectedMob.getSkills().getLevel(affectsStat) * lowersBy));
 						/* New current level */
 						final int newStat = affectedMob.getSkills().getLevel(affectsStat) - lowerBy;
-						/* Lowest stat you can weaken to with this spell */
-						final int maxWeaken = affectedMob.getSkills().getMaxStat(affectsStat)
-							- (int) Math.ceil((affectedMob.getSkills().getLevel(affectsStat) * lowersBy));
-						if (newStat < maxWeaken) {
-							getPlayer().playerServerMessage(MessageType.QUEST, "Your opponent already has weakened " + getPlayer().getWorld().getServer().getConstants().getSkills().getSkillName(affectsStat));
+						if (affectedMob.getSkills().getLevel(affectsStat) < affectedMob.getSkills().getMaxStat(affectsStat)) {
+							final String skillName = getPlayer().getWorld().getServer().getConstants().getSkills().getSkill(affectsStat).getLongName().toLowerCase();
+							getPlayer().playerServerMessage(MessageType.QUEST, "Your opponent already has weakened " + skillName);
 							return;
 						}
 						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
@@ -1540,7 +1571,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							public void doSpell() {
 								affectedMob.getSkills().setLevel(stat, newStat);
 								if (affectedMob.isPlayer()) {
-									((Player) affectedMob).message("You have been weakened");
+									((Player) affectedMob).message(message);
 								}
 							}
 						});
@@ -1558,13 +1589,10 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							getPlayer().playerServerMessage(MessageType.QUEST, "This spell can only be used on skeletons, zombies and ghosts");
 							return;
 						}
-						int damaga = DataConversions.random(3, Constants.CRUMBLE_UNDEAD_MAX);
+						int damaga = CombatFormula.calculateMagicDamage(Constants.CRUMBLE_UNDEAD_MAX);
 						if (!checkAndRemoveRunes(getPlayer(), spell, capeActivated)) {
 							return;
 						}
-						if (DataConversions.random(0, 8) == 2)
-							damaga = 0;
-
 						getPlayer().getWorld().getServer().getGameEventHandler().add(new ProjectileEvent(getPlayer().getWorld(), getPlayer(), affectedMob, damaga, 1, setChasing));
 						finalizeSpell(getPlayer(), spell, DEFAULT);
 						return;
@@ -1595,6 +1623,7 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 						finalizeSpell(getPlayer(), spell, DEFAULT);
 						break;
 					case CLAWS_OF_GUTHIX:
+						isClaws = true;
 					case SARADOMIN_STRIKE:
 					case FLAMES_OF_ZAMORAK:
 						if (!getPlayer().getCarriedItems().getEquipment().hasEquipped(ItemId.STAFF_OF_GUTHIX.id()) && spellEnum == Spells.CLAWS_OF_GUTHIX) {
@@ -1643,12 +1672,18 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 								getPlayer().getCache().set(spell.getName() + "_casts", 1);
 							}
 						}
+
+						boolean giveExp = true;
 						if (affectedMob.getRegion().getGameObject(affectedMob.getLocation(), getPlayer()) == null) {
+							//Authentically, Claws of Guthix only gave XP if the opponent was not stat drained already. Just RSC things...
+							if (affectedMob.getConfig().WANT_BUGGED_CLAWS_XP && isClaws && affectedMob.getSkills().getLevel(Skill.DEFENSE.id()) < affectedMob.getSkills().getMaxStat(Skill.DEFENSE.id())) {
+								giveExp = false;
+							}
+
 							godSpellObject(getPlayer(), affectedMob, spellEnum);
 						}
 						getPlayer().getWorld().getServer().getGameEventHandler().add(new ProjectileEvent(getPlayer().getWorld(), getPlayer(), affectedMob, CombatFormula.calculateGodSpellDamage(getPlayer()), 1, setChasing));
-
-						finalizeSpell(getPlayer(), spell, DEFAULT);
+						finalizeSpell(getPlayer(), spell, DEFAULT, giveExp);
 						break;
 
 					case CHILL_BOLT:
@@ -1659,9 +1694,9 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							return;
 						}
 
-						int maxR = (int)getPlayer().getWorld().getServer().getConstants().getSpellDamages().getSpellDamage(spellEnum, entityType, SpellDamages.MagicType.GOODEVILMAGIC);
+						double maxR = getPlayer().getWorld().getServer().getConstants().getSpellDamages().getSpellDamage(spellEnum, entityType, SpellDamages.MagicType.GOODEVILMAGIC);
 
-						int damageR = CombatFormula.calculateMagicDamage(maxR + 1) - 1;
+						int damageR = CombatFormula.calculateMagicDamage(maxR);
 
 						getPlayer().getWorld().getServer().getGameEventHandler().add(new ProjectileEvent(getPlayer().getWorld(), getPlayer(), affectedMob, damageR, 1, setChasing));
 						getPlayer().setKillType(KillType.MAGIC);
@@ -1722,17 +1757,17 @@ public class SpellHandler implements PayloadProcessor<SpellStruct, OpcodeIn> {
 							return;
 						}
 
-						int max = (int)getPlayer().getWorld().getServer().getConstants().getSpellDamages().getSpellDamage(spellEnum, entityType, SpellDamages.MagicType.MODERNMAGIC);
+						double max = getPlayer().getWorld().getServer().getConstants().getSpellDamages().getSpellDamage(spellEnum, entityType, SpellDamages.MagicType.MODERNMAGIC);
 
 						// If the player is wearing chaos gauntlets and casts a bolt spell, they get +1 damage
 						final boolean gauntletBonus = getPlayer().getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_CHAOS.id())
 							&& getPlayer().getCache().getInt("famcrest_gauntlets") == Gauntlets.CHAOS.id();
 
-						if (getPlayer().getMagicPoints() > 30
-							|| (gauntletBonus && spell.getName().contains("bolt")))
+						if (gauntletBonus && spell.getName().contains("bolt")) {
 							max += 1;
+						}
 
-						int damage = CombatFormula.calculateMagicDamage(max + 1) - 1;
+						int damage = CombatFormula.calculateMagicDamage(max);
 
 						getPlayer().getWorld().getServer().getGameEventHandler().add(new ProjectileEvent(getPlayer().getWorld(), getPlayer(), affectedMob, damage, 1, setChasing));
 						getPlayer().setKillType(KillType.MAGIC);

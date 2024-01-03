@@ -61,6 +61,8 @@ public class ActionSender {
 			generator = new Payload69Generator();
 		} else if (player.isUsing233CompatibleClient()) {
 			generator = new Payload235Generator();
+		} else if (player.isUsing203CompatibleClient()) {
+			generator = new Payload203Generator();
 		} else if (player.isUsing177CompatibleClient()) {
 			generator = new Payload177Generator();
 		} else if (player.isUsing140CompatibleClient()) {
@@ -338,7 +340,7 @@ public class ActionSender {
 			}
 			int i = 0;
 			for (Item item : items) {
-				struct.catalogIDs[i] = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+				struct.catalogIDs[i] = item.getSafeItemId(player);
 				if (item.getNoted() && !player.isUsingCustomClient()) {
 					String itemName = item.getDef(player.getWorld()).getName();
 					player.playerServerMessage(MessageType.QUEST,
@@ -451,7 +453,9 @@ public class ActionSender {
 
 	public static void sendNpcKills(Player player) {
 	    MobKillsStruct struct = new MobKillsStruct();
-	    struct.count = player.getNpcKills();
+	    struct.totalCount = player.getNpcKills();
+	    struct.recentNpcId = player.getLastNpcKilledId();
+	    struct.recentNpcKills = player.getRecentNpcKills();
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_NPC_KILLS, struct, player);
 	}
 
@@ -485,7 +489,8 @@ public class ActionSender {
 	 * @param player
 	 */
 	public static void sendFriendList(Player player) {
-		if (isRetroClient(player) || player.isUsing177CompatibleClient()) {
+		if (player.getClientVersion() <= 204) {
+			final int sameWorld = player.getClientVersion() < 203 ? 99 : 255;
 			FriendListStruct struct = new FriendListStruct();
 			int listSize = player.getSocial().getFriendList().size();
 			if (player.getBlockGlobalFriend()) {
@@ -509,19 +514,19 @@ public class ActionSender {
 					if (player.getBlockGlobalFriend()) continue;
 					onlineStatus = 6; // online and same world
 					username = "Global$";
-					struct.worldNumber[i] = 99;
+					struct.worldNumber[i] = sameWorld;
 				} else if (player.getWorld().getPlayer(usernameHash) != null &&
 					player.getWorld().getPlayer(usernameHash).isLoggedIn()) {
 					onlineStatus = getPlayerOnlineStatus(player, usernameHash);
 					try {
 						// TODO: we won't be able to reach across servers like this if there's more than one server
 						if (onlineStatus == 6) {
-							struct.worldNumber[i] = 99; // same world
-						} else {
+							struct.worldNumber[i] = sameWorld;
+						} else if (onlineStatus != 0) {
 							struct.worldNumber[i] = player.getWorld().getPlayer(usernameHash).getWorld().getServer().getConfig().WORLD_NUMBER;
 						}
 					} catch (Exception e) {
-						struct.worldNumber[i] = 99; // assume same world
+						struct.worldNumber[i] = sameWorld; // assume same world
 					}
 				}
 
@@ -577,24 +582,25 @@ public class ActionSender {
 		FriendUpdateStruct struct = new FriendUpdateStruct();
 		int onlineStatus = 0;
 		struct.worldNumber = 0;
+		final int sameWorld = player.getClientVersion() == 203 ? 255 : 99;
 
 		if (usernameHash == Long.MIN_VALUE && player.getConfig().WANT_GLOBAL_FRIEND) {
 			if (player.getBlockGlobalFriend()) return;
 			onlineStatus = 6;
 			username = "Global$";
-			struct.worldNumber = 99;
+			struct.worldNumber = sameWorld;
 		} else if (player.getWorld().getPlayer(usernameHash) != null &&
 			player.getWorld().getPlayer(usernameHash).isLoggedIn()) {
 			onlineStatus = getPlayerOnlineStatus(player, usernameHash);
 			try {
 				// TODO: we won't be able to reach across servers like this if there's more than one server
 				if (onlineStatus == 6) {
-					struct.worldNumber = 99; // same world
-				} else {
+					struct.worldNumber = sameWorld;
+				} else if (onlineStatus != 0) {
 					struct.worldNumber = player.getWorld().getPlayer(usernameHash).getWorld().getServer().getConfig().WORLD_NUMBER;
 				}
 			} catch (Exception e) {
-				struct.worldNumber = 99; // assume same world
+				struct.worldNumber = sameWorld; // assume same world
 			}
 		}
 
@@ -648,6 +654,8 @@ public class ActionSender {
 			customOptions.add(player.getHideLoginBox() ? 1 : 0);
 			customOptions.add(player.getBlockGlobalFriend() ? 1 : 0);
 			customOptions.add(player.getHideUndergroundFlicker() ? 1 : 0);
+			customOptions.add(player.getStatusBar());
+			customOptions.add(player.getShowRecentNPCKC() ? 1 : 0);
 		}
 		struct.customOptions = customOptions;
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_GAME_SETTINGS, struct, player);
@@ -741,6 +749,8 @@ public class ActionSender {
 			LOGGER.info(server.getConfig().WANT_OPENPK_PRESETS + " 82");
 			LOGGER.info(server.getConfig().SHOW_UNDERGROUND_FLICKER_TOGGLE + " 83");
 			LOGGER.info(server.getConfig().DISABLE_MINIMAP_ROTATION + " 84");
+			LOGGER.info(server.getConfig().ALLOW_BEARDED_LADIES + " 85");
+			LOGGER.info(server.getConfig().PRIDE_MONTH + " 86");
 		}
 		Packet p = prepareServerConfigs(server);
 		// ConnectionAttachment attachment = new ConnectionAttachment();
@@ -796,7 +806,7 @@ public class ActionSender {
 		configs.add((byte) (server.getConfig().WANT_EXPERIENCE_ELIXIRS ? 1 : 0)); // 27
 		configs.add((byte) server.getConfig().WANT_KEYBOARD_SHORTCUTS); // 28
 		configs.add((byte) (server.getConfig().WANT_CUSTOM_BANKS ? 1 : 0)); // 29
-		configs.add((byte) (server.getConfig().WANT_BANK_PINS ? 1 : 0)); // 30
+		configs.add((byte) (server.getConfig().WANT_BANK_PINS || server.getConfig().TOLERATE_BANK_PINS ? 1 : 0)); // 30
 		configs.add((byte) (server.getConfig().WANT_BANK_NOTES ? 1 : 0)); // 31
 		configs.add((byte) (server.getConfig().WANT_CERT_DEPOSIT ? 1 : 0)); // 32
 		configs.add((byte) (server.getConfig().CUSTOM_FIREMAKING ? 1 : 0)); // 33
@@ -834,7 +844,7 @@ public class ActionSender {
 		configs.add((byte) (server.getConfig().MINING_ROCKS_EXTENDED ? 1 : 0)); //65
 		configs.add((byte) stepsPerFrame); //66
 		configs.add((byte) (server.getConfig().WANT_LEFTCLICK_WEBS ? 1 : 0)); //67
-		configs.add((byte) ((server.getConfig().NPC_KILL_LOGGING && server.getConfig().NPC_KILL_MESSAGES) ? 1 : 0)); //68
+		configs.add((byte) (server.getConfig().NPC_KILL_COUNTERS ? 1 : 0)); //68
 		configs.add((byte) (server.getConfig().WANT_CUSTOM_UI ? 1 : 0)); //69
 		configs.add((byte) (server.getConfig().WANT_GLOBAL_FRIEND ? 1 : 0)); //70
 		configs.add((byte) server.getConfig().CHARACTER_CREATION_MODE); //71
@@ -851,6 +861,8 @@ public class ActionSender {
 		configs.add((byte) (server.getConfig().WANT_OPENPK_PRESETS ? 1 : 0)); // 82
 		configs.add((byte) (server.getConfig().SHOW_UNDERGROUND_FLICKER_TOGGLE ? 1 : 0)); // 83
 		configs.add((byte) (server.getConfig().DISABLE_MINIMAP_ROTATION ? 1 : 0)); // 84
+		configs.add((byte) (server.getConfig().ALLOW_BEARDED_LADIES ? 1 : 0)); // 85
+		configs.add((byte) (server.getConfig().PRIDE_MONTH ? 1 : 0)); // 86
 
 		struct.configs = configs;
 		struct.setOpcode(OpcodeOut.SEND_SERVER_CONFIGS);
@@ -939,7 +951,7 @@ public class ActionSender {
 			i = 0;
 			for (Item item : player.getCarriedItems().getInventory().getItems()) {
 				struct.wielded[i] = item.isWielded() ? 1 : 0;
-				struct.catalogIDs[i] = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+				struct.catalogIDs[i] = item.getSafeItemId(player);
 				struct.noted[i] = item.getNoted() ? 1 : 0;
 				if (item.getDef(player.getWorld()).isStackable() || item.getNoted()) {
 					// amount sent only for stackable
@@ -1097,8 +1109,10 @@ public class ActionSender {
 		}
 		p = getGenerator(player).generate(struct, player);
 		if (p != null) {
+			LOGGER.info("Closing channel for logout request with packet for player " + player.getUsername());
 			player.getChannel().writeAndFlush(p).addListener((ChannelFutureListener) arg0 -> arg0.channel().close());
 		} else {
+			LOGGER.info("Closing channel for logout request with null packet for player " + player.getUsername());
 			// Packet was not able to be generated
 			// Just proceed to close the channel
 			player.getChannel().close();
@@ -1717,7 +1731,7 @@ public class ActionSender {
 			}
 			i = 0;
 			for (Item item : items) {
-				struct.opponentCatalogIDs[i] = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+				struct.opponentCatalogIDs[i] = item.getSafeItemId(player);
 				if (item.getNoted() && !player.isUsingCustomClient()) {
 					String itemName = item.getDef(player.getWorld()).getName();
 					player.playerServerMessage(MessageType.QUEST,
@@ -1777,7 +1791,7 @@ public class ActionSender {
 			struct.slot = slot;
 			Item item = player.getCarriedItems().getInventory().get(slot);
 			if (item != null) {
-				struct.catalogID = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+				struct.catalogID = item.getSafeItemId(player);
 				struct.wielded = item.isWielded() ? 1 : 0;
 				struct.noted = item.getNoted() ? 1 : 0;
 				struct.amount = item.getDef(player.getWorld()).isStackable() || item.getNoted() ?
@@ -1848,7 +1862,7 @@ public class ActionSender {
 		synchronized (player.getBank().getItems()) {
 			int i = 0;
 			for (Item item : player.getBank().getItems()) {
-				struct.catalogIDs[i] = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+				struct.catalogIDs[i] = item.getSafeItemId(player);
 				struct.amount[i] = item.getAmount();
 				i++;
 			}
@@ -1877,7 +1891,7 @@ public class ActionSender {
 
 		int i = 0;
 		for (Item item : bank) {
-			struct.catalogIDs[i] = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+			struct.catalogIDs[i] = item.getSafeItemId(player);
 			struct.amount[i] = item.getAmount();
 			i++;
 		}
@@ -1907,7 +1921,7 @@ public class ActionSender {
 			Item item = shop.getShopItem(i);
 			if (maxId > ItemId.NOTHING.id() && item.getCatalogId() > maxId)
 				continue;
-			struct.catalogIDs[idx] = player.isUsingCustomClient() ? item.getCatalogId() : item.getCatalogIdAuthenticNoting();
+			struct.catalogIDs[idx] = item.getSafeItemId(player);
 			struct.amount[idx] = item.getAmount();
 			struct.baseAmount[idx] = shop.getStock(item.getCatalogId());
 			struct.price[idx] = 0; // TODO: get from shop list for early protocols??
@@ -2000,21 +2014,13 @@ public class ActionSender {
 		tryFinalizeAndSendPacket(OpcodeOut.SEND_INPUT_BOX, struct, player);
 	}
 
-	public static void sendUpdatedPlayer(Player player) {
-		try {
-			player.getWorld().getServer().getGameUpdater().sendUpdatePackets(player);
-		} catch (Throwable e) {
-			LOGGER.catching(e);
-		}
-	}
-
 	static void sendLogin(Player player) {
 		try {
 			if (player.getWorld().registerPlayer(player)) {
                 sendPrivacySettings(player);
                 sendMessage(player, null,  MessageType.QUEST, "Welcome to " + player.getConfig().SERVER_NAME + "!", 0, null);
 
-				if (HolidayDropEvent.isOccurring(player) && player.getWorld().getServer().getConfig().WANT_BANK_PINS) { // TODO: this is not a good way to detect that we are not using the RSCP config
+				if (HolidayDropEvent.isOccurring(player)) {
 				    sendMessage(player, null, MessageType.QUEST, "@mag@There is a Holiday Drop Event going on now! Type @gre@::drop@mag@ for more information.", 0, null);
                 }
 

@@ -13,6 +13,7 @@ import com.openrsc.server.model.RSCString;
 import com.openrsc.server.model.entity.Entity;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.GroundItem;
+import com.openrsc.server.model.entity.UnregisterForcefulness;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.entity.player.PlayerSettings;
@@ -21,6 +22,7 @@ import com.openrsc.server.model.world.World;
 import com.openrsc.server.net.rsc.ActionSender;
 import com.openrsc.server.net.rsc.enums.OpcodeOut;
 import com.openrsc.server.net.rsc.struct.outgoing.*;
+import com.openrsc.server.plugins.triggers.TimedEventTrigger;
 import com.openrsc.server.util.EntityList;
 import com.openrsc.server.util.rsc.AppearanceRetroConverter;
 import com.openrsc.server.util.rsc.DataConversions;
@@ -86,7 +88,7 @@ public final class GameStateUpdater {
 			}
 		} catch (final Exception e) {
 			LOGGER.catching(e);
-			player.unregister(true, "Exception while updating player " + player.getUsername());
+			player.unregister(UnregisterForcefulness.FORCED, "Exception while updating player " + player.getUsername());
 		}
 	}
 
@@ -102,12 +104,15 @@ public final class GameStateUpdater {
 		}
 		if (curTime - player.getLastSaveTime() >= (autoSave) && player.loggedIn()) {
 			player.timeIncrementActivity();
+			if (player.getConfig().WANT_CUSTOM_QUESTS) {
+				player.getWorld().getServer().getPluginHandler().handlePlugin(TimedEventTrigger.class, player, new Object[]{player});
+			}
 			player.save();
 			player.setLastSaveTime(curTime);
 		}
 
 		if (curTime - player.getLastClientActivity() >= 30000) {
-			player.unregister(false, "Client activity time-out");
+			player.unregister(UnregisterForcefulness.WAIT_UNTIL_COMBAT_ENDS, "Client activity time-out");
 		}
 
 		if (player.warnedToMove()) {
@@ -115,7 +120,7 @@ public final class GameStateUpdater {
 				player.loggedIn() &&
 				!player.hasElevatedPriveledges() &&
 				!(player.inCombat() && player.getDuel().isDuelActive())) {
-				player.unregister(true, "Movement time-out");
+				player.unregister(UnregisterForcefulness.FORCED, "Movement time-out");
 			} else if (player.hasMoved()) {
 				player.setWarnedToMove(false);
 			}
@@ -201,6 +206,17 @@ public final class GameStateUpdater {
 			for (final Iterator<Npc> it$ = playerToUpdate.getLocalNpcs().iterator(); it$.hasNext(); ) {
 				Npc localNpc = it$.next();
 
+				if (playerToUpdate.getConfig().WANT_INSTANCED_NPCS && !playerToUpdate.isAdmin()) {
+					if (playerToUpdate.getConfig().WANT_COMBAT_ODYSSEY
+						&& localNpc.getID() == NpcId.BIGGUM_FLODROT.id()
+						&& !playerToUpdate.canSeeBiggum()) {
+						it$.remove();
+						mobsUpdate.add(new AbstractMap.SimpleEntry<>(1, 1));
+						mobsUpdate.add(new AbstractMap.SimpleEntry<>(1, 1));
+						mobsUpdate.add(new AbstractMap.SimpleEntry<>(3, 2));
+					}
+				}
+
 				if (!playerToUpdate.withinRange(localNpc) || localNpc.isRemoved() || localNpc.isRespawning() || localNpc.isTeleporting() || localNpc.inCombat() || !localNpc.withinAuthenticRange(playerToUpdate)) {
 					it$.remove();
 					mobsUpdate.add(new AbstractMap.SimpleEntry<>(1, 1));
@@ -221,6 +237,15 @@ public final class GameStateUpdater {
 				}
 			}
 			for (final Npc newNPC : playerToUpdate.getViewArea().getNpcsInView()) {
+
+				if (playerToUpdate.getConfig().WANT_INSTANCED_NPCS && !playerToUpdate.isAdmin()) {
+					if (playerToUpdate.getConfig().WANT_COMBAT_ODYSSEY
+						&& newNPC.getID() == NpcId.BIGGUM_FLODROT.id()
+						&& !playerToUpdate.canSeeBiggum()) {
+						continue;
+					}
+				}
+
 				if (playerToUpdate.getLocalNpcs().contains(newNPC) || newNPC.equals(playerToUpdate) || newNPC.isRemoved() || newNPC.isRespawning()
 					|| newNPC.getID() == NpcId.NED_BOAT.id() && !playerToUpdate.getCache().hasKey("ned_hired")
 					|| !playerToUpdate.withinRange(newNPC) || (newNPC.isTeleporting() && !newNPC.inCombat())) {
@@ -268,6 +293,7 @@ public final class GameStateUpdater {
 		}
 
 		boolean isRetroClient = playerToUpdate.isUsing38CompatibleClient() || playerToUpdate.isUsing39CompatibleClient();
+		boolean usesKnownPlayers = playerToUpdate.getClientVersion() >= 61 && playerToUpdate.getClientVersion() <= 204;
 
 		if (isRetroClient) {
 			// TODO: check impl
@@ -410,8 +436,7 @@ public final class GameStateUpdater {
 					mobsUpdate.add(new AbstractMap.SimpleEntry<>((int) offsets[0], forAuthentic ? 5 : 6));
 					mobsUpdate.add(new AbstractMap.SimpleEntry<>((int) offsets[1], forAuthentic ? 5 : 6));
 					mobsUpdate.add(new AbstractMap.SimpleEntry<>(otherPlayer.getSprite(), 4));
-					if (playerToUpdate.isUsing177CompatibleClient() || playerToUpdate.isUsing140CompatibleClient()
-						|| playerToUpdate.isUsing115CompatibleClient() || playerToUpdate.isUsing69CompatibleClient()) {
+					if (usesKnownPlayers) {
 						mobsUpdate.add(new AbstractMap.SimpleEntry<>(playerToUpdate.isKnownPlayer(otherPlayer.getIndex()) ? 1 : 0, 1));
 					}
 
@@ -489,12 +514,10 @@ public final class GameStateUpdater {
 				if (isRetroClient(player)) {
 					updates.add((byte) chatMessage.getMessageString().length());
 					updates.add(chatMessage.getMessageString());
-				} else if (player.isUsing177CompatibleClient() || player.isUsing115CompatibleClient()) {
-					updates.add(new RSCString(chatMessage.getMessageString()));
-				} else if (player.isUsing233CompatibleClient()) {
-					updates.add(new RSCString(chatMessage.getMessageString()));
-				} else {
+				} else if (player.isUsingCustomClient()) {
 					updates.add(chatMessage.getMessageString());
+				} else {
+					updates.add(new RSCString(chatMessage.getMessageString()));
 				}
 			}
 			Damage npcNeedingHitsUpdate;
@@ -574,16 +597,16 @@ public final class GameStateUpdater {
 		if (player.getUpdateFlags().hasChatMessage()) {
 			ChatMessage chatMessage = player.getUpdateFlags().getChatMessage();
 			if (!chatMessage.getMuted() || player.hasElevatedPriveledges()) {
-				// 177 client locally echos player's own chat messages instead of having the server confirm what the player sent
+				// late 2001 to 2006 clients locally echo player's own chat messages instead of having the server confirm what the player sent
 				if (
 					!(
 						// is a client that echos their own local chat messages
-						(player.isUsing177CompatibleClient() || player.isUsing115CompatibleClient()) &&
+						(player.getClientVersion() >= 92 && player.getClientVersion() <= 204) &&
 							// is public chat & not quest/private message
 							(chatMessage.getRecipient() == null || chatMessage.getRecipient().isPlayer()) &&
 							// chat sender is chat receiver
 							((Player)chatMessage.getSender()).getUsernameHash() == player.getUsernameHash()
-					)
+					) || player.getUpdateFlags().isPluginChatMessage().get() //Plugin induced messages should always show up.
 				)
 				{
 					chatMessagesNeedingDisplayed.add(chatMessage);
@@ -646,7 +669,9 @@ public final class GameStateUpdater {
 	private void issuePlayerAppearanceUpdatePacket(final Player player, final Queue<Bubble> bubblesNeedingDisplayed,
 												   final Queue<ChatMessage> chatMessagesNeedingDisplayed, final Queue<Projectile> projectilesNeedingDisplayed,
 												   final Queue<Damage> playersNeedingDamageUpdate,final Queue<HpUpdate> playersNeedingHpUpdate,
+
 												   final Queue<Player> playersNeedingAppearanceUpdate) {
+
 		if (player.loggedIn()) {
 			final int playersNeedingAppearanceUpdateSize = playersNeedingAppearanceUpdate.size();
 			final int updateSize = bubblesNeedingDisplayed.size() + chatMessagesNeedingDisplayed.size()
@@ -659,8 +684,7 @@ public final class GameStateUpdater {
 				AppearanceUpdateStruct altStruct = new AppearanceUpdateStruct(); // for early mudclient, appearance update was sent appart;
 				boolean isRetroClient = player.isUsing38CompatibleClient() || player.isUsing39CompatibleClient();
 				boolean isCustomClient = player.isUsingCustomClient();
-				boolean is177Compat = player.isUsing177CompatibleClient() || player.isUsing140CompatibleClient()
-					|| player.isUsing115CompatibleClient() || player.isUsing69CompatibleClient();
+				boolean appearanceUpdateWithUsernameHash = player.getClientVersion() >= 61 && player.getClientVersion() <= 204;
 
 				List<Object> updatesMain = new ArrayList<>();
 				List<Object> updatesAlt = new ArrayList<>();
@@ -806,7 +830,6 @@ public final class GameStateUpdater {
 				Player playerNeedingAppearanceUpdate;
 				while ((playerNeedingAppearanceUpdate = playersNeedingAppearanceUpdate.poll()) != null) {
 					PlayerAppearance appearance = playerNeedingAppearanceUpdate.getSettings().getAppearance();
-					final int clientVersion = playerNeedingAppearanceUpdate.getClientVersion();
 
 					if (isRetroClient) {
 						updatesAlt.add((short) playerNeedingAppearanceUpdate.getIndex()); // server index
@@ -827,7 +850,7 @@ public final class GameStateUpdater {
 								// this current behaviour is slightly buggy esp on rsc+, but will save bytes towards the 5000 allowed.
 								updatesMain.add(playerNeedingAppearanceUpdate.getUsername().substring(0, 1));
 							}
-						} else if (is177Compat) {
+						} else if (appearanceUpdateWithUsernameHash) {
 							updatesMain.add((short) player.getAppearanceID());
 							updatesMain.add((long) DataConversions.usernameToHash(playerNeedingAppearanceUpdate.getUsername()));
 						} else if (player.isUsingCustomClient()) {
@@ -957,10 +980,10 @@ public final class GameStateUpdater {
 						for (int i : playerNeedingAppearanceUpdate.getWornItems()) {
 							if (isRetroClient) {
 								updatesAlt.add((char) (AppearanceRetroConverter.convert(i) & 0xFF));
-							} else if (player.isUsing233CompatibleClient() || is177Compat) {
-								updatesMain.add((char) (i & 0xFF));
-							} else {
+							} else if (isCustomClient) {
 								updatesMain.add((short) i);
+							} else {
+								updatesMain.add((char) (i & 0xFF));
 							}
 						}
 					}

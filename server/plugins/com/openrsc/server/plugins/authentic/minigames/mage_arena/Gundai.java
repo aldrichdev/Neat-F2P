@@ -27,8 +27,8 @@ public class Gundai implements TalkNpcTrigger, OpNpcTrigger {
 		String optionBank = "cool, I'd like to access my bank account please";
 		options.add(optionBank);
 
-		String optionPin = "I'd like to talk about bank pin";
-		if (config().WANT_BANK_PINS && !player.getBankPinOptOut())
+		String optionPin = "I'd like to inquire about bank pins";
+		if (player.getBankPinOption())
 			options.add(optionPin);
 
 		String optionCollect = "I'd like to collect my items from auction";
@@ -43,7 +43,7 @@ public class Gundai implements TalkNpcTrigger, OpNpcTrigger {
 		if (option == -1) return;
 		if (options.get(option).equalsIgnoreCase(optionBank)) {
 			if (player.isIronMan(IronmanMode.Ultimate.id())) {
-				player.message("As an Ultimate Iron Man, you cannot use the bank.");
+				player.message("As an Ultimate Ironman, you cannot use the bank.");
 				return;
 			}
 
@@ -60,9 +60,10 @@ public class Gundai implements TalkNpcTrigger, OpNpcTrigger {
 			}
 		} else if (options.get(option).equalsIgnoreCase(optionPin)) {
 			int menu;
-			if (config().WANT_CUSTOM_SPRITES) {
+			if (config().WANT_CUSTOM_SPRITES || player.getBankPinOptIn()) {
 				menu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin");
 			} else {
+				// WANT_BANK_PIN on a non-cabbage server
 				menu = multi(player, "Set a bank pin", "Change bank pin", "Delete bank pin", "Can you please never mention bank pins to me again?");
 			}
 			if (menu == 0) {
@@ -74,7 +75,7 @@ public class Gundai implements TalkNpcTrigger, OpNpcTrigger {
 				changebankpin(player, n);
 			} else if (menu == 2) {
 				removebankpin(player, n);
-			} else if (menu == 3 && !config().WANT_CUSTOM_SPRITES) {
+			} else if (menu == 3 && !config().WANT_CUSTOM_SPRITES && !player.getBankPinOptIn()) {
 				if (bankpinoptout(player, n, false)) {
 					player.playerServerMessage(MessageType.QUEST, "You have successfully opted out of even THE MENTION of a bank pin.");
 				}
@@ -121,7 +122,7 @@ public class Gundai implements TalkNpcTrigger, OpNpcTrigger {
 
 	private void quickFeature(Npc npc, Player player, boolean auction) {
 		if (player.isIronMan(IronmanMode.Ultimate.id())) {
-			player.message("As an Ultimate Iron Man, you cannot use the bank.");
+			player.message("As an Ultimate Ironman, you cannot use the bank.");
 			return;
 		}
 

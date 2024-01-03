@@ -4,6 +4,8 @@ import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.Npc;
+import com.openrsc.server.model.entity.npc.NpcInteraction;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.handlers.ItemUseOnItem;
 import com.openrsc.server.plugins.authentic.commands.RegularPlayer;
@@ -52,7 +54,7 @@ public class Fluffs implements UsePlayerTrigger, OpInvTrigger, UseNpcTrigger, Us
 		if (player.hasElevatedPriveledges()) {
 			if (player.getWorld().getPlayers().size() > 1) {
 				player.playerServerMessage(MessageType.QUEST, "Eventually, Fluffs meows and you think you can hear the names of all players online?");
-				RegularPlayer.queryOnlinePlayers(player, true);
+				RegularPlayer.queryOnlinePlayers(player, true, false);
 			} else {
 				// fluffs' pronouns are she/her according to Gertrude's transcript
 				player.playerServerMessage(MessageType.QUEST, "Eventually, Fluffs meows and you think you can hear her say something?");
@@ -81,8 +83,8 @@ public class Fluffs implements UsePlayerTrigger, OpInvTrigger, UseNpcTrigger, Us
 
 	@Override
 	public void onUseNpc(Player player, Npc npc, Item item) {
-		player.face(npc);
-		npc.face(player);
+		NpcInteraction interaction = NpcInteraction.NPC_TALK_TO;
+		NpcInteraction.setInteractions(npc, player, interaction);
 		npcsay(player, npc, "Oh Fluffs!! It's so good to see you.");
 		mes("Fluffs jumps out of your sack and rubs against Gertrude's legs, purring");
 		if (player.getCarriedItems().getInventory().hasInInventory(item.getCatalogId())) {

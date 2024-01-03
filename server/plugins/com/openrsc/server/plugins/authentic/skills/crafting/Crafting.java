@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import com.openrsc.server.ServerConfiguration;
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Quests;
+import com.openrsc.server.constants.SceneryId;
 import com.openrsc.server.constants.Skill;
 import com.openrsc.server.external.ItemCraftingDef;
 import com.openrsc.server.external.ItemGemDef;
@@ -125,8 +126,9 @@ public class Crafting implements UseInvTrigger,
 				return;
 			}
 			if (getCurrentLevel(player, Skill.CRAFTING.id()) < 10) {
-				player.message("You need a crafting level of 10 to make the lens");
-				return;
+				player.message("Sorry, you need a crafting level");
+				player.message("Of 10 or above to use this object");
+				//Authentically bugged and wouldn't stop the player from actually making the lens.
 			}
 			if (carriedItems.remove(new Item(ItemId.MOLTEN_GLASS.id())) > -1) {
 				player.message("You pour the molten glass into the mould");
@@ -202,18 +204,18 @@ public class Crafting implements UseInvTrigger,
 	}
 
 	private boolean craftingTypeChecks(final GameObject obj, final Item item, final Player player) {
-		boolean furnace = obj.getID() == 118 || obj.getID() == 813;
+		boolean furnace = obj.getID() == SceneryId.FURNACE.id()|| obj.getID() == SceneryId.FURNACE_UNDERGROUND_PASS.id();
 		boolean furnaceItem = DataConversions.inArray(itemsFurnance, item.getCatalogId());
 		boolean jewelryBar = item.getCatalogId() == ItemId.SILVER_BAR.id() || item.getCatalogId() == ItemId.GOLD_BAR.id();
-		boolean potteryOven = obj.getID() == 178;
+		boolean potteryOven = obj.getID() == SceneryId.POTTERY_OVEN.id();
 		boolean potteryItem = DataConversions.inArray(itemsOven, item.getCatalogId());
-		boolean spinningWheel = obj.getID() == 179;
+		boolean potteryWheel = obj.getID() == SceneryId.POTTERY_WHEEL.id();
 		boolean softClay = item.getCatalogId() == ItemId.SOFT_CLAY.id();
 
 		// Checks to make sure you're using the right item with the right object.
 		return (furnace && furnaceItem)
 			|| (potteryOven && potteryItem)
-			|| (spinningWheel && softClay);
+			|| (potteryWheel && softClay);
 	}
 
 	private void beginCrafting(final Item item, final Player player) {
@@ -463,7 +465,7 @@ public class Crafting implements UseInvTrigger,
 
 		if (!hasRequiredMould(player, jewelryShape)) return null;
 
-		boolean noGemUsed = false;
+		boolean gemUsed = false;
 		if (!config().WANT_EQUIPMENT_TAB) { // TODO: this is not a very good way to detect other than Cabbage server config
 			player.playerServerMessage(MessageType.QUEST,
 				"Would you like to put a gem in the " + jewelryShape.toLowerCase() + "?");
@@ -471,7 +473,9 @@ public class Crafting implements UseInvTrigger,
 				"Yes",
 				"No"
 			};
-			noGemUsed = multi(player, options) == 1;
+			int gemUsedOption = multi(player, options);
+			if (gemUsedOption == -1) return null;
+			gemUsed = gemUsedOption == 0;
 		}
 
 		// select gem
@@ -509,7 +513,7 @@ public class Crafting implements UseInvTrigger,
 		}
 
 		String gem = Gold;
-		if (!noGemUsed) {
+		if (gemUsed) {
 			player.playerServerMessage(MessageType.QUEST, "what sort of gem do you want to put in the " + jewelryShape + "?");
 			int gemMultiSelection = multi(player, options);
 			if (gemMultiSelection < 0 || gemMultiSelection > options.length)

@@ -53,7 +53,7 @@ public class GnomeBall implements MiniGameInterface, UsePlayerTrigger, TakeObjTr
 		if (item.getCatalogId() == ItemId.GNOME_BALL.id()) {
 			if (otherPlayer.isIronMan(IronmanMode.Ironman.id()) || otherPlayer.isIronMan(IronmanMode.Ultimate.id())
 				|| otherPlayer.isIronMan(IronmanMode.Hardcore.id()) || otherPlayer.isIronMan(IronmanMode.Transfer.id())) {
-				player.message(otherPlayer.getUsername() + " is an Iron Man. " + (otherPlayer.isMale() ? "He" : "She") + " stands alone.");
+				player.message(otherPlayer.getUsername() + " is an Ironman. " + (otherPlayer.isMale() ? "He" : "She") + " stands alone.");
 			} else {
 				// does not matter where the players are at, neither in the field or wild,
 				// nor if they have free inventory space
@@ -202,15 +202,28 @@ public class GnomeBall implements MiniGameInterface, UsePlayerTrigger, TakeObjTr
 	}
 
 	private void handleScore(Player player, int score_zone) {
+		int totalXp = 0, totalGoals = 1;
+
+		if (player.getCache().hasKey("gnomeball_total_goals")) {
+			totalGoals += player.getCache().getInt("gnomeball_total_goals");
+		}
+
+		if (player.getCache().hasKey("gnomeball_xp")) {
+			totalXp += player.getCache().getInt("gnomeball_xp");
+		}
+
 		loadIfNotMemory(player, "gnomeball_goals");
 		int prev_goalCount = player.getAttribute("gnomeball_goals", 0);
 		player.incExp(Skill.RANGED.id(), SCORES_XP[score_zone][prev_goalCount], true);
 		player.incExp(Skill.AGILITY.id(), SCORES_XP[score_zone][prev_goalCount], true);
+		totalXp += SCORES_XP[score_zone][prev_goalCount];
 		showScoreWindow(player, prev_goalCount+1);
 		if (prev_goalCount+1 == 5) {
 			ActionSender.sendTeleBubble(player, player.getX(), player.getY(), true);
 		}
 		player.setAttribute("gnomeball_goals", (prev_goalCount+1)%5);
+		player.getCache().set("gnomeball_xp", totalXp);
+		player.getCache().set("gnomeball_total_goals", totalGoals);
 	}
 
 	private void showScoreWindow(Player player, int goalNum) {

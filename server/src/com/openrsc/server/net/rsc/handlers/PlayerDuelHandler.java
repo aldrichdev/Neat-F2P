@@ -44,7 +44,7 @@ public class PlayerDuelHandler implements PayloadProcessor<PlayerDuelStruct, Opc
 
 		if (player.isIronMan(IronmanMode.Ironman.id()) || player.isIronMan(IronmanMode.Ultimate.id())
 			|| player.isIronMan(IronmanMode.Hardcore.id()) || player.isIronMan(IronmanMode.Transfer.id())) {
-			player.message("You are an Iron Man. You stand alone.");
+			player.message("You are an Ironman. You stand alone.");
 			unsetOptions(player);
 			unsetOptions(affectedPlayer);
 			return;
@@ -86,7 +86,7 @@ public class PlayerDuelHandler implements PayloadProcessor<PlayerDuelStruct, Opc
 
 				if (affectedPlayer.isIronMan(IronmanMode.Ironman.id()) || affectedPlayer.isIronMan(IronmanMode.Ultimate.id())
 					|| affectedPlayer.isIronMan(IronmanMode.Hardcore.id()) || affectedPlayer.isIronMan(IronmanMode.Transfer.id())) {
-					player.message(affectedPlayer.getUsername() + " is an Iron Man. " + (affectedPlayer.isMale() ? "He" : "She") + " stands alone.");
+					player.message(affectedPlayer.getUsername() + " is an Ironman. " + (affectedPlayer.isMale() ? "He" : "She") + " stands alone.");
 					unsetOptions(player);
 					unsetOptions(affectedPlayer);
 					return;
@@ -179,10 +179,8 @@ public class PlayerDuelHandler implements PayloadProcessor<PlayerDuelStruct, Opc
 					affectedPlayer.message("Commencing Duel!");
 
 					player.resetAllExceptDueling();
-					player.setBusy(true);
 
 					affectedPlayer.resetAllExceptDueling();
-					affectedPlayer.setBusy(true);
 
 					// We do not have the items we offered.
 					if (!player.getDuel().checkDuelItems() || !affectedPlayer.getDuel().checkDuelItems()) {
@@ -201,8 +199,6 @@ public class PlayerDuelHandler implements PayloadProcessor<PlayerDuelStruct, Opc
 								if (item != null) {
 									if (!player.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(player, item, UnequipRequest.RequestType.FROM_EQUIPMENT, false))) {
 										player.getDuel().resetAll();
-										player.setBusy(false);
-										affectedPlayer.setBusy(false);
 										player.message("Your inventory is full and you can't unequip your items. Cancelling duel.");
 										affectedPlayer.message("Your opponent needs to clear his inventory. Cancelling duel.");
 										return;
@@ -215,8 +211,6 @@ public class PlayerDuelHandler implements PayloadProcessor<PlayerDuelStruct, Opc
 								if (item != null) {
 									if (!affectedPlayer.getCarriedItems().getEquipment().unequipItem(new UnequipRequest(affectedPlayer, item, UnequipRequest.RequestType.FROM_EQUIPMENT, false))) {
 										affectedPlayer.getDuel().resetAll();
-										player.setBusy(false);
-										affectedPlayer.setBusy(false);
 										affectedPlayer.message("Your inventory is full and you can't unequip your items. Cancelling duel.");
 										player.message("Your opponent needs to clear his inventory. Cancelling duel.");
 										return;
@@ -252,10 +246,16 @@ public class PlayerDuelHandler implements PayloadProcessor<PlayerDuelStruct, Opc
 						affectedPlayer.getPrayers().resetPrayers();
 					}
 
+					//Busy states moved down here since we don't modify busy in combat anymore.
+					//Should just be used to make sure combat happens.
+					player.setBusy(true);
+					affectedPlayer.setBusy(true);
 					player.walkToEntity(affectedPlayer.getX(), affectedPlayer.getY());
 					player.setWalkToAction(new WalkToMobAction(player, affectedPlayer, 1) {
 						public void executeInternal() {
 							Player affectedPlayer = (Player) mob;
+							getPlayer().setBusy(false);
+							affectedPlayer.setBusy(false);
 							getPlayer().resetPath();
 							if (!getPlayer().canReach(affectedPlayer)) {
 								getPlayer().getDuel().resetAll();

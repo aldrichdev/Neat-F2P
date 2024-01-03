@@ -31,6 +31,8 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 		long friendHash = DataConversions.usernameToHash(friendName);
 
 		int maxFriends = actualFriendListLimit(player);
+		int maxIgnore = player.getClientLimitations().maxIgnore;
+
 		boolean friendIsGlobal = (friendName.equalsIgnoreCase("Global$") ||
 			(friendName.equalsIgnoreCase("Global") && !player.getConfig().CHAR_NAME_CAN_EQUAL_GLOBAL));
 
@@ -108,7 +110,7 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 			}
 			case SOCIAL_ADD_IGNORE: {
 				if (friendName.equalsIgnoreCase("")) return;
-				if (player.getSocial().ignoreCount() >= maxFriends) {
+				if (player.getSocial().ignoreCount() >= maxIgnore) {
 					player.message("Ignore list full");
 					ActionSender.sendIgnoreList(player);
 					return;
@@ -184,13 +186,18 @@ public final class FriendHandler implements PayloadProcessor<FriendStruct, Opcod
 						player.getWorld().addEntryToSnapshots(new Chatlog(player.getUsername(), "(Global) " + message));
 					}
 				} else {
-					player.addPrivateMessage(new PrivateMessage(player, message, friendHash));
-					player.getWorld().addEntryToSnapshots(new Chatlog(player.getUsername(), "(Private) " + message));
+					if (!player.isBabyModeFiltered()) {
+						player.addPrivateMessage(new PrivateMessage(player, message, friendHash));
+						player.getWorld().addEntryToSnapshots(new Chatlog(player.getUsername(), "(Private) " + message));
+					} else {
+						player.message("Sorry, but someone we banned for breaking our rules is actively throwing a tantrum right now.");
+						player.message("New accounts are not allowed to speak until they've reached " + player.getConfig().BABY_MODE_LEVEL_THRESHOLD + " total level during this time.");
+					}
 				}
 				break;
 			}
 			case SOCIAL_ADD_DELAYED_IGNORE: {
-				if (player.getSocial().ignoreCount() >= maxFriends) {
+				if (player.getSocial().ignoreCount() >= maxIgnore) {
 					player.message("Ignore list full");
 					return;
 				}

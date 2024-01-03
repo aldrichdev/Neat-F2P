@@ -8,10 +8,10 @@ import com.openrsc.server.constants.NpcDrops;
 import com.openrsc.server.constants.Quests;
 import com.openrsc.server.content.clan.ClanManager;
 import com.openrsc.server.content.market.Market;
+import com.openrsc.server.content.minigame.combatodyssey.CombatOdysseyData;
 import com.openrsc.server.content.minigame.fishingtrawler.FishingTrawler;
 import com.openrsc.server.content.minigame.fishingtrawler.FishingTrawler.TrawlerBoat;
 import com.openrsc.server.content.party.PartyManager;
-import com.openrsc.server.database.impl.mysql.queries.logging.LoginLog;
 import com.openrsc.server.database.impl.mysql.queries.logging.PMLog;
 import com.openrsc.server.database.impl.mysql.queries.player.login.PlayerOnlineFlagQuery;
 import com.openrsc.server.event.DelayedEvent;
@@ -26,6 +26,7 @@ import com.openrsc.server.model.Shop;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.GroundItem;
+import com.openrsc.server.model.entity.UnregisterForcefulness;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Group;
 import com.openrsc.server.model.entity.player.Player;
@@ -106,6 +107,7 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 	private final ClanManager clanManager;
 	private final Market market;
 	private final WorldLoader worldLoader;
+	private final CombatOdysseyData combatOdysseyData;
 	private final HashMap<Point, Integer> sceneryLocs;
 	private final ConcurrentMap<TrawlerBoat, FishingTrawler> fishingTrawler;
 
@@ -136,6 +138,7 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 		this.regionManager = new RegionManager(this);
 		this.clanManager = new ClanManager(this);
 		this.partyManager = new PartyManager(this);
+		this.combatOdysseyData = new CombatOdysseyData(this);
 
 		final ServerConfiguration config = server.getConfig();
 		this.avatarGenerator = config.AVATAR_GENERATOR ? new AvatarGenerator(this) : null;
@@ -410,6 +413,10 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 			if (PathValidation.DEBUG) {
 				pathfindingDebug = new PathfindingDebug(this);
 			}
+
+			if (getServer().getConfig().WANT_COMBAT_ODYSSEY) {
+				getCombatOdyssey().load();
+			}
 		} catch (final Exception e) {
 			LOGGER.catching(e);
 		}
@@ -433,7 +440,7 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 		}
 		LOGGER.info("Saving players for shutdown...");
 		for (final Player p : getPlayers()) {
-			p.unregister(true, "Server shutting down.");
+			p.unregister(UnregisterForcefulness.FORCED, "Server shutting down.");
 		}
 		LOGGER.info("Players saved");
 
@@ -599,6 +606,30 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 		}
 	}
 
+	public void resetProjectileAllowance(final int x, final int y, final int dir, final int type, final int objectType, final int doorType) {
+		TileValue tile = getTile(x, y);
+		tile.projectileAllowed = tile.originalProjectileAllowed;
+
+		if ((type == 0 && objectType == 1) || (type == 1 && doorType != 1)) return;
+
+		if (dir == 0 && getTile(x - 1, y) != null) {
+			tile = getTile(x - 1, y);
+		}
+
+		else if (dir == 2 && getTile(x, y + 1) != null) {
+			tile = getTile(x, y + 1);
+		}
+
+		else if (dir == 4 && getTile(x + 1, y) != null) {
+			tile = getTile(x + 1, y);
+		}
+
+		else if (dir == 6 && getTile(x, y - 1) != null) {
+			tile = getTile(x, y - 1);
+		}
+		tile.projectileAllowed = tile.originalProjectileAllowed;
+	}
+
 	public void registerItem(final GroundItem i) {
 		registerItem(i, i.getConfig().GAME_TICK * 200);
 	}
@@ -747,6 +778,9 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 				}
 				for (int x = o.getX(); x < o.getX() + width; ++x) {
 					for (int y = o.getY(); y < o.getY() + height; ++y) {
+						if (isProjectileClipAllowed(o)) {
+							resetProjectileAllowance(x, y, dir, o.getType(), o.getGameObjectDef().getType(), -1);
+						}
 						if (o.getGameObjectDef().getType() == 1) {
 							getTile(x, y).traversalMask &= 0xffbf;
 						} else if (dir == 0) {
@@ -770,6 +804,11 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 					return;
 				}
 				int x = o.getX(), y = o.getY();
+
+				if (isProjectileClipAllowed(o)) {
+					resetProjectileAllowance(x, y, dir, o.getType(), -1, o.getDoorDef().getDoorType());
+				}
+
 				if (dir == 0) {
 					getTile(x, y).traversalMask &= 0xfffe;
 					getTile(x, y - 1).traversalMask &= 65535 - 4;
@@ -817,8 +856,14 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 		try {
 			if (getServer().getLoginExecutor() != null) {
 				getServer().getGameLogger().addQuery(new PlayerOnlineFlagQuery(getServer(), player.getDatabaseID(), false));
-				if (avatarGenerator != null) {
-					avatarGenerator.generateAvatar(player.getDatabaseID(), player.getSettings().getAppearance(), player.getWornItems());
+				// We handle avatar generation code exceptions separately, they are not a critical part of the logout process.
+				try {
+					if (avatarGenerator != null) {
+						avatarGenerator.generateAvatar(player.getDatabaseID(), player.getSettings().getAppearance(), player.getWornItems());
+					}
+				} catch (final Exception e){
+					LOGGER.error("Error generating avatar: ");
+					LOGGER.catching(e);
 				}
 			}
 			player.resetSceneryMorph();
@@ -848,7 +893,6 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 		} catch (final Exception e) {
 			LOGGER.catching(e);
 		}
-
 	}
 
 	public void unregisterQuest(final QuestInterface quest) {
@@ -964,6 +1008,10 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 
 	public synchronized RegionManager getRegionManager() {
 		return regionManager;
+	}
+
+	public synchronized CombatOdysseyData getCombatOdyssey() {
+		return combatOdysseyData;
 	}
 
 	public synchronized Market getMarket() {

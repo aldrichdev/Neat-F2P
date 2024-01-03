@@ -57,7 +57,7 @@ public class Equipment {
 	/** Primary Method Definitions */
 
 	// Equipment::add(Item)
-	// Adds an item to the equipment container. Updates the database instantly.
+	// Adds an item to the equipment container.
 	public int add(Item item) {
 		synchronized (list) {
 			ItemDefinition itemDef = item.getDef(player.getWorld());
@@ -87,7 +87,7 @@ public class Equipment {
 	}
 
 	// Equipment::remove(Item, int)
-	// Removes an item from the equipment container. Updates the database instantly.
+	// Removes an item from the equipment container. Doesn't put it anywhere else, just removes.
 	public int remove(Item item, int amount) {
 		return remove(item, amount, true);
 	}
@@ -160,8 +160,13 @@ public class Equipment {
 			case FROM_INVENTORY:
 				request.item.setWielded(false);
 				ItemDefinition curEquipDef = request.item.getDef(player.getWorld());
-				player.updateWornItems(curEquipDef.getWieldPosition(),
-					player.getSettings().getAppearance().getSprite(curEquipDef.getWieldPosition()));
+				// The item was no longer equipped once we removed it, so we pass isEquipped as false
+				player.updateWornItems(
+					curEquipDef.getWieldPosition(),
+					player.getSettings().getAppearance().getSprite(curEquipDef.getWieldPosition()),
+					curEquipDef.getWearableId(),
+					false
+				);
 				break;
 			case FROM_EQUIPMENT:
 				synchronized (list) {
@@ -218,7 +223,7 @@ public class Equipment {
 
 		if (updateClient) {
 			ActionSender.sendEquipmentStats(player, request.item.getDef(player.getWorld()).getWieldPosition());
-			ActionSender.sendUpdatedPlayer(player);
+			player.getUpdateFlags().setAppearanceChanged(true);
 			ActionSender.sendInventory(player);
 		}
 		return true;
@@ -233,6 +238,55 @@ public class Equipment {
 		// Make sure the item isn't a note
 		if (request.item.getNoted())
 			return false;
+
+		// Turn chain tops into chain bodies and vice-versa
+		if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
+			int[] bodyIds = {
+				ItemId.BRONZE_CHAIN_MAIL_BODY.id(),
+				ItemId.IRON_CHAIN_MAIL_BODY.id(),
+				ItemId.STEEL_CHAIN_MAIL_BODY.id(),
+				ItemId.BLACK_CHAIN_MAIL_BODY.id(),
+				ItemId.MITHRIL_CHAIN_MAIL_BODY.id(),
+				ItemId.ADAMANTITE_CHAIN_MAIL_BODY.id(),
+				ItemId.RUNE_CHAIN_MAIL_BODY.id(),
+				ItemId.DRAGON_SCALE_MAIL.id()
+			};
+			int[] topIds = {
+				ItemId.BRONZE_CHAIN_MAIL_TOP.id(),
+				ItemId.IRON_CHAIN_MAIL_TOP.id(),
+				ItemId.STEEL_CHAIN_MAIL_TOP.id(),
+				ItemId.BLACK_CHAIN_MAIL_TOP.id(),
+				ItemId.MITHRIL_CHAIN_MAIL_TOP.id(),
+				ItemId.ADAMANTITE_CHAIN_MAIL_TOP.id(),
+				ItemId.RUNE_CHAIN_MAIL_TOP.id(),
+				ItemId.DRAGON_SCALE_MAIL_TOP.id()
+			};
+
+			Item newItem = null;
+			if (player.isMale()) {
+				for (int i = 0; i < topIds.length; ++i) {
+					if (topIds[i] == request.item.getCatalogId()) {
+						newItem = new Item(bodyIds[i]);
+					}
+				}
+			} else {
+				for (int i = 0; i < bodyIds.length; ++i) {
+					if (bodyIds[i] == request.item.getCatalogId()) {
+						newItem = new Item(topIds[i]);
+					}
+				}
+			}
+			if (newItem != null) {
+				if (request.requestType == EquipRequest.RequestType.FROM_BANK && player.getBank().remove(request.item.getCatalogId(), 1)) {
+					player.getBank().add(newItem);
+				} else if (request.requestType == EquipRequest.RequestType.FROM_INVENTORY && player.getCarriedItems().remove(request.item) != -1) {
+					player.getCarriedItems().getInventory().add(newItem);
+				} else {
+					return false;
+				}
+				request.item = newItem;
+			}
+		}
 
 		// Check that they are eligible to equip the item
 		if (!ableToEquip(request.item))
@@ -263,7 +317,7 @@ public class Equipment {
 
 		if (updateClient) {
 			ActionSender.sendEquipmentStats(player, request.item.getDef(player.getWorld()).getWieldPosition());
-			ActionSender.sendUpdatedPlayer(player);
+			player.getUpdateFlags().setAppearanceChanged(true);
 		}
 		return true;
 	}
@@ -357,16 +411,15 @@ public class Equipment {
 				if (itemDef == null)
 					return false;
 
-				ArrayList<Item> items = gatherConflictingItems(request);
+				ArrayList<Item> itemsToUnequip = gatherConflictingItems(request);
 
 				// We don't have enough space, even with the item we
 				// will equip removed from the inventory.
-				if (player.getFreeBankSlots() < items.size()) {
+				if (player.getFreeBankSlots() < itemsToUnequip.size()) {
 					player.message("You need more bank space to equip that.");
 					return false;
 				}
 
-				int originalAmount = player.getBank().countId(request.item.getCatalogId());
 				Item toEquip = player.getBank().get(
 					player.getBank().getFirstIndexById(request.item.getCatalogId())
 				);
@@ -378,29 +431,32 @@ public class Equipment {
 					return false;
 				}
 
-				for (Item item : items) {
-					remove(item, item.getAmount(), updateClient); // Remove from equipment
+				// Remove items from equipment (added to bank later)
+				for (Item item : itemsToUnequip) {
+					remove(item, item.getAmount(), updateClient);
 				}
 
 				if (!itemDef.isStackable()) {
 					player.getBank().remove(toEquip.getCatalogId(), 1, updateClient);
-					for (Item item : items) {
+					for (Item item : itemsToUnequip) {
 						player.getBank().add(new Item(item.getCatalogId(), item.getAmount()), updateClient);
 					}
 
-					if (originalAmount > 1) {
+					if (toEquip.getAmount() > 1) {
 						add(new Item(toEquip.getCatalogId(), 1));
 					} else {
 						add(request.item);
 					}
 				} else {
-					player.getBank().remove(toEquip.getCatalogId(), request.item.getAmount(), updateClient);
-					for (Item item : items) {
+					int amountToRemoveAndEquip = Math.min(toEquip.getAmount(), request.item.getAmount());
+
+					player.getBank().remove(toEquip.getCatalogId(), amountToRemoveAndEquip, updateClient);
+					for (Item item : itemsToUnequip) {
 						player.getBank().add(new Item(item.getCatalogId(), item.getAmount()), updateClient);
 					}
 
-					if (originalAmount > request.item.getAmount()) {
-						add(new Item(request.item.getCatalogId(), request.item.getAmount()));
+					if (amountToRemoveAndEquip != request.item.getAmount()) {
+						add(new Item(request.item.getCatalogId(), amountToRemoveAndEquip));
 					} else {
 						add(request.item);
 					}
@@ -562,7 +618,7 @@ public class Equipment {
 		}
 
 		// Rune plate mail body and top
-		if ((item.getCatalogId() == ItemId.RUNE_PLATE_MAIL_BODY.id() || item.getCatalogId() == ItemId.RUNE_PLATE_MAIL_TOP.id())
+		if (!player.getConfig().EQUIP_QUEST_ITEMS_WITHOUT_QUESTS && (item.getCatalogId() == ItemId.RUNE_PLATE_MAIL_BODY.id() || item.getCatalogId() == ItemId.RUNE_PLATE_MAIL_TOP.id())
 			&& (player.getQuestStage(Quests.DRAGON_SLAYER) != -1)) {
 			player.message("you have not earned the right to wear this yet");
 			player.message("you need to complete the dragon slayer quest");
@@ -570,21 +626,21 @@ public class Equipment {
 		}
 
 		// Dragon sword
-		else if (!player.getConfig().WANT_OPENPK_POINTS && item.getCatalogId() == ItemId.DRAGON_SWORD.id() && player.getQuestStage(Quests.LOST_CITY) != -1) {
+		else if (!player.getConfig().EQUIP_QUEST_ITEMS_WITHOUT_QUESTS && item.getCatalogId() == ItemId.DRAGON_SWORD.id() && player.getQuestStage(Quests.LOST_CITY) != -1) {
 			player.message("you have not earned the right to wear this yet");
 			player.message("you need to complete the Lost city of zanaris quest");
 			return false;
 		}
 
 		// Dragon battle axe
-		else if (!player.getConfig().WANT_OPENPK_POINTS && item.getCatalogId() == ItemId.DRAGON_AXE.id() && player.getQuestStage(Quests.HEROS_QUEST) != -1) {
+		else if (!player.getConfig().EQUIP_QUEST_ITEMS_WITHOUT_QUESTS && item.getCatalogId() == ItemId.DRAGON_AXE.id() && player.getQuestStage(Quests.HEROS_QUEST) != -1) {
 			player.message("you have not earned the right to wear this yet");
 			player.message("you need to complete the Hero's guild entry quest");
 			return false;
 		}
 
 		// Dragon square shield
-		else if (!player.getConfig().WANT_OPENPK_POINTS && item.getCatalogId() == ItemId.DRAGON_SQUARE_SHIELD.id() && player.getQuestStage(Quests.LEGENDS_QUEST) != -1) {
+		else if (!player.getConfig().EQUIP_QUEST_ITEMS_WITHOUT_QUESTS && item.getCatalogId() == ItemId.DRAGON_SQUARE_SHIELD.id() && player.getQuestStage(Quests.LEGENDS_QUEST) != -1) {
 			player.message("you have not earned the right to wear this yet");
 			player.message("you need to complete the legend's guild quest");
 			return false;
@@ -634,17 +690,17 @@ public class Equipment {
 		*/
 
 		// Ironman armour.
-		else if ((item.getCatalogId() == ItemId.IRONMAN_HELM.id() || item.getCatalogId() == ItemId.IRONMAN_PLATEBODY.id()
-			|| item.getCatalogId() == ItemId.IRONMAN_PLATELEGS.id()) && !player.isIronMan(IronmanMode.Ironman.id())) {
-			player.message("You need to be an Iron Man to wear this");
+		else if ((item.getCatalogId() == ItemId.IRONMAN_HELM.id() || item.getCatalogId() == ItemId.IRONMAN_PLATEBODY.id() || item.getCatalogId() == ItemId.IRONMAN_PLATE_TOP.id()
+			|| item.getCatalogId() == ItemId.IRONMAN_PLATELEGS.id() || item.getCatalogId() == ItemId.IRONMAN_PLATED_SKIRT.id()) && !player.isIronMan(IronmanMode.Ironman.id())) {
+			player.message("You need to be an Ironman to wear this");
 			return false;
-		} else if ((item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_HELM.id() || item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_PLATEBODY.id()
-			|| item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_PLATELEGS.id()) && !player.isIronMan(IronmanMode.Ultimate.id())) {
-			player.message("You need to be an Ultimate Iron Man to wear this");
+		} else if ((item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_HELM.id() || item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_PLATEBODY.id() || item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_PLATE_TOP.id()
+			|| item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_PLATELEGS.id() || item.getCatalogId() == ItemId.ULTIMATE_IRONMAN_PLATED_SKIRT.id()) && !player.isIronMan(IronmanMode.Ultimate.id())) {
+			player.message("You need to be an Ultimate Ironman to wear this");
 			return false;
-		} else if ((item.getCatalogId() == ItemId.HARDCORE_IRONMAN_HELM.id() || item.getCatalogId() == ItemId.HARDCORE_IRONMAN_PLATEBODY.id()
-			|| item.getCatalogId() == ItemId.HARDCORE_IRONMAN_PLATELEGS.id()) && !player.isIronMan(IronmanMode.Hardcore.id())) {
-			player.message("You need to be a Hardcore Iron Man to wear this");
+		} else if ((item.getCatalogId() == ItemId.HARDCORE_IRONMAN_HELM.id() || item.getCatalogId() == ItemId.HARDCORE_IRONMAN_PLATEBODY.id() || item.getCatalogId() == ItemId.HARDCORE_IRONMAN_PLATE_TOP.id()
+			|| item.getCatalogId() == ItemId.HARDCORE_IRONMAN_PLATELEGS.id() || item.getCatalogId() == ItemId.HARDCORE_IRONMAN_PLATED_SKIRT.id()) && !player.isIronMan(IronmanMode.Hardcore.id())) {
+			player.message("You need to be a Hardcore Ironman to wear this");
 			return false;
 		} else if (item.getCatalogId() == 2254 && player.getQuestStage(Quests.LEGENDS_QUEST) != -1) {
 			player.message("you have not earned the right to wear this yet");
