@@ -1,9 +1,12 @@
-[![pipeline status](https://gitlab.com/open-runescape-classic/core/badges/master/pipeline.svg)](https://gitlab.com/open-runescape-classic/core/-/commits/master)
-
 # Neat F2P
+
+Open-source codebase for the Neat F2P project, an unreleased RSC private server featuring authentic, F2P-only gameplay.
+
+https://neatf2p-nextjs.vercel.app/
 
 ## Differences From Open RSC's Core Framework
 
-- `member_world` = `false`
-- `MAX_PLAYERS_PER_IP` = `2`
-- Some database tables were updated, i.e. `players` has a new column for linking players to website accounts.
+-   `member_world` = `false`
+-   `can_feature_membs` = `false`
+-   `MAX_PLAYERS_PER_IP` = `2`
+-   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
