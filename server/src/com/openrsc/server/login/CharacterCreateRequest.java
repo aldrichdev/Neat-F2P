@@ -129,7 +129,14 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 	}
 
 	protected void processInternal() {
-		if (getAuthenticClient()) {
+		// For Neat F2P this is disabled, so game accounts are created on the site and linked to website accounts.
+        // TODO: Remove this once Open RSC merges the WANT_PACKET_REGISTER PR.
+		if (true) {
+			getChannel().writeAndFlush(new PacketBuilder().writeByte((byte) RegisterLoginResponse.UNSUCCESSFUL).toPacket());
+			getChannel().close();
+			return;
+		}
+		else if (getAuthenticClient()) {
 			int registerResponse = validateRegister();
 			if (clientVersion <= 204) {
 				registerResponse = RegisterLoginResponse.translateNewToOld(registerResponse, clientVersion, true);
