@@ -66,6 +66,9 @@ public final class Moderator implements CommandTrigger {
 			queryPlayerBank(player, command, args);
 		} else if (command.equalsIgnoreCase("announcement") || command.equalsIgnoreCase("announce") || command.equalsIgnoreCase("anouncement") || command.equalsIgnoreCase("anounce")) {
 			sendAnnouncement(player, command, args);
+		// TODO: Remove this Neat-specific code once Open RSC merges GitLab PR #3826.
+		} else if (command.equalsIgnoreCase("systemmessage")) {
+			showSystemMessageBox(player, command, args);
 		} else if (command.equalsIgnoreCase("kick")) {
 			kickPlayer(player, command, args);
 		} else if (command.equalsIgnoreCase("stayin")) {
@@ -991,6 +994,34 @@ public final class Moderator implements CommandTrigger {
 			}
 		}
 	}
+
+	// TODO: Remove this Neat-specific code once Open RSC merges GitLab PR #3826.
+	private void showSystemMessageBox(Player player, String command, String[] args) {
+		if (args.length == 0) {
+			player.playerServerMessage(MessageType.QUEST,"Just put all the words you want to say after the \"" + command + "\" command");
+			return;
+		}
+
+		String systemMessagePrefix = "@yel@System message: @whi@";
+		StringBuilder message = new StringBuilder();
+
+		for (String arg : args) {
+			message.append(arg).append(" ");
+		}
+
+		player.getWorld().getServer().getGameLogger().addQuery(new StaffLog(player, 13, message.toString()));
+
+		for (Player playerToUpdate : player.getWorld().getPlayers()) {
+			if (playerToUpdate.getClientLimitations().supportsMessageBox) {
+				ActionSender.sendBox(playerToUpdate, systemMessagePrefix + message, false);
+			} else {
+				playerToUpdate.playerServerMessage(MessageType.QUEST, systemMessagePrefix + message);
+			}
+		}
+
+		player.message(messagePrefix + "System message sent");
+	}
+
 
 	private void kickPlayer(Player player, String command, String[] args) {
 		if (args.length < 1) {
