@@ -27,7 +27,8 @@ https://neatf2p-nextjs.vercel.app/
 -   `MAX_PLAYERS_PER_IP` = `2`
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
 -   Characters on this server cannot be created via game clients. (Currently there is a change specific to this repo that blocks this, but it will soon be removed in favor of a `WANT_PACKET_REGISTER` check.)
-- `::systemmessage` command has been implemented for Neat F2P until Core-Framework GitLab PR # 3826 has been merged.
+- `::systemmessage` command has been implemented for Neat F2P until Core-Framework GitLab MR # 3826 has been merged.
+- Dark Warriors have `isMembers`: `0`, which is only different from Open RSC until MR # 3833 is merged.
 
 ## Tribute
 
