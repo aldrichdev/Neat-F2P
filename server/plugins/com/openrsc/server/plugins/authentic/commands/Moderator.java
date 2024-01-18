@@ -66,8 +66,7 @@ public final class Moderator implements CommandTrigger {
 			queryPlayerBank(player, command, args);
 		} else if (command.equalsIgnoreCase("announcement") || command.equalsIgnoreCase("announce") || command.equalsIgnoreCase("anouncement") || command.equalsIgnoreCase("anounce")) {
 			sendAnnouncement(player, command, args);
-		// TODO: Remove this Neat-specific code once Open RSC merges GitLab PR #3826.
-		} else if (command.equalsIgnoreCase("systemmessage")) {
+		} else if (command.equalsIgnoreCase("systemmessage") || command.equalsIgnoreCase("sysmes")) {
 			showSystemMessageBox(player, command, args);
 		} else if (command.equalsIgnoreCase("kick")) {
 			kickPlayer(player, command, args);
@@ -995,7 +994,6 @@ public final class Moderator implements CommandTrigger {
 		}
 	}
 
-	// TODO: Remove this Neat-specific code once Open RSC merges GitLab PR #3826.
 	private void showSystemMessageBox(Player player, String command, String[] args) {
 		if (args.length == 0) {
 			player.playerServerMessage(MessageType.QUEST,"Just put all the words you want to say after the \"" + command + "\" command");

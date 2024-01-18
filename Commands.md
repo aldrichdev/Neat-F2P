@@ -286,6 +286,14 @@ Admin Commands
   - Usage: `::copypassword [from_name] [to_name]`
   - Alias: `::copypass` or `::copypw`
   - Copies the password hash (and salt if applicable) from one account to another.
+- setdowntimereportmillis
+  - Usage: `::setdowntimereportmillis [number]`
+  - Alias: `::sddrmdbr`
+  - Part of the monitor ip feature, minimum number of milliseconds before it is considered a significant downtime event worth reporting to Discord webhook.
+- setdowntimereportmillis
+  - Usage: `::setmonitortimeoutmillis [number]`
+  - Alias: `::smtm`
+  - Part of the monitor ip feature, maximum number of milliseconds before a ping fails.
 ------------------------
 Developer Commands
 ------------------------
@@ -410,6 +418,10 @@ Moderator Commands
   - Usage `::announcement [message]`
   - Alias: `::announce` or `::anouncement` or `::anounce`
   - Send an important message to every player on the server.
+- systemmessage
+  - Usage: `::systemmessage [message]`
+  - Alias: `::sysmes`
+  - Shows a system message box for every player on the server.
 - kick
   - Usage: `::kick [player]`
   - Kicks the specified player from the server.

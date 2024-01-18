@@ -254,11 +254,39 @@ public final class Admins implements CommandTrigger {
 			player.message(messagePrefix + "World Reloaded");
 		} else if (command.equalsIgnoreCase("copypassword") || command.equalsIgnoreCase("copypass") ||  command.equalsIgnoreCase("copypw")) {
 			copyPassword(player, command, args);
+		} else if (command.equalsIgnoreCase("sddrmdbr") || command.equalsIgnoreCase("setdowntimereportmillis")) {
+			setDowntimeReportMillis(player, command, args);
+		} else if (command.equalsIgnoreCase("smtm") || command.equalsIgnoreCase("setmonitortimeoutmillis")) {
+			setMonitorTimeoutMillis(player, command, args);
 		}
 
 		/*else if (command.equalsIgnoreCase("fakecrystalchest")) {
 			fakeCrystalChest(player, args);
 		} */
+	}
+
+	private void setDowntimeReportMillis(Player player, String command, String[] args) {
+		int newMinimumMillisecondsBeforeReport = 1000;
+		try {
+			newMinimumMillisecondsBeforeReport = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().DISCORD_DOWNTIME_REPORTS_MILLISECONDS_DOWN_BEFORE_REPORT = newMinimumMillisecondsBeforeReport;
+		player.message("set player.getConfig().DISCORD_DOWNTIME_REPORTS_MILLISECONDS_DOWN_BEFORE_REPORT to " + player.getConfig().DISCORD_DOWNTIME_REPORTS_MILLISECONDS_DOWN_BEFORE_REPORT);
+	}
+
+	private void setMonitorTimeoutMillis(Player player, String command, String[] args) {
+		int newTimeoutMillis = 100;
+		try {
+			newTimeoutMillis = Integer.parseInt(args[0]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException ex) {
+			player.message("give a number please.");
+			return;
+		}
+		player.getConfig().MONITOR_IP_TIMEOUT = newTimeoutMillis;
+		player.message("set player.getConfig().MONITOR_IP_TIMEOUT to " + player.getConfig().MONITOR_IP_TIMEOUT);
 	}
 
 	private void setPidShufflingSchedule(Player player, String command, String[] args) {
@@ -709,7 +737,7 @@ public final class Admins implements CommandTrigger {
 		}
 
 		seconds = seconds < 30 ? 30 : seconds;
-
+		LOGGER.info("Server shutdown requested by Admin " + player.getUsername());
 		player.getWorld().getServer().shutdown(seconds);
 	}
 
@@ -739,7 +767,7 @@ public final class Admins implements CommandTrigger {
 			+ (minutes > 0 ? minutes + " minute" + (minutes > 1 ? "s" : "") + " " : "")
 			+ (remainder > 0 ? remainder + " second" + (remainder > 1 ? "s" : "") : "")
 			+ (reason.toString().equals("") ? "" : ": % % " + reason);
-
+		LOGGER.info("Server update requested by Admin " + player.getUsername());
 		player.getWorld().getServer().closeProcess(seconds, message);
 		// Services.lookup(DatabaseManager.class).addQuery(new
 		// StaffLog(player, 7));
