@@ -22,11 +22,12 @@ https://neatf2p-nextjs.vercel.app/
 
 ## Differences From Open RSC's Core Framework
 
+-   `server_name` is customized
 -   `member_world` = `false`
 -   `can_feature_membs` = `false`
 -   `MAX_PLAYERS_PER_IP` = `2`
 -   `shuffle_pid_order` = `false`
--   Characters on this server cannot be created via game clients. (Currently there is a change specific to this repo that blocks this, but it will soon be removed in favor of a `WANT_PACKET_REGISTER` check.)
+-   `want_packet_register` = `false` (in-game characters are created on our site)
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
 
 ## Tribute
