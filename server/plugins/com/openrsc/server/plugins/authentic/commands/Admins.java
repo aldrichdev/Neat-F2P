@@ -44,6 +44,12 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.net.ssl.SSLException;
+import java.io.File;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateExpiredException;
+import java.security.cert.CertificateNotYetValidException;
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -113,8 +119,12 @@ public final class Admins implements CommandTrigger {
 			serverShutdown(player, args);
 		} else if (command.equalsIgnoreCase("update")) {
 			serverUpdate(player, args);
-    	} else if (command.equalsIgnoreCase("clearipbans")) {
+		} else if (command.equalsIgnoreCase("clearipbans")) {
 			clearIpBans(player);
+		} else if (command.equalsIgnoreCase("viewipban") || command.equalsIgnoreCase("checkipban")) {
+			viewIpBan(player, command, args);
+		} else if (command.equalsIgnoreCase("viewipbanslist") || command.equalsIgnoreCase("viewipbanlist") || command.equalsIgnoreCase("checkipbanslist") || command.equalsIgnoreCase("checkipbanlist")) {
+			viewIpBansList(player);
 		} else if (command.equalsIgnoreCase("fixloggedincount")) {
 			recalcLoggedInCounts(player);
 		} else if (command.equalsIgnoreCase("getloggedincount")) {
@@ -258,6 +268,8 @@ public final class Admins implements CommandTrigger {
 			setDowntimeReportMillis(player, command, args);
 		} else if (command.equalsIgnoreCase("smtm") || command.equalsIgnoreCase("setmonitortimeoutmillis")) {
 			setMonitorTimeoutMillis(player, command, args);
+		} else if (command.equalsIgnoreCase("reloadsslcert") || command.equalsIgnoreCase("refreshsslcert")) {
+			reloadSSLCert(player);
 		}
 
 		/*else if (command.equalsIgnoreCase("fakecrystalchest")) {
@@ -368,7 +380,7 @@ public final class Admins implements CommandTrigger {
 	private void saveAll(Player player) {
 		int count = 0;
 		for (Player playerToSave : player.getWorld().getPlayers()) {
-			playerToSave.save();
+			playerToSave.save(false, true);
 			count++;
 		}
 		player.message(messagePrefix + "Saved " + count + " players on server!");
@@ -710,15 +722,55 @@ public final class Admins implements CommandTrigger {
 		player.getWorld().getServer().restart(seconds);
 	}
 
-	  private void clearIpBans(Player player) {
+	private void clearIpBans(Player player) {
 		int removedIpAddresses = player.getWorld().getServer().clearAllIpBans();
 		player.message(messagePrefix + "Cleared " + removedIpAddresses + " from the Banned IP Table.");
-	  }
+	}
 
-	  private void recalcLoggedInCounts(Player player) {
+	private void viewIpBan(Player player, String command, String[] args) {
+		if (args.length < 1) {
+			player.message(badSyntaxPrefix + command.toUpperCase() + " (ip)");
+			return;
+		}
+		String ipToCheck = args[0];
+		HashMap<String, Long> ipBans = player.getWorld().getServer().getPacketFilter().getIpBans();
+
+		if (ipBans.containsKey(ipToCheck)) {
+			Long banTimestamp = ipBans.get(ipToCheck);
+			String banDate = (banTimestamp == -1) ? "Never" : DateFormat.getInstance().format(banTimestamp);
+			player.message(messagePrefix + "IP " + ipToCheck + " is banned. Unban date: " + banDate);
+		} else {
+			player.message(messagePrefix + "IP " + ipToCheck + " is not banned.");
+		}
+	}
+
+	private void viewIpBansList(Player player) {
+		HashMap<String, Long> ipBans = player.getWorld().getServer().getPacketFilter().getIpBans();
+		if (ipBans.isEmpty()) {
+			player.message(messagePrefix + "There are no banned IPs.");
+			return;
+		}
+		player.message(messagePrefix + "The following IPs are currently banned: ");
+		StringBuilder sb = new StringBuilder();
+		int count = 0;
+		for (String ip : ipBans.keySet()) {
+			sb.append(ip);
+			count++;
+			//Append a comma only if this is not the last IP in the group of three and not the last IP overall
+			if (count % 3 != 0 && count != ipBans.size()) {
+				sb.append(", ");
+			}
+			if (count % 3 == 0 || count == ipBans.size()) {
+				player.message(sb.toString());
+				sb = new StringBuilder(); //Reset the StringBuilder for the next line
+			}
+		}
+	}
+
+	private void recalcLoggedInCounts(Player player) {
 		  int fixedIps = player.getWorld().getServer().recalculateLoggedInCounts();
 		  player.message(messagePrefix + "Fixed lingering loggedInCounts for " + fixedIps + " IP address" + (fixedIps != 1 ? "es." : "."));
-	  }
+	}
 
 	private void obtainLoggedInCounts(Player player, String[] args) {
 		String ip = args.length >= 1 ? args[0] : "127.0.0.1";
@@ -3330,8 +3382,8 @@ public final class Admins implements CommandTrigger {
 			return;
 		}
 
-		String fromName = args[0].replaceAll("_", " ");
-		String toName = args[1].replaceAll("_", " ");
+		String fromName = args[0].replaceAll("[._]", " ");
+		String toName = args[1].replaceAll("[._]", " ");
 		Player fromPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(fromName));
 		Player toPlayer = player.getWorld().getPlayer(DataConversions.usernameToHash(toName));
 
@@ -3370,5 +3422,52 @@ public final class Admins implements CommandTrigger {
 			return;
 		}
 		player.message(messagePrefix + "The password for " + toName + " has been updated to the password from " + fromName);
+	}
+
+	private void reloadSSLCert(Player player) {
+		if (!player.getConfig().WANT_FEATURE_WEBSOCKETS) {
+			player.message("Websockets are currently not listening...!");
+			return;
+		}
+
+		if (player.getConfig().SSL_SERVER_CERT_PATH.trim().isEmpty() && player.getConfig().SSL_SERVER_KEY_PATH.trim().isEmpty()) {
+			player.message("Websocket certificate & private key file paths are not configured in connections.conf");
+			return;
+		}
+
+		if (player.getConfig().SSL_SERVER_CERT_PATH.trim().isEmpty()) {
+			player.message("Websocket certificate file path is not configured in connections.conf");
+			return;
+		}
+
+		if (player.getConfig().SSL_SERVER_KEY_PATH.trim().isEmpty()) {
+			player.message("Websocket private key file path is not configured in connections.conf");
+			return;
+		}
+
+		if (!(new File(player.getConfig().SSL_SERVER_CERT_PATH.trim())).exists()) {
+			player.message("Websocket certificate file does not exist at " + player.getConfig().SSL_SERVER_CERT_PATH);
+			return;
+		}
+		if (!(new File(player.getConfig().SSL_SERVER_KEY_PATH.trim())).exists()) {
+			player.message("Websocket private key file does not exist at " + player.getConfig().SSL_SERVER_KEY_PATH);
+			return;
+		}
+
+		try {
+			player.getWorld().getServer().refreshWebsocketSSLContext(player);
+		} catch (CertificateExpiredException certExpiredEx) {
+			player.message("New certificate is expired...! Make sure you've replaced it.");
+		} catch (CertificateNotYetValidException certNotYetValidEx) {
+			player.message("New certificate is not yet valid...! Unable to use.");
+		} catch (SSLException | CertificateException sslex) {
+			player.message("New certificate could not be parsed as a valid X.509 certificate file.");
+		} catch (Exception ex) {
+			player.message("Generic error occurred while reloading websocket sslcontext.");
+			player.message("Cert path: " + player.getConfig().SSL_SERVER_CERT_PATH);
+			player.message("Key path: " + player.getConfig().SSL_SERVER_KEY_PATH);
+			player.message("Check server logs for more information.");
+			LOGGER.error(ex);
+		}
 	}
 }

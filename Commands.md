@@ -2,6 +2,19 @@ OpenRSC Commands
 ------------------------
 Admin Commands
 ------------------------
+- clearipbans
+  - Usage: `::clearipbans`
+  - Clears all temporary IP bans.
+- viewipban
+  - Usage: `::viewipban`
+  - Alias: `::checkipban`
+  - Checks if an IP is banned.
+- viewipbanslist
+  - Usage: `::viewipbanslist`
+  - Usage: `::viewipbanlist`
+  - Alias: `::checkipbanslist`
+  - Alias: `::checkipbanlist`
+  - Displays all banned IPs in a list.
 - beastmode
   - Usage: `::beastmode`
   - Completes required quests and stats, then sets the player to wield top tier items. Items vary based on if custom sprites are enabled on the server.
@@ -294,6 +307,10 @@ Admin Commands
   - Usage: `::setmonitortimeoutmillis [number]`
   - Alias: `::smtm`
   - Part of the monitor ip feature, maximum number of milliseconds before a ping fails.
+- reloadsslcert
+  - Usage: `::reloadsslcert`
+  - Alias: `::refreshsslcert`
+  - Used to reload the SSL certificate files used for websocket connections to the server.
 ------------------------
 Developer Commands
 ------------------------
@@ -399,6 +416,15 @@ Moderator Commands
   - Usage: `::ban [name] [time in minutes, -1 for permanent, 0 to unban]`
   - Bans the specified player.
   - You can not ban a staff member of equal or greater rank.
+- ipban
+  - Usage: `::ipban [ip] [time in minutes, -1 for permanent, 0 to unban]`
+  - Alias: `::banip`
+  - Bans the specified player.
+  - You can not ban a staff member of equal or greater rank.
+- syncipbans
+  - Usage: `::syncipbans`
+  - Alias: `::sip`
+  - Syncs/reloads IP bans from the ipbans text file.
 - bank
   - Usage: `::bank (player) (want box) (want catalog ids)`
   - Shows bank information for the specified player.
@@ -467,12 +493,12 @@ Moderator Commands
   - If no percentage is specified, then 100 is used.
 - jail
   - Usage: `::jail [name]`
-  - Puts the specified player in RuneScape Jail, upstairs of Al Kharid palace.
+  - Puts the specified player in Jail, upstairs of Al Kharid palace.
   - You can not jail a player who has already been jailed.
   - You can not jail a staff member.
 - release
   - Usage: `::release [name]`
-  - Releases the specified player from RuneScape Jail to the location they were before being jailed.
+  - Releases the specified player from Jail to the location they were before being jailed.
 - getcache
   - Usage: `::getcache (name) [cache_key]`
   - Alias: `::gcache` or `::checkcache`
@@ -653,7 +679,7 @@ Event Commands
   - If no stat is specified, then all stats are modified.
 - npckills
   - Usage: `::npckills [name]`
-  - Shows kill counts for name.
+  - Shows total NPC kill count for name.
 - shufflepid
   - Usage: `::shufflepid [on/off]`
   - Alias: `::pidshuffle`
@@ -663,17 +689,23 @@ Event Commands
 Player Moderator Commands
 ------------------------
 - gmute
-  - Usage: `::gmute [name] (time in minutes, -1 or exclude for permanent)`
+  - Usage: `::gmute [name] (time in minutes, -1 for permanent, 0 to unmute) (Shadow mute) (Reason)`
   - Mutes the specified player from global chat.
   - You can not mute a staff member of equal or greater rank.
+  - time: Defaults to 60 minutes for player moderators and permanent (-1) for moderators and above. Player moderators cannot mute for longer than 1 week (10,080 minutes).
+  - Shadow mute: If true, this will not notify the player they have been muted when the command is issued or when the player tries to speak in the future.
+  - Reason: For database logging
 - ungmute
   - Usage: `::ungmute [name]`
   - Unmutes the specified player from global chat.
   - You can not unmute a staff member of equal or greater rank.
 - mute
-  - Usage: `::mute [name] (time in minutes, -1 or exclude for permanent)`
+  - Usage: `::mute [name] (time in minutes, -1 for permanent, 0 to unmute) (Shadow mute) (Reason)`
   - Mutes the specified player from both in game and global chat.
   - You can not mute a staff member of equal or greater rank.
+  - time: Defaults to 60 minutes for player moderators and permanent (-1) for moderators and above. Player moderators cannot mute for longer than 1 week (10,080 minutes).
+  - Shadow mute: If true, this will not notify the player they have been muted when the command is issued or when the player tries to speak in the future.
+  - Reason: For database logging
 - unmute
   - Usage: `::unmute [name]`
   - Unmutes the specified player
@@ -774,7 +806,6 @@ Regular Player Commands
 - uniqueonline
   - Usage: `::uniqueonline`
   - Shows the number of players with a unique IP address currently online.
-  - Assumes that local ip addresses are "web client" users, as is currently the case on our live server.
 - onlinelist
   - Usage: `::onlinelist`
   - Shows a list of online players.
@@ -814,8 +845,10 @@ Regular Player Commands
   - Usage: `::shareexp`
   - Toggles experience sharing for the party.
 - kills
-  - Usage: `::kills`
+  - Usage: `::kills (npc name)`
+  - Alias: `::kc (npc name)`
   - Displays the top NPC kill counts for the player
+  - Optionally accepts an NPC name to find matching NPCs to display NPC kill counts for.
 - qoloptout
   - Usage: `::qoloptout`
   - Allows the player to permanently opt out of QoL features for their account.

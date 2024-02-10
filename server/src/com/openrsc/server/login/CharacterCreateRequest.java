@@ -129,14 +129,13 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 	}
 
 	protected void processInternal() {
-		// For Neat F2P this is disabled, so game accounts are created on the site and linked to website accounts.
-        // TODO: Remove this once Open RSC merges the WANT_PACKET_REGISTER PR.
-		if (true) {
+		if (!getServer().getConfig().WANT_PACKET_REGISTER) {
 			getChannel().writeAndFlush(new PacketBuilder().writeByte((byte) RegisterLoginResponse.UNSUCCESSFUL).toPacket());
 			getChannel().close();
 			return;
 		}
-		else if (getAuthenticClient()) {
+		
+		if (getAuthenticClient()) {
 			int registerResponse = validateRegister();
 			if (clientVersion <= 204) {
 				registerResponse = RegisterLoginResponse.translateNewToOld(registerResponse, clientVersion, true);
@@ -227,7 +226,6 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 
 			boolean isAdmin = getServer().getPacketFilter().isHostAdmin(getIpAddress());
 
-			// TODO: check threshold for webclients, since they get associated IP 127.0.0.1
 			if (!getIpAddress().equals("127.0.0.1") && getServer().getPacketFilter().getPasswordAttemptsCount(getIpAddress()) >= getServer().getConfig().MAX_PASSWORD_GUESSES_PER_FIVE_MINUTES && !isAdmin) {
 				return (byte) RegisterLoginResponse.LOGIN_ATTEMPTS_EXCEEDED;
 			}
@@ -260,7 +258,6 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 				return (byte) RegisterLoginResponse.ACCOUNT_LOGGEDIN;
 			}
 
-			// Disabled 127.0.0.1 since can't be tracked of abuse
 			if (((getServer().getConfig().IS_LOCALHOST_RESTRICTED && getIpAddress().equals("127.0.0.1"))
 				|| (!getIpAddress().equals("127.0.0.1") && getServer().getPacketFilter().getPlayersCount(getIpAddress()) >= getServer().getConfig().MAX_PLAYERS_PER_IP) && !isAdmin)) {
 				return (byte) RegisterLoginResponse.IP_IN_USE;
@@ -329,7 +326,11 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 	}
 
 	private boolean isDisallowedUsername(String username) {
-		final String [] disallowed = { "cuhpx", "shpx", "shx", "shk", "shd", "snd", "sbp", "sbx", "sbbx", "srx", "snpx", "sbrx", "srpx", "sphx", "shxp", "spx", "shvpx", "suhpx", "cuhx", "fuvg", "puvg", "fpuvg", "fuwg", "fung", "furg", "fvug", "fugv", "fug", "penc", "ovgpu", "owgpu", "13vgpu", "ovpu", "ovngpu", "ovbgpu", "onfgneq", "fcnfgvp", "ergneq", "avtn", "avte", "avtre", "puvax", "jbc", "pbba", "uvgyre", "anmv", "dhrre", "xjrre", "snt", "sntbg", "yrfob", "cravf", "oryyraq", "travgny", "qvx", "qvpx", "jnat", "fuybat", "pbpx", "pbx", "cevp", "jvyyl", "obare", "rerpgvba", "onyf", "obyybpx", "grfgvpyr", "fpebghz", "ahgf", "pyvg", "fyvg", "phag", "intvan", "inqtr", "snaal", "gjng", "chfl", "chfv", "chffl", "chff", "oernfg", "gvg", "gvgf", "obbo", "avcyr", "nefr", "nahf", "erpghz", "nany", "ohgg", "nffubyr", "nffu01r", "hevangr", "cvff", "hevar", "gheq", "snrprf", "rkperzrag", "rkpergr", "sneg", "pnpx", "fcrez", "phz", "fchax", "fzrt", "frzra", "rwnphyng", "encr", "encvfg", "fgnyx", "jnax", "znfgheongr", "znfgreongvat", "cvzc", "cebfgvghg", "crqbcuvyr", "cnrqbcuvyr", "juber", "fyncre", "fynt", "fyhg", "fhpx", "yvpx", "oybwbo", "sryng", "phavyvat", "anxrq", "haqerff", "ahqr", "pbaqbz", "qvyqb", "ivoengbe", "obaqntr", "fcnax", "ubeal", "guebo", "gnzcba", "oybbqent", "cnagl", "cbea", "cnfjbeq", "cnff", "cjbeq", "fvrnt urvy", "fvrt urvy", "snx", "snpxvat", "fperj", "avttn", "zbqehar", "nubyr", "arteb", "ywpx", "qwpx", "gwgf", "ubeavr", "zhfgreongr", "avtt" };
+		final String [] disallowed = { "nff", "shpx", "fuvg", "fhpx", "cravf", "intvan", "chffl", "juber", "fyhg", "qvpx", "pbpx", "phag", "zbq", "z0q", "zbqrengbe", "nqzva", "nqz1a", "nqzvavfgengbe", "nszna", "wntrk", "wnin", "cuhpx", "shx", "shk", "shd", "snd", "sbp", "sbx", "sbbx", "srx", "snpx", "sbrx", "srpx", "sphx", "shxp", "spx", "shvpx", "suhpx", "cuhx", "puvg", "fpuvg", "fuwg", "fung", "furg",
+			"fvug", "fugv", "fug", "penc", "ovgpu", "owgpu", "13vgpu", "ovpu", "ovngpu", "ovbgpu", "onfgneq", "fcnfgvp", "ergneq", "avtn", "avte", "avtre", "puvax", "jbc", "pbba", "uvgyre", "anmv", "dhrre", "xjrre", "snt", "sntbg", "yrfob", "oryyraq", "travgny", "qvx", "jnat", "fuybat", "pbx", "cevp", "jvyyl", "obare", "rerpgvba", "onyf", "obyybpx", "grfgvpyr", "fpebghz", "ahgf", "pyvg", "fyvg", "inqtr",
+			"snaal", "gjng", "chfl", "chfv", "chff", "oernfg", "gvg", "gvgf", "obbo", "avcyr", "nefr", "genal", "genavr", "genaavr", "genaal", "cbb", "cbbc", "nahf", "erpghz", "nany", "ohgg", "nffubyr", "nffu01r", "hevangr", "cvff", "hevar", "gheq", "snrprf", "rkperzrag", "rkpergr", "sneg", "pnpx", "fcrez", "phz", "fchax", "fzrt", "frzra", "rwnphyng", "encr", "encvfg", "fgnyx", "jnax", "znfgheongr",
+			"znfgreongvat", "cvzc", "cebfgvghg", "crqbcuvyr", "cnrqbcuvyr", "fyncre", "fynt", "yvpx", "oybwbo", "sryng", "phavyvat", "anxrq", "haqerff", "ahqr", "pbaqbz", "qvyqb", "ivoengbe", "obaqntr", "fcnax", "ubeal", "guebo", "gnzcba", "oybbqent", "cnagl", "cbea", "cnfjbeq", "cnff", "cjbeq", "fvrnt urvy", "fvrt urvy", "snx", "snpxvat", "fperj", "avttn", "zbqehar", "nubyr", "arteb", "ywpx", "qwpx",
+			"gwgf", "ubeavr", "zhfgreongr", "avtt" };
 
 		final String[] staff = { "mod", "moderator", "mordorator", "admin", "administrator",
 			"afman", "owner", "jagex", "java" };

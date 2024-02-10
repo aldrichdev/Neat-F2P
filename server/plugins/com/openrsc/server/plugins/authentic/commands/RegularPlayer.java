@@ -23,6 +23,7 @@ import com.openrsc.server.util.languages.PreferredLanguage;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.MessageType;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.WordUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -94,8 +95,8 @@ public final class RegularPlayer implements CommandTrigger {
 			queryGroupIDs(player);
 		} else if (command.equalsIgnoreCase("time") || command.equalsIgnoreCase("date") || command.equalsIgnoreCase("datetime")) {
 			player.message(messagePrefix + " the current time/date is:@gre@ " + new java.util.Date().toString());
-		} else if (config().NPC_KILL_LIST && command.equalsIgnoreCase("kills")) {
-			queryKillList(player, args);
+		} else if (config().NPC_KILL_LIST && (command.equalsIgnoreCase("kills") || command.equalsIgnoreCase("kc"))) {
+			queryKillList(player, command, args);
 		} else if (command.equalsIgnoreCase("pair")) {
 			pairDiscordID(player);
 		} else if (command.equalsIgnoreCase("d")) {
@@ -618,8 +619,11 @@ public final class RegularPlayer implements CommandTrigger {
 
 	private void sendMessageParty(Player player, String command, String[] args) {
 		if (player.isMuted()) {
-			if (player.getMuteNotify()) {
-				player.message(messagePrefix + "You are muted, you cannot send messages");
+			if (!player.isShadowMuted()) {
+				player.message(messagePrefix + "You are " + (player.getMuteExpires() == -1 ? "permanently" : "temporarily") + " muted, you cannot send messages");
+				if (player.getMuteExpires() != -1) {
+					player.message("Your mute will expire in " + player.getMinutesMuteLeft() + " minutes.");
+				}
 			}
 			return;
 		}
@@ -695,18 +699,12 @@ public final class RegularPlayer implements CommandTrigger {
 
 	private void queryUniqueOnlinePlayerCount(Player player) {
 		ArrayList<String> IP_ADDRESSES = new ArrayList<>();
-		int webclientUsers = 0;
 		for (Player targetPlayer : player.getWorld().getPlayers()) {
 			boolean elevated = targetPlayer.hasElevatedPriveledges();
-			if (targetPlayer.getCurrentIP().equals("127.0.0.1") || targetPlayer.getCurrentIP().equals("192.168.1.100")) {
-				webclientUsers += 1;
-			} else {
-				if (!IP_ADDRESSES.contains(targetPlayer.getCurrentIP()) && !elevated)
-					IP_ADDRESSES.add(targetPlayer.getCurrentIP());
-			}
+			if (!IP_ADDRESSES.contains(targetPlayer.getCurrentIP()) && !elevated)
+				IP_ADDRESSES.add(targetPlayer.getCurrentIP());
 		}
-		player.message(messagePrefix + "There are " + IP_ADDRESSES.size() + " unique players online not using web client.");
-		player.message(messagePrefix + "as well as " + webclientUsers + " players online that are using web client.");
+		player.message(messagePrefix + "There are " + IP_ADDRESSES.size() + " unique players online");
 	}
 
 	private void sendClanRequest(Player player, String[] args) {
@@ -1078,7 +1076,11 @@ public final class RegularPlayer implements CommandTrigger {
 		ActionSender.sendBox(recipient, sb.toString(), true);
 	}
 
-	private void queryKillList(Player player, String[] args) {
+	private void queryKillList(Player player, String command, String[] args) {
+		if (player.getConfig().NPC_KILL_LIST_LOOKUP_ONLY && args.length == 0) {
+			player.message(config().BAD_SYNTAX_PREFIX + command.toLowerCase() + " [npc name]");
+			return;
+		}
 		if (args.length == 0) {
 			StringBuilder kills = new StringBuilder("NPC Kill List for " + player.getUsername() + " % %");
 			//PreparedStatement statement = player.getWorld().getServer().getDatabaseConnection().prepareStatement(
@@ -1096,10 +1098,11 @@ public final class RegularPlayer implements CommandTrigger {
 					.append((i%2==0 ? "%" : ", "));
 				i++;
 			}
-			kills.append("%Total Kills: ").append(player.getNpcKills());
+			kills.append("Total Kills: ").append(player.getNpcKills());
 			ActionSender.sendBox(player, kills.substring(0, kills.length()-2).toString(), true);
 		} else {
-			String npcName = String.join(" ", args).toLowerCase();
+			String npcName = StringUtils.replaceChars(String.join(" ", args), '_', ' ');
+			boolean found = false;
 			for (Map.Entry<Integer, Integer> entry : player.getKillCache().entrySet()) {
 				NPCDef npc = player.getWorld().getServer().getEntityHandler().getNpcDef(entry.getKey());
 				if (npc.getName().toLowerCase().equals(npcName)) {
@@ -1110,6 +1113,26 @@ public final class RegularPlayer implements CommandTrigger {
 						.append(npc.combatLevel)
 						.append("): ")
 						.append(entry.getValue());
+					player.message(kill.toString());
+					found = true;
+				}
+			}
+			if (!found) {
+				StringBuilder kill = new StringBuilder();
+				String npcNameLowerCase = npcName.toLowerCase();
+				if (player.getWorld().getServer().getEntityHandler().getNpcNameLowerCase(npcNameLowerCase).equals(npcNameLowerCase)) {
+					 found = true;
+				}
+				if (found) {
+					kill.append("NPC Kills for ")
+						.append(WordUtils.capitalize(npcName))
+						.append(": ")
+						.append(0);
+					player.message(kill.toString());
+				} else {
+					kill.append("The NPC named ")
+						.append(npcName)
+						.append(" could not be found.");
 					player.message(kill.toString());
 				}
 			}

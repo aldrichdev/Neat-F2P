@@ -7,7 +7,10 @@ import io.netty.channel.Channel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.*;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
 import java.text.DateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -55,6 +58,9 @@ public class RSCPacketFilter {
 	 */
 	private final HashMap<String, ArrayList<Long>> passwordAttempts;
 
+	private static final String BAN_FILE_PATH = "ipbans.txt";
+	private static final String BAN_TEMPFILE_PATH = "ipbans.temp";
+
 	public RSCPacketFilter(final Server server) {
 		this.server = server;
 		this.connectionAttempts = new HashMap<>();
@@ -68,7 +74,32 @@ public class RSCPacketFilter {
 	}
 
 	public void load() {
+		synchronized (ipBans) {
+			int counter = 0;
+			File ipBansFile = new File(BAN_FILE_PATH);
+			try {
+				// creates new file only if ipbans.txt file doesn't already exist.
+				boolean newFile = ipBansFile.createNewFile();
+				if (newFile) {
+					LOGGER.info("Created new IP bans file at " + ipBansFile.getAbsolutePath());
+					return;
+				}
+				BufferedReader reader = new BufferedReader(new FileReader(BAN_FILE_PATH));
+				String line;
+				while ((line = reader.readLine()) != null) {
+					counter++;
+					ipBans.put(line.trim(), -1L);
+				}
+				LOGGER.info("Loaded " + counter + " banned IPs.");
+			} catch (IOException ex) {
+				LOGGER.catching(ex);
+			}
+		}
+	}
 
+	public void reload() {
+		ipBans.clear();
+		load();
 	}
 
 	public void unload() {
@@ -116,8 +147,44 @@ public class RSCPacketFilter {
 			}
 			return;
 		}
-
+		Path filePath = Paths.get(BAN_FILE_PATH);
+		Path tempFilePath = Paths.get(BAN_TEMPFILE_PATH);
 		synchronized(ipBans) {
+			if (until == -1 && (!ipBans.containsKey(hostAddress) || ipBans.get(hostAddress) == 0)) { // Perm ban
+				try {
+					//Copy the contents of the original file to the temp file
+					Files.copy(filePath, tempFilePath, StandardCopyOption.REPLACE_EXISTING);
+
+					//Append the new hostAddress to the temp file
+					try (BufferedWriter writer = Files.newBufferedWriter(tempFilePath, StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+						writer.write(hostAddress);
+						writer.newLine();
+					}
+
+					//Atomically move temp file to replace the original file
+					Files.move(tempFilePath, filePath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+				} catch (IOException e) {
+					LOGGER.catching(e);
+				}
+			} else if (until == 0 && ipBans.containsKey(hostAddress) && ipBans.get(hostAddress) != 0) { // Unban
+				try {
+					//Read from original file and write to temp file
+					try (BufferedReader reader = Files.newBufferedReader(filePath);
+						 BufferedWriter writer = Files.newBufferedWriter(tempFilePath)) {
+						String currentLine;
+						while ((currentLine = reader.readLine()) != null) {
+							if (!currentLine.trim().equals(hostAddress)) {
+								writer.write(currentLine);
+								writer.newLine();
+							}
+						}
+					}
+					//Atomically move temp file to original file
+					Files.move(tempFilePath, filePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+				} catch (IOException e) {
+					LOGGER.catching(e);
+				}
+			}
 			String time = (until == -1) ? " permanently" : " until " + DateFormat.getInstance().format(until);
 			if (until != 0) {
 				LOGGER.info("IP Banned " + hostAddress + time + " for " + reason);
@@ -288,6 +355,10 @@ public class RSCPacketFilter {
 	}
 
 	public int cleanIdleConnections() {
+		//This causes networking issues like appearance issues after logging in, let's turn this off for now as of Feb 2024.
+		if (true) {
+			return 0;
+		}
 		synchronized (connections) {
 			int num = 0;
 			for (Map.Entry<String, ArrayList<Channel>> entry : connections.entrySet()) {
@@ -486,6 +557,7 @@ public class RSCPacketFilter {
 	}
 
 	public int clearAllIpBans() {
+		//We could clear IP bans from the text file, but that would be a bit pointless if they are meant to be permanent.
 		synchronized(ipBans) {
 				int banListSize = ipBans.size();
 				if (banListSize > 0) {

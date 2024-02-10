@@ -31,7 +31,7 @@ public class ServerConfiguration {
 	public String SERVER_NAME;
 	public String SERVER_NAME_WELCOME;
 	public String WELCOME_TEXT;
-	public String MESSAGE_PREFIX = "@gre@Runescape Classic:@whi@ ";
+	public String MESSAGE_PREFIX = "@gre@System message:@whi@ ";
 	public String BAD_SYNTAX_PREFIX = MESSAGE_PREFIX +" Invalid Syntax: ::";
 	public boolean MEMBER_WORLD;
 	public int WORLD_NUMBER;
@@ -41,6 +41,8 @@ public class ServerConfiguration {
 	public int MAX_PLAYERS_PER_IP;
 	public int SESSION_ID_SENDER_TIMER;
 	int SERVER_PORT;
+	int WS_SERVER_PORT;
+	public boolean WANT_FEATURE_WEBSOCKETS;
 	int IDLE_TIMER;
 	int AUTO_SAVE;
 	public int MILLISECONDS_BETWEEN_CASTS;
@@ -51,6 +53,10 @@ public class ServerConfiguration {
 	public String DB_USER;
 	public String DB_PASS;
 	public String DB_TABLE_PREFIX;
+
+	public String SSL_SERVER_CERT_PATH;
+	public String SSL_SERVER_KEY_PATH;
+
 	public int PLAYER_LEVEL_LIMIT;
 	public boolean WANT_EXPERIENCE_CAP;
 	public int EXPERIENCE_LIMIT;
@@ -130,6 +136,7 @@ public class ServerConfiguration {
 	public boolean MESSAGE_FULL_INVENTORY;
 	public boolean NPC_DONT_RETREAT;
 	public boolean NPC_KILL_LIST;
+	public boolean NPC_KILL_LIST_LOOKUP_ONLY;
 	public boolean NPC_KILL_MESSAGES;
 	public boolean NPC_KILL_MESSAGES_FILTER;
 	public boolean NPC_KILL_COUNTERS;
@@ -190,6 +197,7 @@ public class ServerConfiguration {
 	public boolean WANT_EQUIPMENT_TAB;
 	public boolean WANT_BANK_PRESETS;
 	public boolean WANT_PARTIES;
+	public boolean WANT_PARTY_XP_SHARE;
 	public boolean WANT_OPENPK_POINTS;
 	public boolean WANT_OPENPK_PRESETS;
 	public int OPENPK_POINTS_TO_GP_RATIO;
@@ -200,6 +208,7 @@ public class ServerConfiguration {
 	public boolean WANT_COMBAT_ODYSSEY;
 	public boolean WANT_INSTANCED_NPCS;
 	public boolean EQUIP_QUEST_ITEMS_WITHOUT_QUESTS;
+	public boolean WANT_PACKET_REGISTER;
 	public double PARTY_ADDITIONAL_XP_PERCENT_PER_PLAYER;
 	public double PARTY_DISTANCE_PERCENT_DECREASE;
 	public double PARTY_SAVE_XP_FOR_SKILLER_PERCENT;
@@ -377,6 +386,10 @@ public class ServerConfiguration {
 		DB_PASS = tryReadString("db_pass").orElse("root");
 		DB_TABLE_PREFIX = tryReadString("db_table_prefix").orElse("");
 
+		// SSL settings
+		SSL_SERVER_CERT_PATH = tryReadString("ssl_server_cert_path").orElse("");
+		SSL_SERVER_KEY_PATH = tryReadString("ssl_server_key_path").orElse("");
+
 		// World settings
 		SERVER_NAME = tryReadString("server_name").orElse("Runescape");
 		SERVER_NAME_WELCOME = tryReadString("server_name_welcome").orElse("Runescape Classic");
@@ -392,6 +405,15 @@ public class ServerConfiguration {
 		CLIENT_VERSION = tryReadInt("client_version").orElse(10009);
 		ENFORCE_CUSTOM_CLIENT_VERSION = tryReadBool("enforce_custom_client_version").orElse(true);
 		SERVER_PORT = tryReadInt("server_port").orElse(43594);
+		WS_SERVER_PORT = tryReadInt("ws_server_port").orElse(43494);
+		WANT_FEATURE_WEBSOCKETS = tryReadBool("want_feature_websockets").orElse(true);
+		if (WS_SERVER_PORT == SERVER_PORT) {
+			// Disable port sharing of Websockets & TCP port
+			// technically maybe sharing the port can work, but let's just not do this ever.
+			WANT_FEATURE_WEBSOCKETS = false;
+			LOGGER.warn("Websocket listening disabled!");
+			LOGGER.warn("You cannot host the websocket on the same port as other TCP connections.");
+		}
 		MAX_CONNECTIONS_PER_IP = tryReadInt("max_connections_per_ip").orElse(20);
 		MAX_CONNECTIONS_PER_SECOND = tryReadInt("max_connections_per_second").orElse(20);
 		MAX_PACKETS_PER_SECOND = tryReadInt("max_packets_per_second").orElse(100);
@@ -608,9 +630,11 @@ public class ServerConfiguration {
 		WANT_COMBAT_ODYSSEY = tryReadBool("want_combat_odyssey").orElse(false);
 		WANT_INSTANCED_NPCS = tryReadBool("want_instanced_npcs").orElse(false);
 		EQUIP_QUEST_ITEMS_WITHOUT_QUESTS = tryReadBool("equip_quest_items_without_quests").orElse(false);
+		WANT_PACKET_REGISTER = tryReadBool("want_packet_register").orElse(true);
 
 		// Party settings
 		WANT_PARTIES = tryReadBool("want_parties").orElse(false);
+		WANT_PARTY_XP_SHARE = tryReadBool("want_party_xp_share").orElse(false);
 		PARTY_ADDITIONAL_XP_PERCENT_PER_PLAYER = tryReadDouble("party_additional_xp_percent_per_player")
 			.orElse(0.1);
 		PARTY_DISTANCE_PERCENT_DECREASE = tryReadDouble("party_distance_percent_decrease")
@@ -680,6 +704,7 @@ public class ServerConfiguration {
 
 		// NPC kills
 		NPC_KILL_LIST = tryReadBool("npc_kill_list").orElse(false);
+		NPC_KILL_LIST_LOOKUP_ONLY = tryReadBool("npc_kill_list_lookup_only").orElse(false);
 		NPC_KILL_MESSAGES = tryReadBool("npc_kill_messages").orElse(false);
 		NPC_KILL_MESSAGES_FILTER = tryReadBool("npc_kill_messages_filter").orElse(false);
 		NPC_KILL_MESSAGES_NPCs = tryReadString("npc_kill_messages_npcs").orElse("King Black Dragon,Black Dragon");

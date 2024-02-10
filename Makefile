@@ -2,7 +2,17 @@ include .env
 #########################################
 #####      Production Scripts       ##### 
 #########################################
-# Creates a database export of the specified database and saves to the output directory specified in the .env file.  Good for utilizing as a crontab.
+# Creates a full database export of the specified database and saves to the output directory specified in the .env file. Good for utilizing as a crontab.
+# Call via "make backup-mariadb-full db=cabbage"
+backup-mariadb-full:
+	@[ "${db}" ] || ( echo ">> db is not set"; exit 1 )
+	mkdir -p $(MYSQL_DUMPS_DIR)
+	chmod -R 777 $(MYSQL_DUMPS_DIR)
+	mkdir -p $(MYSQL_DUMPS_DIR)/full/`date "+%Y%m"`
+	chmod -R 777 $(MYSQL_DUMPS_DIR)/full/`date "+%Y%m"`
+	mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} --single-transaction --quick --lock-tables=false 2> $(MYSQL_DUMPS_DIR)/mysqldump_errors.log | gzip > $(MYSQL_DUMPS_DIR)/full/`date "+%Y%m"`/`date "+%Y%m%d-%H%M-%Z"`-${db}-full.sql.gz
+
+# Creates a schema-only dump for all tables and data-only dump for selected tables (excluding log tables) of the specified database, then combines them into a single compressed file.
 # Call via "make backup-mariadb db=cabbage"
 backup-mariadb:
 	@[ "${db}" ] || ( echo ">> db is not set"; exit 1 )
@@ -10,7 +20,30 @@ backup-mariadb:
 	chmod -R 777 $(MYSQL_DUMPS_DIR)
 	mkdir -p $(MYSQL_DUMPS_DIR)/`date "+%Y%m"`
 	chmod -R 777 $(MYSQL_DUMPS_DIR)/`date "+%Y%m"`
-	mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} --single-transaction --quick --lock-tables=false | gzip > $(MYSQL_DUMPS_DIR)/`date "+%Y%m"`/`date "+%Y%m%d-%H%M-%Z"`-${db}.sql.gz
+	@if [ "${db}" = "board" ] || [ "${db}" = "wiki" ] || [ "${db}" = "laravel" ]; then \
+		mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} --single-transaction --quick --lock-tables=false 2> $(MYSQL_DUMPS_DIR)/mysqldump_errors.log | gzip > $(MYSQL_DUMPS_DIR)/`date "+%Y%m"`/`date "+%Y%m%d-%H%M-%Z"`-${db}.sql.gz; \
+	else \
+		# Schema-only dump \
+		mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} --single-transaction --quick --lock-tables=false --no-data 2> $(MYSQL_DUMPS_DIR)/mysqldump_errors.log > $(MYSQL_DUMPS_DIR)/temp_schema_${db}.sql; \
+		# Data-only dump for tables excluding specific log tables \
+		mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} --single-transaction --quick --lock-tables=false --no-create-info \
+		--ignore-table=${db}.generic_logs \
+		--ignore-table=${db}.droplogs \
+		--ignore-table=${db}.chat_logs \
+		--ignore-table=${db}.trade_logs \
+		--ignore-table=${db}.private_message_logs \
+		--ignore-table=${db}.live_feeds 2> $(MYSQL_DUMPS_DIR)/mysqldump_errors.log > $(MYSQL_DUMPS_DIR)/temp_data_${db}.sql; \
+		# Data dump for log tables minus droplogs with data from the last week \
+		for table in generic_logs chat_logs trade_logs private_message_logs live_feeds; do \
+			mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} $$table --single-transaction --quick --lock-tables=false --no-create-info --where="time >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 7 DAY))" 2> $(MYSQL_DUMPS_DIR)/mysqldump_errors.log >> $(MYSQL_DUMPS_DIR)/temp_data_${db}.sql; \
+		done; \
+		# Data dump for droplogs table with data from last week because droplogs uses different timestamp column name \
+		mysqldump -u${MARIADB_ROOT_USER} -p${MARIADB_ROOT_PASSWORD} ${db} droplogs --single-transaction --quick --lock-tables=false --no-create-info --where="ts >= DATE_SUB(NOW(), INTERVAL 7 DAY)" 2> $(MYSQL_DUMPS_DIR)/mysqldump_errors.log >> $(MYSQL_DUMPS_DIR)/temp_data_${db}.sql; \
+		# Combine schema and data dumps, then compress \
+		cat $(MYSQL_DUMPS_DIR)/temp_schema_${db}.sql $(MYSQL_DUMPS_DIR)/temp_data_${db}.sql | gzip > $(MYSQL_DUMPS_DIR)/`date "+%Y%m"`/`date "+%Y%m%d-%H%M-%Z"`-${db}.sql.gz; \
+		# Cleanup temp files \
+		rm $(MYSQL_DUMPS_DIR)/temp_schema_${db}.sql $(MYSQL_DUMPS_DIR)/temp_data_${db}.sql; \
+	fi
 
 # Remove unnecessary data from database after 3 months.
 # Call via "make purge-old-logs db=cabbage"
