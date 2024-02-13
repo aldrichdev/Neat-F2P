@@ -26,6 +26,7 @@ https://neatf2p-nextjs.vercel.app/
 -   `member_world` = `false`
 -   `can_feature_membs` = `false`
 -   `MAX_PLAYERS_PER_IP` = `2`
+-   `pidless_catching` = `false`
 -   `shuffle_pid_order` = `false`
 -   `want_packet_register` = `false` (in-game characters are created on our site)
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
