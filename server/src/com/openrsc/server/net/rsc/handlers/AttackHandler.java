@@ -101,7 +101,6 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 				// https://www.youtube.com/watch?v=ia02boQlVts&t=1131s
 				 if (player.getLocation().getDistanceTo(affectedMob.getLocation()) > player.getConfig().MAX_PVP_MELEE_ATTACK_DISTANCE + pidlessCatchingDistanceOffset) {
 					 player.resetPath();
-					 
 					 return;
 				 }
 			}
