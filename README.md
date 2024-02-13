@@ -2,7 +2,7 @@
 
 Open-source codebase for the Neat F2P project, an unreleased RSC private server featuring authentic, F2P-only gameplay.
 
-https://neatf2p-nextjs.vercel.app/
+https://www.neatf2p.com
 
 ## Info
 
