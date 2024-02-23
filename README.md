@@ -1,6 +1,6 @@
 # Neat F2P
 
-Open-source codebase for the Neat F2P project, an unreleased RSC private server featuring authentic, F2P-only gameplay.
+Open-source codebase for the Neat F2P project, a new RSC private server featuring authentic, F2P-only gameplay.
 
 https://www.neatf2p.com
 
@@ -11,14 +11,14 @@ https://www.neatf2p.com
 -   F2P Mode Enabled (Forever) - Only F2P Areas, Features, Items, Quests, Spells, Prayers, Etc.
 -   1 Page Bank (Authentic F2P Behavior)
 -   1x EXP Rates
--   Play with RSC+ Client
+-   Play with RSC+, WinRune or Web Client
 -   Skip Tutorial Option Enabled
 -   Max 2 Characters Logged In At Once
 -   No QOL - Straight RSC
 -   No Global Chat or Kill Feed
 -   No Transfers From Other Servers
 -   No Cheating
--   Aiming for a March 2024 Release
+-   Launched Saturday, February 24th, 2024
 
 ## Differences From Open RSC's Core Framework
 
