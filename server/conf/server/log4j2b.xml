@@ -10,21 +10,6 @@
         <Console name="ConsoleAppender" target="SYSTEM_OUT">
             <PatternLayout pattern="${logPattern}"/>
         </Console>
-
-        <RollingFile name="CatchAllAppender" filename="logs/default.log" append="true">
-            <filepattern>logs/default.%d{YYYYMMdd_HH：mm：ss}.log.gz</filepattern>
-            <PatternLayout pattern="${logPattern}"/>
-            <Policies>
-                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
-            </Policies>
-            <DefaultRolloverStrategy>
-                <Delete basePath="logs" maxDepth="1">
-                    <IfFileName glob="*.log.gz"/>
-                    <IfLastModified age="7d"/>
-                </Delete>
-            </DefaultRolloverStrategy>
-        </RollingFile>
-
         <Routing name="RoutingAppender">
             <Routes pattern="${ctx：world.name}">
                 <Route>
@@ -44,11 +29,9 @@
                         </DefaultRolloverStrategy>
                     </RollingFile>
                 </Route>
-                <Route ref="CatchAllAppender" key="${ctx：world.name}"/>
             </Routes>
             <IdlePurgePolicy timeToLive="15" timeUnit="minutes"/>
         </Routing>
-
     </Appenders>
 
     <Loggers>
