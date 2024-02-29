@@ -29,6 +29,8 @@ https://www.neatf2p.com
 -   `pidless_catching` = `false`
 -   `shuffle_pid_order` = `false`
 -   `want_packet_register` = `false` (in-game characters are created on our site)
+-   `want_pcap_logging` = `false` (this may be temporary, not sure if we need these logs)
+-   `log4j*.xml` files have the `CatchAllAppender` removed, which prevents `.log.gz` files from being generated every time a player connects
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
 
 ## Tribute
