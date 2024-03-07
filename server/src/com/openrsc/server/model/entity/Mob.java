@@ -27,6 +27,7 @@ import com.openrsc.server.util.rsc.Formulae;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -804,7 +805,7 @@ public abstract class Mob extends Entity {
 
 			NpcInteraction interaction = NpcInteraction.NPC_ATTACK;
 			if (victim.isPlayer() && this.isNpc()) {
-				npcInteraction.setInteractions(((Npc)this), ((Player)victim), interaction);
+				NpcInteraction.setInteractions(((Npc)this), ((Player)victim), interaction);
 			}
 
 			combatEvent = new CombatEvent(getWorld(), this, victim);
@@ -1267,6 +1268,11 @@ public abstract class Mob extends Entity {
 			return ((Mob)obj).getUUID().equals(uuid);
 		}
 		return false;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(uuid);
 	}
 
 	public void setNpcInteraction(NpcInteraction interaction) {
