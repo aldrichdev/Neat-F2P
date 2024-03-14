@@ -886,17 +886,22 @@ public final class World implements SimpleSubscriber<FishingTrawler>, Runnable {
 			// close the channel after a safe amount of time for the logout packet to reach the player
 			// does not matter if player logs back in while this still hasn't been destroyed, it's just to free memory.
 			player.getWorld().getServer().getGameEventHandler().add(
-				new DelayedEvent(player.getWorld(), null, 2500, "Free channel attachment memory") {
+				new DelayedEvent(player.getWorld(), null, 2500, "Free channel memory") {
 				public void run() {
 					try {
 						Channel playerChannel = player.getChannel();
-						playerChannel.attr(attachment).set(null);
-						player.close();
-						player.unsetChannel();
-						getServer().getPacketFilter().removePlayerConnPacket(playerChannel);
-						stop();
+						if (playerChannel != null) {
+							if (playerChannel.hasAttr(attachment)) {
+								playerChannel.attr(attachment).set(null);
+							}
+							player.close();
+							getServer().getPacketFilter().removePlayerConnPacket(playerChannel);
+						}
 					} catch (Exception e) {
 						LOGGER.catching(e);
+					} finally {
+						player.unsetChannel();
+						stop();
 					}
 				}
 			});

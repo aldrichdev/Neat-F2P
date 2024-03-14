@@ -2,6 +2,7 @@ package com.openrsc.server.login;
 
 import com.openrsc.server.Server;
 import com.openrsc.server.database.GameDatabaseException;
+import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.world.World;
 import org.apache.logging.log4j.LogManager;
@@ -58,18 +59,7 @@ public class PlayerSaveRequest extends LoginExecutorProcess {
 	}
 
 	public void logoutSaveSuccess() {
-
-		//Stop desert heat
-		if (getPlayer().desertHeatEvent != null)
-			getPlayer().desertHeatEvent.stop();
-
-		if (getPlayer().getStatRestorationEvent() != null) {
-			getPlayer().getStatRestorationEvent().stop();
-		}
-
-		if (getPlayer().getDrainer() != null) {
-			getPlayer().getDrainer().stop();
-		}
+		getServer().getGameEventHandler().getPlayerEvents(getPlayer()).forEach(GameTickEvent::stop);
 
 		getServer().getPacketFilter().removeLoggedInPlayer(getPlayer().getCurrentIP(), getPlayer().getUsernameHash());
 

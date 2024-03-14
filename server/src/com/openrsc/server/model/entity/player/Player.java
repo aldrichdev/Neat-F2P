@@ -1018,10 +1018,12 @@ public final class Player extends Mob {
 		return false;
 	}
 
+	/* TODO: implement hashCode
 	@Override
 	public int hashCode() {
 		return Objects.hash(uuid);
 	}
+	 */
 
 	public void checkEquipment2() {
 		for (int slot = 0; slot < Equipment.SLOT_COUNT; slot++) {
@@ -2556,7 +2558,7 @@ public final class Player extends Mob {
 	public void resetAll(boolean resetWalkAction, boolean resetFollowing) {
 		interruptPlugins();
 		Npc npc = getInteractingNpc();
-		if (npc != null && npc.getInteractingPlayer().equals(this)) {
+		if (npc != null && npc.getInteractingPlayer() != null && npc.getInteractingPlayer().equals(this)) {
 			npc.setNpcInteraction(null);
 			npc.setInteractingPlayer(null);
 		}
@@ -2883,7 +2885,7 @@ public final class Player extends Mob {
 		};
 		sleepStateFatigue = fatigue;
 		ActionSender.sendSleepFatigue(this, sleepStateFatigue);
-		getWorld().getServer().getGameEventHandler().add(sleepEvent);
+		getWorld().getServer().getGameEventHandler().addOrUpdate(sleepEvent);
 	}
 
 	public void teleport(final int x, final int y, final boolean bubble) {
