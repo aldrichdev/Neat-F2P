@@ -745,6 +745,9 @@ Player Moderator Commands
   - Usage: `::check (player)`
   - Shows all of the characters that were created by the same IP address.
   - Administrator accounts are able to actually see the IP address.
+- uptime
+  - Usage `::uptime`
+  - Displays the current uptime of the server.
 ------------------------
 Regular Player Commands
 ------------------------
@@ -904,3 +907,7 @@ Regular Player Commands
   - This command is not yet implemented.
   - This command would allow users to rename themselves after having had their previous name freed or marked as inappropriate.
   - Does not work for Moderators or above.
+- globalchat
+  - Usage `::globalchat`
+  - Alias: `::gc`
+  - Informs the user of the functionality of Global Chat on the server, including any total level restrictions.

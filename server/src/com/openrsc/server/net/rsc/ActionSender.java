@@ -87,7 +87,16 @@ public class ActionSender {
 			if (p != null)
 				player.write(p);
 		} catch (GameNetworkException gne) {
-			throw new GameNetworkException(gne);
+			// do nothing, the player just doesn't get the packet (possibly logged out) & script this is called from can continue
+			String username, clientVersion;
+			if (player != null) {
+				username = player.getUsername();
+				clientVersion = String.format("%d", player.getClientVersion());
+			} else {
+				username = "<null>";
+				clientVersion = "<unknown>";
+			}
+			LOGGER.warn("GameNetworkException for player " + username + " with client version " + clientVersion + " on opcode " + opcode.name());
 		}
 	}
 
@@ -1636,6 +1645,9 @@ public class ActionSender {
 			return;
 		}
 
+		boolean bothPlayersSupportAllItems = true;
+		int unhandledItemId = 0;
+
 		TradeConfirmStruct struct = new TradeConfirmStruct();
 		struct.targetPlayer = with.getUsername();
 
@@ -1644,7 +1656,7 @@ public class ActionSender {
 		struct.opponentTradeCount = tradedSize;
 		struct.opponentCatalogIDs = new int[tradedSize];
 		struct.opponentAmounts = new int[tradedSize];
-		if (player.getConfig().WANT_BANK_NOTES) {
+		if (player.getConfig().WANT_BANK_NOTES && player.isUsingCustomClient()) {
 			struct.opponentNoted = new int[tradedSize];
 		}
 		i = 0;
@@ -1672,19 +1684,23 @@ public class ActionSender {
 		i = 0;
 		for (Item item : player.getTrade().getTradeOffer().getItems()) {
 			struct.myCatalogIDs[i] = item.getCatalogId();
+			if (item.getCatalogId() > player.getClientLimitations().maxItemId || item.getCatalogId() > with.getClientLimitations().maxItemId) {
+				bothPlayersSupportAllItems = false;
+				unhandledItemId = item.getCatalogId();
+				break;
+			}
 			if (struct.myNoted != null) {
 				struct.myNoted[i] = item.getNoted() ? 1 : 0;
 			}
 			struct.myAmounts[i] = item.getAmount();
 			i++;
 		}
-
-		try {
+		if (bothPlayersSupportAllItems) {
 			tryFinalizeAndSendPacket(OpcodeOut.SEND_TRADE_OPEN_CONFIRM, struct, player);
-		} catch (GameNetworkException gne) {
-			// an unsupported catalog id was received for authentic client
-			sendMessage(player, String.format("Cannot handle inauthentic item ID %s", gne.getExposedDetail()));
-			sendMessage(with, String.format("Other player cannot handle inauthentic item ID %s", gne.getExposedDetail()));
+		} else {
+			// an unsupported catalog id was received by an outdated or authentic client
+			sendMessage(player, String.format("At least one player cannot handle item ID %s", unhandledItemId));
+			sendMessage(with, String.format("At least one player cannot handle item ID %s", unhandledItemId));
 			player.getTrade().setTradeActive(false);
 			with.getTrade().setTradeActive(false);
 			sendTradeWindowClose(player);

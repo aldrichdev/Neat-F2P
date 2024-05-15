@@ -3239,6 +3239,12 @@ public final class Player extends Mob {
 
 	public Boolean getBlockGlobalFriend() {
 		if (getWorld().getServer().getConfig().WANT_GLOBAL_FRIEND) {
+			if (getLocation().onTutorialIsland() && !isMod()) {
+				return true;
+			}
+			if (getTotalLevel() < getConfig().GLOBAL_MESSAGE_READING_TOTAL_LEVEL_REQ && !isPlayerMod()) {
+				return true;
+			}
 			if (getCache().hasKey("setting_block_global_friend")) {
 				return getCache().getBoolean("setting_block_global_friend");
 			}
@@ -4030,6 +4036,15 @@ public final class Player extends Mob {
 			teleport(getConfig().RESPAWN_LOCATION_X, getConfig().RESPAWN_LOCATION_Y, false);
 			message("Skipped tutorial, welcome to Lumbridge");
 			ActionSender.sendPlayerOnTutorial(this);
+			final Player player = this;
+			getWorld().getServer().getGameEventHandler().add(
+				new DelayedEvent(getWorld(), null, 15000, "TellAboutGlobalChat") {
+					public void run() {
+						getSocial().messagePlayerOffTutorialIfTheyAreEligibleForGlobalChat(player);
+						stop();
+					}
+				}
+			);
 			return true;
 		}
 		return false;
@@ -4292,7 +4307,8 @@ public final class Player extends Mob {
 		}
 
 		if (getTotalLevel() < getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ && !isPlayerMod()) {
-			message(messagePrefix + "You can only send a message to global chat if you have at least " + getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ + " total level.");
+			message("You can only send a message to global chat if you have at least " + getConfig().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ + " total level.");
+			message("Type @gre@::globalchat@whi@ or @gre@::gc@whi@ for more information.");
 			return false;
 		}
 

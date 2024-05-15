@@ -20,7 +20,8 @@
                         <filepattern>logs/${ctx:world.name}_${ctx:world.number}.%d{YYYYMMdd}.log.gz</filepattern>
                         <PatternLayout pattern="${logPattern}"/>
                         <Policies>
-                            <TimeBasedTriggeringPolicy interval="86400" modulate="true"/>
+                            <!-- TimeBasedTriggeringPolicy interval is based off of the filepattern timestamp, using the finest-grain time interval defined in the filepattern timestamp. For example: %d{YYYYMMdd} uses days which means interval 1 for 1 day. -->
+                            <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
                         </Policies>
                         <DefaultRolloverStrategy>
                             <Delete basePath="logs" maxDepth="1">

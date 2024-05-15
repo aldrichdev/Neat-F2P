@@ -180,12 +180,64 @@ public final class RegularPlayer implements CommandTrigger {
 			bankPinOptOut(player);
 		} else if (command.equalsIgnoreCase("rename")) {
 			renameSelf(player, args);
+		} else if (command.equalsIgnoreCase("globalchat") || command.equalsIgnoreCase("gc")) {
+			globalChatInfo(player);
+		}
+	}
+
+	private void globalChatInfo(Player player) {
+		if (!config().WANT_GLOBAL_CHAT && !config().WANT_GLOBAL_FRIEND) {
+			player.message("Global chat is disabled on this world.");
+			return;
+		}
+
+		StringBuilder globalChatInfo = new StringBuilder();
+		globalChatInfo.append("@yel@Global Chat %");
+		globalChatInfo.append("@whi@Global Chat allows anyone participating to broadcast a message to everyone else on the server. % %");
+		if (config().WANT_GLOBAL_FRIEND) {
+			globalChatInfo.append("@whi@It is possible to opt-out of this feature by removing the @cya@Global@whi@ friend from your friends list, and to opt back in by adding @cya@Global@whi@ to your friends list. % %");
+		}
+		if (config().GLOBAL_MESSAGE_READING_TOTAL_LEVEL_REQ > 0) {
+			globalChatInfo.append("@whi@To read global chat, players must reach a skill total of at least " + config().GLOBAL_MESSAGE_READING_TOTAL_LEVEL_REQ + ". ");
+		}
+		if (config().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ > 0) {
+			globalChatInfo.append("@whi@To send a message to global chat, players must reach a skill total of at least " + config().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ + ". ");
+		}
+		if (config().GLOBAL_MESSAGE_READING_TOTAL_LEVEL_REQ > 0 || config().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ > 0) {
+			globalChatInfo.append("@whi@Your skill total is currently " + player.getTotalLevel() + ", ");
+			if (player.getTotalLevel() >= config().GLOBAL_MESSAGE_TOTAL_LEVEL_REQ) {
+				globalChatInfo.append("so you meet the requirements to both send & receive messages.");
+			} else if (player.getTotalLevel() >= config().GLOBAL_MESSAGE_READING_TOTAL_LEVEL_REQ) {
+				globalChatInfo.append("so you can @yel@see@whi@ global chat messages, but can't yet @yel@send@whi@ them.");
+			} else {
+				globalChatInfo.append("so you aren't yet able to participate in global chat.");
+			}
+			globalChatInfo.append(" % %");
+		}
+		globalChatInfo.append("@whi@If you are muted, ");
+		if (player.isMuted() || player.isGlobalMuted()) {
+			globalChatInfo.append("@red@(which you @dre@are@red@)@whi@");
+		}
+		globalChatInfo.append("you will no longer be able to participate in global chat.");
+		if (config().WANT_GLOBAL_RULES_AGREEMENT) {
+			globalChatInfo.append(" Make sure to read the rules by typing @cya@::globalrules@whi@ at any time. % %");
+		}
+		globalChatInfo.append("Also, it is possible to change where global chat messages appear with the @cya@::gq@whi@ or @cya@::gp@whi@ commands.");
+
+		if (player.getClientLimitations().supportsMessageBox) {
+			ActionSender.sendBox(player, globalChatInfo.toString(), true);
+		} else {
+			for (String info : globalChatInfo.toString().split(" %")) {
+				noMessageBoxPrintLine(player, info);
+			}
 		}
 	}
 
 	private void renameSelf(Player player, String[] args) {
 		if (player.isMod()) return;
 		// Not yet implemented
+		player.message("Not yet implemented to rename self.");
+		player.message("Message a moderator in game, on Discord, or through the forums, to request a name change.");
 	}
 
 	private void bankPinOptIn(Player player) {
@@ -294,31 +346,35 @@ public final class RegularPlayer implements CommandTrigger {
 			ActionSender.sendBox(player, rulesBuilder.toString(), true);
 		} else {
 			for (String rule : config().GLOBAL_RULES) {
-				// Skip whitespace-only lines
-				if (rule.trim().equals("")) {
-					continue;
-				}
-				// We need to keep track of how many characters we've printed to the screen
-				int charCount = 0;
-				StringBuilder lineBuilder = new StringBuilder();
-				for (String word : rule.split(" ")) {
-					// See how many characters will be on the screen if we were to add this word
-					// Don't forget to add 1 for the space
-					charCount += word.length() + 1;
-					// If it will be more than 85, then we will empty the buffer to the screen and move on to the next line
-					if (charCount >= 85) {
-						player.playerServerMessage(MessageType.QUEST, lineBuilder.toString());
-						charCount = word.length() + 1;
-						lineBuilder.setLength(0);
-					}
-					lineBuilder.append(word);
-					lineBuilder.append(" ");
-				}
-				// If there is anything left afterwards, dump it to the screen
-				if (lineBuilder.length() > 0) {
-					player.playerServerMessage(MessageType.QUEST, lineBuilder.toString());
-				}
+				noMessageBoxPrintLine(player, rule);
 			}
+		}
+	}
+
+	private void noMessageBoxPrintLine(Player player, String line) {
+		// Skip whitespace-only lines
+		if (line.trim().equals("")) {
+			return;
+		}
+		// We need to keep track of how many characters we've printed to the screen
+		int charCount = 0;
+		StringBuilder lineBuilder = new StringBuilder();
+		for (String word : line.split(" ")) {
+			// See how many characters will be on the screen if we were to add this word
+			// Don't forget to add 1 for the space
+			charCount += word.length() + 1;
+			// If it will be more than 85, then we will empty the buffer to the screen and move on to the next line
+			if (charCount >= 85) {
+				player.playerServerMessage(MessageType.QUEST, lineBuilder.toString());
+				charCount = word.length() + 1;
+				lineBuilder.setLength(0);
+			}
+			lineBuilder.append(word);
+			lineBuilder.append(" ");
+		}
+		// If there is anything left afterwards, dump it to the screen
+		if (lineBuilder.length() > 0) {
+			player.playerServerMessage(MessageType.QUEST, lineBuilder.toString());
 		}
 	}
 
