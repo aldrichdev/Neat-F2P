@@ -144,8 +144,10 @@ public class DropTable {
 		for (Drop drop : rollTable.drops) {
 			sum += drop.weight;
 			int threshold = sum;
-			if (drop.type == dropType.ITEM && owner.getWorld().getNpcDrops().getBadLuckMitigation().shouldMitigateBadLuck(getDropTableId(), drop.id)) {
-				threshold += owner.getWorld().getNpcDrops().getBadLuckMitigation().getRollModifier(owner, getDropTableId(), drop.id);
+			if (owner.getConfig().WANT_CUSTOM_QUESTS) { // must check this or else BadLuckMitigation might not be initialized & cause NPE
+				if (drop.type == dropType.ITEM && owner.getWorld().getNpcDrops().getBadLuckMitigation().shouldMitigateBadLuck(getDropTableId(), drop.id)) {
+					threshold += owner.getWorld().getNpcDrops().getBadLuckMitigation().getRollModifier(owner, getDropTableId(), drop.id);
+				}
 			}
 			if (threshold > hit) {
 				// If it's not a reroll, and the user is wearing a ring of wealth,

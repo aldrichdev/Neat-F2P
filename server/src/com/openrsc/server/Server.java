@@ -4,6 +4,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.openrsc.server.constants.Constants;
+import com.openrsc.server.constants.Skill;
 import com.openrsc.server.content.achievement.AchievementSystem;
 import com.openrsc.server.database.GameDatabase;
 import com.openrsc.server.database.JDBCDatabase;
@@ -681,6 +682,24 @@ public class Server implements Runnable {
 
 							incrementLastDoCleanupDuration(getGameUpdater().doCleanup());
 							getGameEventHandler().cleanupEvents();
+
+							// TODO: remove this vacuum service. It is for debugging.
+							for (final Npc npc : getWorld().getNpcs()) {
+								if (npc.getCombatEvent() != null) {
+									if (!npc.getCombatEvent().isRunning() && npc.getOpponent() != null) {
+										if (config.WANT_DISCORD_GENERAL_LOGGING) {
+											getDiscordService().playerLog((Player)npc.getOpponent(), "An NPC with ID " + npc.getID() + ":" + npc.getIndex() + " @ " + npc.getX() + "," + npc.getY() + " was stuck, and should be unstuck now. You have some debugging still to do.");
+										}
+										
+										if (npc.getSkills().getLevel(Skill.HITS.id()) <= 0) {
+											npc.killedBy(npc.getOpponent()); // possibly not actually who killed them e.g. ranged/mage kill
+										}
+										npc.resetCombatEvent();
+									}
+								}
+							}
+							// TODO: end remove section
+
 						} catch (final Throwable t) {
 							LOGGER.catching(t);
 						}

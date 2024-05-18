@@ -323,17 +323,6 @@ public class CombatEvent extends GameTickEvent {
 				defenderMob.setSprite(4);
 				defenderMob.setCombatTimer();
 				defenderMob.face(defenderMob.getX(), defenderMob.getY() - 1);
-				if(defenderMob.isPlayer()){
-					Player p1;
-					p1 = ((Player) defenderMob);
-					if (p1.getParty() != null){
-						for (Player player : getWorld().getPlayers()) {
-							if(p1.getParty() == player.getParty()){
-								//ActionSender.sendParty(p);
-							}
-						}
-					}
-				}
 			}
 			if (attackerMob != null) {
 				if (attackerMob.isPlayer()) {
@@ -348,16 +337,26 @@ public class CombatEvent extends GameTickEvent {
 				attackerMob.setSprite(4);
 				attackerMob.setCombatTimer();
 				attackerMob.face(attackerMob.getX(), attackerMob.getY() - 1);
-				if(attackerMob.isPlayer()){
-					Player p2;
-					p2 = ((Player) attackerMob);
-					if (p2.getParty() != null){
-						for (Player player : getWorld().getPlayers()) {
-							if(p2.getParty() == player.getParty()){
-								//ActionSender.sendParty(p);
-							}
-						}
-					}
+			}
+		} else {
+			// combat event was reset while combat event wasn't running.
+			// possible race condition; we will want to clean most things up if this happens.
+			if (defenderMob != null) {
+				defenderMob.setOpponent(null);
+				defenderMob.setCombatEvent(null);
+				defenderMob.setHitsMade(0);
+				if (defenderMob.getSprite() > 7) {
+					defenderMob.setSprite(4);
+					defenderMob.face(defenderMob.getX(), defenderMob.getY() - 1);
+				}
+			}
+			if (attackerMob != null) {
+				attackerMob.setOpponent(null);
+				attackerMob.setCombatEvent(null);
+				attackerMob.setHitsMade(0);
+				if (attackerMob.getSprite() > 7) {
+					attackerMob.setSprite(4);
+					attackerMob.face(attackerMob.getX(), attackerMob.getY() - 1);
 				}
 			}
 		}
