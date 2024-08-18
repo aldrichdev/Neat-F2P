@@ -11,6 +11,7 @@ import com.openrsc.server.util.rsc.MessageType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 
@@ -18,31 +19,43 @@ public class DropTable {
 
 	private static final Logger LOGGER = LogManager.getLogger();
 
-
 	ArrayList<Drop> drops;
 	ArrayList<Accessor> accessors;
 	int totalWeight;
 	String description;
+	/*
+	 * A unique ID to be specified at drop table creation. Do not change this if one is defined
+	 */
+	String dropTableId;
 	boolean rare;
 
 	private static int RING_OF_WEALTH_BOOST_NUMERATOR = 1;
 	private static int RING_OF_WEALTH_BOOST_DENOMINATOR = 128;
 
 	public DropTable() {
-		this("", false);
+		this("", "", false);
 	}
 
 	public DropTable(String description) {
-		this(description, false);
+		this(description, "", false);
+	}
+
+	public DropTable(String description, String dropTableId) {
+		this(description, dropTableId, false);
 	}
 
 	public DropTable(String description, boolean rare) {
+		this(description, "", rare);
+	}
+
+	public DropTable(String description, String dropTableId, boolean rare) {
 		drops = new ArrayList<>();
 		accessors = new ArrayList<>();
 		totalWeight = 0;
 		this.rare = rare;
 
 		this.description = description;
+		this.dropTableId = dropTableId;
 	}
 
 	@Override
@@ -80,6 +93,10 @@ public class DropTable {
 
 	public String getDescription() {
 		return description;
+	}
+
+	public String getDropTableId() {
+		return dropTableId;
 	}
 
 	public void addEmptyDrop(int weight) {
@@ -126,7 +143,11 @@ public class DropTable {
 		ArrayList<Item> items = new ArrayList<>();
 		for (Drop drop : rollTable.drops) {
 			sum += drop.weight;
-			if (sum > hit) {
+			int threshold = sum;
+			if (drop.type == dropType.ITEM && owner.getWorld().getNpcDrops().getBadLuckMitigation().shouldMitigateBadLuck(getDropTableId(), drop.id)) {
+				threshold += owner.getWorld().getNpcDrops().getBadLuckMitigation().getRollModifier(owner, getDropTableId(), drop.id);
+			}
+			if (threshold > hit) {
 				// If it's not a reroll, and the user is wearing a ring of wealth,
 				// We let them roll once more for a second chance at goodies.
 				if (drop.type == dropType.NOTHING) {

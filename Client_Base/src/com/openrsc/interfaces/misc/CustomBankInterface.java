@@ -390,7 +390,14 @@ public final class CustomBankInterface extends BankInterface {
 								mc.getSurface().drawSpriteClipping(mc.spriteSelect(def), drawX, drawY, 48, 32,
 									def.getPictureMask(), 0, def.getBlueMask(), false, 0, 1, (equipmentMode && !def.isWieldable()) ? 0x60FFFFFF : 0xFFFFFFFF);
 							}
-							drawString(mudclient.formatStackAmount(bankItem.getItem().getAmount()), drawX + 1, drawY + 10, 1, (equipmentMode && !def.isWieldable()) ? 0x404040 : 65280);
+
+							// If we hover over the stack, display the full amount
+							if (mc.getMouseX() >= drawX && mc.getMouseX() <=  drawX + 48
+								&& mc.getMouseY() >= drawY && mc.getMouseY() <= drawY + 32) {
+								drawString("" + bankItem.getItem().getAmount(), drawX + 1, drawY + 10, 1, 0x00ff00);
+							} else {
+								drawString(mudclient.formatStackAmount(bankItem.getItem().getAmount()), drawX + 1, drawY + 10, 1, (equipmentMode && !def.isWieldable()) ? 0x404040 : 65280);
+							}
 						}
 					}
 
@@ -666,8 +673,14 @@ public final class CustomBankInterface extends BankInterface {
 								def.getBlueMask(),false, 0, 1);
 						}
 						if (def.isStackable()) { // Stack items
-							drawString(mudclient.formatStackAmount(mc.getInventoryItemAmount(inventorySlot)),
-								drawX + 1, drawY + 10, 1, '\uffff');
+							// If we hover over the stack, display the full amount
+							if (mc.getMouseX() >= drawX && mc.getMouseX() <=  drawX + 48
+								&& mc.getMouseY() >= drawY && mc.getMouseY() <= drawY + 32) {
+								drawString("" + mc.getInventoryItemAmount(inventorySlot), drawX + 1, drawY + 10, 1, 0x00ff00);
+							} else {
+								drawString(mudclient.formatStackAmount(mc.getInventoryItemAmount(inventorySlot)),
+									drawX + 1, drawY + 10, 1, '\uffff');
+							}
 						}
 					}
 

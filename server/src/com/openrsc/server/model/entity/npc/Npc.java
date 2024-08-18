@@ -1,6 +1,7 @@
 package com.openrsc.server.model.entity.npc;
 
 import com.openrsc.server.constants.*;
+import com.openrsc.server.content.BadLuckMitigation;
 import com.openrsc.server.content.DropTable;
 import com.openrsc.server.content.EnchantedCrowns;
 import com.openrsc.server.database.GameDatabaseException;
@@ -511,6 +512,11 @@ public class Npc extends Mob {
 
 	private void calculateCustomKingBlackDragonDrop(Player owner) {
 		boolean ringOfWealth = owner.getCarriedItems().getEquipment().hasEquipped(ItemId.RING_OF_WEALTH.id());
+
+		getWorld().getNpcDrops().getBadLuckMitigation().incrementKills(owner,
+			getWorld().getNpcDrops().getKbdTableCustom().getDropTableId(),
+			ItemId.DRAGON_2_HANDED_SWORD.id());
+
 		if (getWorld().getNpcDrops().getKbdTableCustom().rollAccess(this.getID(), ringOfWealth)) {
 			ArrayList<Item> kbdSpecificLoot = getWorld().getNpcDrops().getKbdTableCustom().rollItem(ringOfWealth, owner);
 			if (kbdSpecificLoot != null) {
@@ -528,6 +534,10 @@ public class Npc extends Mob {
 					});
 					if (item.getCatalogId() == ItemId.DRAGON_2_HANDED_SWORD.id()) {
 						owner.message("Congratulations! You have received a dragon 2-Handed Sword!");
+
+						getWorld().getNpcDrops().getBadLuckMitigation().resetKills(owner,
+							getWorld().getNpcDrops().getKbdTableCustom().getDropTableId(),
+							item.getCatalogId());
 					}
 				}
 			}
@@ -536,9 +546,21 @@ public class Npc extends Mob {
 
 	public static ArrayList<Item> calculateCustomKingBlackDragonDropTest(Player owner, boolean ringOfWealth) {
 		ArrayList<Item> returnMe = new ArrayList<Item>();
+
+		owner.getWorld().getNpcDrops().getBadLuckMitigation().incrementKills(owner,
+			owner.getWorld().getNpcDrops().getKbdTableCustom().getDropTableId(),
+			ItemId.DRAGON_2_HANDED_SWORD.id());
+
 		if (owner.getWorld().getNpcDrops().getKbdTableCustom().rollAccess(NpcId.KING_BLACK_DRAGON.id(), ringOfWealth)) {
 			ArrayList<Item> kbdSpecificLoot = owner.getWorld().getNpcDrops().getKbdTableCustom().rollItem(ringOfWealth, owner);
 			if (kbdSpecificLoot != null) {
+				for (Item kbdDrop : kbdSpecificLoot) {
+					if (kbdDrop.getCatalogId() == ItemId.DRAGON_2_HANDED_SWORD.id()) {
+						owner.getWorld().getNpcDrops().getBadLuckMitigation().resetKills(owner,
+							owner.getWorld().getNpcDrops().getKbdTableCustom().getDropTableId(),
+							kbdDrop.getCatalogId());
+					}
+				}
 				return kbdSpecificLoot;
 			}
 		}

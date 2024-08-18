@@ -1,6 +1,7 @@
 package com.openrsc.server.constants;
 
 import com.openrsc.server.ServerConfiguration;
+import com.openrsc.server.content.BadLuckMitigation;
 import com.openrsc.server.content.DropTable;
 import com.openrsc.server.model.world.World;
 
@@ -24,6 +25,8 @@ public class NpcDrops {
 	private DropTable megaRareDropTable;
 	private DropTable ultraRareDropTable;
 	private DropTable kbdTableCustom;
+
+	private BadLuckMitigation badLuckMitigation;
 
 	public NpcDrops(final World world) {
 		this.world = world;
@@ -51,6 +54,7 @@ public class NpcDrops {
 			// TODO: Find a better config for this.
 			initializeCustomRareDropTables();
 			createCustomQuestDrops();
+			initializeBadLuckMitigation();
 		}
 	}
 
@@ -1633,7 +1637,7 @@ public class NpcDrops {
 	private void initializeCustomRareDropTables() {
 
 		//KBD Specific table
-		kbdTableCustom = new DropTable("KBD Rare Drop Table", true);
+		kbdTableCustom = new DropTable("KBD Rare Drop Table", "kbdrdt", true);
 		kbdTableCustom.addAccessor(NpcId.KING_BLACK_DRAGON.id(), 1673, 51200);
 		kbdTableCustom.addItemDrop(ItemId.DRAGON_2_HANDED_SWORD.id(), 1, 25, false);
 		kbdTableCustom.addItemDrop(ItemId.KING_BLACK_DRAGON_SCALE.id(), 1, 2048, false);
@@ -1647,6 +1651,21 @@ public class NpcDrops {
 		this.ashesNpcs.add(NpcId.BALROG.id());
 	}
 
+	private void initializeBadLuckMitigation() {
+		badLuckMitigation = new BadLuckMitigation();
+		badLuckMitigation.addItem(kbdTableCustom.getDropTableId(), ItemId.DRAGON_2_HANDED_SWORD.id(),
+			new HashMap<Integer, Integer>(){{
+				put(2000, 0);
+				put(2500, 2);
+				put(3000, 9);
+				put(3500, 31);
+				put(4000, 101);
+				put(4500, 326);
+				put(5000, 1041);
+				put(Integer.MAX_VALUE, 3320);
+		}});
+	}
+
 	/** Helpers **/
 
 	public DropTable getDropTable(int npcId) {
@@ -1655,5 +1674,9 @@ public class NpcDrops {
 
 	public HashMap<Integer, DropTable> getDrops() {
 		return this.npcDrops;
+	}
+
+	public BadLuckMitigation getBadLuckMitigation() {
+		return badLuckMitigation;
 	}
 }

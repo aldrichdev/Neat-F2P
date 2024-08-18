@@ -1,6 +1,7 @@
 package com.openrsc.server.plugins.authentic.npcs.tutorial;
 
 import com.openrsc.server.constants.NpcId;
+import com.openrsc.server.event.DelayedEvent;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.net.rsc.ActionSender;
@@ -30,6 +31,15 @@ public class boatman implements TalkNpcTrigger {
 			player.message("The boat arrives in Lumbridge");
 			player.getWorld().sendWorldAnnouncement("New adventurer @gre@" + player.getUsername() + "@whi@ has arrived in lumbridge!");
 			ActionSender.sendPlayerOnTutorial(player);
+			player.getWorld().getServer().getGameEventHandler().add(
+				new DelayedEvent(player.getWorld(), null, 15000, "TellAboutGlobalChat") {
+					public void run() {
+						player.getSocial().messagePlayerOffTutorialIfTheyAreEligibleForGlobalChat(player);
+						stop();
+					}
+				}
+			);
+
 		} else if (menu == 1) {
 			npcsay(player, n, "Ok come back when you are ready");
 		}
