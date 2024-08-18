@@ -239,7 +239,8 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 			}
 
 			int playersCount = getServer().getPacketFilter().getPlayersCount(getIpAddress());
-			if (!isAdmin && !getIpAddress().equals("127.0.0.1") && playersCount >= getServer().getConfig().MAX_PLAYERS_PER_IP) {
+			if (groupId == Group.USER && !getIpAddress().equals("127.0.0.1") &&
+				playersCount >= getServer().getConfig().MAX_PLAYERS_PER_IP) {
 				LOGGER.info(getIpAddress() + " is using " + playersCount + " out of " + getServer().getConfig().MAX_PLAYERS_PER_IP + " allowed sessions, rejecting additional connection.");
 				return new ValidatedLogin(LoginResponse.IP_IN_USE);
 			}

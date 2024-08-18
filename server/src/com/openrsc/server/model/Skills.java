@@ -247,12 +247,16 @@ public class Skills {
 			maxStats[skill] += levelDiff;
 			// TODO: Maybe a level up listener?
 			if (getMob().isPlayer()) {
+				// Send update to client
+				sendUpdate(skill);
+
 				Player player = (Player) getMob();
 				try {
 					getWorld().getServer().getPlayerService().savePlayerMaxSkill(player.getDatabaseID(), skill, maxStats[skill]);
 				} catch (GameDatabaseException e) {
 					LOGGER.catching(e);
 				}
+
 				final String skillName;
 				// Yes, this is authentic...
 				if (skill == Skill.DEFENSE.id()) {
@@ -262,6 +266,7 @@ public class Skills {
 				} else {
 					skillName = getWorld().getServer().getConstants().getSkills().getSkill(skill).getLongName().toLowerCase();
 				}
+
 				if (!((Player) getMob()).getConfig().WANT_OPENPK_POINTS) {
 					if (newLevel >= getWorld().getServer().getConfig().PLAYER_LEVEL_LIMIT - (getWorld().getServer().getConfig().SKILLING_EXP_RATE > 1.0 && !player.isOneXp() ? 9 : 19)
 						&& newLevel <= getWorld().getServer().getConfig().PLAYER_LEVEL_LIMIT - 1) {
@@ -284,7 +289,6 @@ public class Skills {
 						player.getSocial().messagePlayerTheyJustBecameEligibleForGlobalChat(player);
 					}
 				}
-				sendUpdate(skill);
 			}
 
 			getMob().getUpdateFlags().setAppearanceChanged(true);
