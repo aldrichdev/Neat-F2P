@@ -64,19 +64,19 @@ public class ItemDef extends EntityDef {
 				   boolean stackable, boolean wieldable, int wearableID, int pictureMask, int blueMask, boolean membersItem,
 				   boolean untradeable, boolean noteable, int notedForm, int notedFormOf, int id) {
 		super(name, description, id);
-		this.command = command.split(",");
-		this.basePrice = basePrice;
-		this.spriteID = spriteID;
-		this.stackable = stackable;
-		this.wieldable = wieldable;
-		this.wearableID = wearableID;
-		this.pictureMask = pictureMask;
-		this.blueMask = blueMask;
-		this.membersItem = membersItem;
-		this.untradeable = untradeable;
-		this.noteable = noteable;
-		this.id = id;
-		this.spriteLocation = spriteLocation;
+		this.command = command.split(","); // left click option and additional secondary option; do not need to define "wear"
+		this.basePrice = basePrice; // used to calculate shop price
+		this.spriteID = spriteID; // item in inventory sprite
+		this.stackable = stackable; // e.g. coins
+		this.wieldable = wieldable; // can player wear it
+		this.wearableID = wearableID; // where on the player is it wielded (e.g. cape slot, amulet slot, etc.)
+		this.pictureMask = pictureMask; // set to 0 if using bitmap that will not be coloured
+		this.blueMask = blueMask; // set to 0 if you're not sure
+		this.membersItem = membersItem; // true if not obtainable in free to play
+		this.untradeable = untradeable; // prevent trading
+		this.noteable = noteable; // custom extension to note items; not certificates
+		this.id = id; // referenced by ItemId class
+		this.spriteLocation = spriteLocation; // name of sprite in sprites file; aligns with spriteID for authentic items
 
 		if (this.command.length == 1 && this.command[0] == "")
 			this.command = null;

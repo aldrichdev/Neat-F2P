@@ -1,10 +1,23 @@
 package com.openrsc.server.util.rsc;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.Arrays;
 
 public class StringUtil {
+
+	private static final Logger LOGGER = LogManager.getLogger();
+
+	private static String[] badwordsJag;
+	private static String[] goodwordsJag;
 
 	private static char[] squareBracketsAndPound = new char[]{'[', ']', '#'};
 	private static char[] accentedCharacterLookup = new char[]{' ', '\u00a0', '_', '-', '\u00e0', '\u00e1', '\u00e2',
@@ -384,6 +397,65 @@ public class StringUtil {
 		}
 
 		return new String(stringBuilder, 0, formattedLength);
+	}
+
+	public static void loadJagGoodAndBadWordsFromDisk() {
+		List<String> lines;
+		int goodwordCount = 0;
+		int badwordCount = 0;
+
+		// BADWORDS
+		try {
+			lines = Files.readAllLines(Paths.get(System.getProperty("user.dir") + File.separator + "conf" + File.separator + "server" + File.separator + "badwordsJag.txt"));
+			badwordsJag = new String[lines.size()];
+
+			for (String line : lines) {
+				line = rot13(line.toLowerCase());
+				badwordsJag[badwordCount++] = line;
+			}
+
+			LOGGER.info("Successfully loaded " + badwordCount + " jag badwords.");
+		} catch (IOException e) {
+			badwordsJag = new String[0];
+			LOGGER.warn("Could not find badwordsJag.txt in " + System.getProperty("user.dir") + File.separator + "conf" + File.separator + "server");
+		}
+
+		// GOODWORDS
+		try {
+			lines = Files.readAllLines(Paths.get(System.getProperty("user.dir") + File.separator + "conf" + File.separator + "server" + File.separator + "wordsJag.txt"));
+			goodwordsJag = new String[lines.size()];
+
+			for (String line : lines) {
+				line = rot13(line.toLowerCase());
+				goodwordsJag[goodwordCount++] = line;
+			}
+
+			LOGGER.info("Successfully loaded " + goodwordCount + " jag goodwords.");
+		} catch (IOException e) {
+			goodwordsJag = new String[0];
+			LOGGER.warn("Could not find wordsJag.txt in " + System.getProperty("user.dir") + File.separator + "conf" + File.separator + "server");
+		}
+	}
+
+	public static String[] getGoodWords() {
+		return goodwordsJag;
+	}
+
+	public static String[] getBadWords() {
+		return badwordsJag;
+	}
+
+	public static String rot13(String word) {
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < word.length(); i++) {
+			char c = word.charAt(i);
+			if       (c >= 'a' && c <= 'm') c += 13;
+			else if  (c >= 'A' && c <= 'M') c += 13;
+			else if  (c >= 'n' && c <= 'z') c -= 13;
+			else if  (c >= 'N' && c <= 'Z') c -= 13;
+			sb.append(c);
+		}
+		return sb.toString();
 	}
 
 	public static String convertLongToDuration(long time) {

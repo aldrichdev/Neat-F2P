@@ -1650,12 +1650,15 @@ public enum ItemId {
 	FEMALE_BLUE_CHRISTMAS_SWEATER(1586),
 	FEMALE_PURPLE_CHRISTMAS_SWEATER(1587),
 	FEMALE_ORANGE_CHRISTMAS_SWEATER(1588),
-	FEMALE_GREEN_CHRISTMAS_SWEATER(1589);
+	FEMALE_GREEN_CHRISTMAS_SWEATER(1589),
+	NECRONOMICON(1590),
+	ZOMBITE_AMULET(1591),
+	BOOMSTICK(1592);
 
 	private int itemId;
 
 	public static final int maxAuthentic = 1289;
-	public static final int maxCustom = 1589;
+	public static final int maxCustom = 1592;
 
 	private static final Map<Integer, ItemId> byId = new HashMap<Integer, ItemId>();
 	private static final Map<String, ItemId> byName = new HashMap<String, ItemId>();

@@ -16,8 +16,7 @@ import java.io.ByteArrayInputStream;
 import static orsc.Config.S_ZOOM_VIEW_TOGGLE;
 import static orsc.osConfig.C_LAST_ZOOM;
 
-public class ORSCApplet extends Applet implements MouseListener, MouseMotionListener, KeyListener, MouseWheelListener, ComponentListener,
-	ImageObserver, ImageProducer, ClientPort {
+public class ORSCApplet extends Applet implements ComponentListener, ImageObserver, ImageProducer, ClientPort {
 	private static final long serialVersionUID = 1L;
 	public static int globalLoadingPercent = 0;
 	public static String globalLoadingState = "";
@@ -40,6 +39,20 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 	private DirectColorModel imageModel;
 	private Image backingImage;
 	private ImageConsumer imageProducer;
+	private MouseHandler mouseHandler;
+	private KeyHandler keyHandler;
+	protected static ScaledWindow scaledWindow;
+	private static BufferedImage game_image;
+	private static Graphics2D g2dForGameImage;
+	public static float oldRenderingScalar = 1.0f;
+
+	public MouseHandler getMouseHandler() {
+		return mouseHandler;
+	}
+
+	public KeyHandler getKeyHandler() {
+		return keyHandler;
+	}
 
 	void addMouseClick(int button, int x, int y) {
 		try {
@@ -64,7 +77,7 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 		try {
 			Graphics var2 = this.getGraphics();
 			if (var2 != null) {
-				this.loadingGraphics = var2.create();
+				this.loadingGraphics = scaledWindow.getGraphics();
 				this.loadingGraphics.translate(mudclient.screenOffsetX, mudclient.screenOffsetY);
 				this.loadingGraphics.setColor(Color.black);
 				this.loadingGraphics.fillRect(0, 0, this.width, this.height);
@@ -94,7 +107,7 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 				this.loadingPercent = percent;
 				y += 90;
 				this.loadingState = state;
-				if (var3 <= 97) this.mouseReleased(null);
+				if (var3 <= 97) mouseHandler.mouseReleased(null);
 
 				this.loadingGraphics.setColor(new Color(132, 132, 132));
 				if (this.m_hb) this.loadingGraphics.setColor(new Color(220, 0, 0));
@@ -126,284 +139,6 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 		} catch (RuntimeException var7) {
 			throw GenUtil.makeThrowable(var7,
 				"e.FE(" + (state != null ? "{...}" : "null") + ',' + percent + ',' + var3 + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void keyPressed(KeyEvent var1) {
-		try {
-			this.updateControlShiftState(var1);
-			char keyChar = var1.getKeyChar();
-			int keyCode = var1.getKeyCode();
-			boolean hitInputFilter = false;
-			mudclient.handleKeyPress((byte) 126, (int) keyChar);
-			mudclient.lastMouseAction = 0;
-
-			if (keyCode == 112) mudclient.interlace = !mudclient.interlace;
-			if (keyCode == 113) Config.C_SIDE_MENU_OVERLAY = !Config.C_SIDE_MENU_OVERLAY;
-			if (keyCode == KeyEvent.VK_F3) C_LAST_ZOOM = 75;
-			if (keyCode == KeyEvent.VK_F4) mudclient.toggleFirstPersonView();
-			if (keyCode == 39) mudclient.keyRight = true;
-			if (keyCode == 37) mudclient.keyLeft = true;
-			if (keyCode == 13 || keyCode == 10) mudclient.enterPressed = true;
-			if (keyCode == KeyEvent.VK_UP) mudclient.keyUp = true;
-			if (keyCode == KeyEvent.VK_DOWN) mudclient.keyDown = true;
-			if (keyCode == KeyEvent.VK_PAGE_DOWN) mudclient.pageDown = true;
-			if (keyCode == KeyEvent.VK_PAGE_UP) mudclient.pageUp = true;
-
-			for (int var5 = 0; var5 < Fonts.inputFilterChars.length(); ++var5)
-				if (Fonts.inputFilterChars.charAt(var5) == keyChar) {
-					hitInputFilter = true;
-					break;
-				}
-
-			if (hitInputFilter && mudclient.inputTextCurrent.length() < 20)
-				mudclient.inputTextCurrent = mudclient.inputTextCurrent + keyChar;
-
-			if (hitInputFilter && mudclient.chatMessageInput.length() < 80 && !mudclient.getIsSleeping())
-				mudclient.chatMessageInput = mudclient.chatMessageInput + keyChar;
-
-			// Backspace
-			if (keyChar == '\b' && mudclient.inputTextCurrent.length() > 0)
-				mudclient.inputTextCurrent = mudclient.inputTextCurrent.substring(0,
-					mudclient.inputTextCurrent.length() - 1);
-
-			// Backspace
-			if (keyChar == '\b' && mudclient.chatMessageInput.length() > 0)
-				mudclient.chatMessageInput = mudclient.chatMessageInput.substring(0,
-					mudclient.chatMessageInput.length() - 1);
-
-			if (keyChar == '\n' || keyChar == '\r') {
-				mudclient.inputTextFinal = mudclient.inputTextCurrent;
-				mudclient.chatMessageInputCommit = mudclient.chatMessageInput;
-			}
-		} catch (RuntimeException var6) {
-			throw GenUtil.makeThrowable(var6, "e.keyPressed(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void keyReleased(KeyEvent var1) {
-		try {
-			updateControlShiftState(var1);
-			char c = var1.getKeyChar();
-			int keyCode = var1.getKeyCode();
-
-			if (keyCode == 39) mudclient.keyRight = false;
-			if (keyCode == 37) mudclient.keyLeft = false;
-			if (keyCode == KeyEvent.VK_UP) mudclient.keyUp = false;
-			if (keyCode == KeyEvent.VK_DOWN) mudclient.keyDown = false;
-			if (keyCode == KeyEvent.VK_PAGE_DOWN) mudclient.pageDown = false;
-			if (keyCode == KeyEvent.VK_PAGE_UP) mudclient.pageUp = false;
-
-			if (keyCode == KeyEvent.VK_ALT) {
-				mudclient.mouseLastProcessedX = 0;
-				mudclient.mouseLastProcessedY = 0;
-			}
-		} catch (RuntimeException var4) {
-			throw GenUtil.makeThrowable(var4, "e.keyReleased(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final void keyTyped(KeyEvent var1) {
-		try {
-			updateControlShiftState(var1);
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.keyTyped(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final void mouseClicked(MouseEvent var1) {
-		try {
-			updateControlShiftState(var1);
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mouseClicked(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void mouseDragged(MouseEvent var1) {
-		try {
-			updateControlShiftState(var1);
-			mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
-			mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
-
-			if (mudclient.mouseLastProcessedX != 0 && mudclient.mouseLastProcessedY != 0) {
-				int distanceX = (mudclient.mouseX - mudclient.mouseLastProcessedX)/2;
-				int distanceY = (mudclient.mouseY - mudclient.mouseLastProcessedY)/2;
-				boolean touchedMessagePanelArea = mudclient.getGameHeight() - Math.max(mudclient.mouseY, mudclient.mouseLastProcessedY) <= 66;
-
-				boolean scrollableMessagePanel = mudclient.hasScroll(mudclient.messageTabSelected) && touchedMessagePanelArea;
-				boolean mayBeScrollable = mudclient.showUiTab != 0;
-				boolean zoomable = (!scrollableMessagePanel && !mayBeScrollable) || osConfig.C_SWIPE_TO_SCROLL_MODE == 0;
-
-				if (!mudclient.isInFirstPersonView() && zoomable && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff()) && !var1.isControlDown()) {
-					if (osConfig.C_SWIPE_TO_ZOOM_MODE != 0) {
-						int dir = osConfig.C_SWIPE_TO_ZOOM_MODE == 2 ? -1 : 1;
-						int newZoom = C_LAST_ZOOM + dir * distanceY;
-						// Keep C_LAST_ZOOM aka the zoom increments on the range of [0, 255]
-						if (newZoom >= 0 && newZoom <= 255) {
-							C_LAST_ZOOM = newZoom;
-						}
-					}
-				} else if (mudclient.isInFirstPersonView() && mudclient.cameraAllowPitchModification) {
-					mudclient.cameraPitch = (mudclient.cameraPitch + (-distanceY * 2)) & 1023;
-
-					// Limit on the half circled where everything is right side up
-					if (mudclient.cameraPitch > 256 && mudclient.cameraPitch <= 512)
-						mudclient.cameraPitch = 256;
-
-					if (mudclient.cameraPitch < 768 && mudclient.cameraPitch > 512)
-						mudclient.cameraPitch = 768;
-				}
-				if (osConfig.C_SWIPE_TO_ROTATE_MODE != 0) {
-					// camera set to auto does not like manual like rotation
-					if (!mudclient.getOptionCameraModeAuto()) {
-						int dir = osConfig.C_SWIPE_TO_ROTATE_MODE == 2 ? -1 : 1;
-						float clientDist = distanceX / (getWidth() / (float) mudclient.getGameWidth());
-						mudclient.cameraRotation = (255 & mudclient.cameraRotation + (int) (dir * clientDist));
-					} else {
-						// swipe to left gives negative distanceX, to left negative
-						int dir = osConfig.C_SWIPE_TO_ROTATE_MODE == 2 ? -1 : 1;
-						boolean toLeft = dir * distanceX < 0;
-						if (toLeft) {
-							mudclient.keyLeft = true;
-						} else {
-							mudclient.keyRight = true;
-						}
-					}
-				}
-				if (!zoomable) {
-					if (osConfig.C_SWIPE_TO_SCROLL_MODE != 0) {
-						int dir = osConfig.C_SWIPE_TO_SCROLL_MODE == 2 ? -1 : 1;
-						mudclient.runScroll(dir * distanceY);
-					}
-				}
-
-				// To make the mouse move:
-				//mudclient.mouseLastProcessedX = mudclient.mouseX;
-				//mudclient.mouseLastProcessedY = mudclient.mouseY;
-
-				// Move the mouse back to the last processed position.
-				try {
-					Robot robot = new Robot();
-					//robot.mouseMove((int)getLocationOnScreen().getX() + mudclient.mouseLastProcessedX, (int)getLocationOnScreen().getY() + mudclient.mouseLastProcessedY);
-					robot.mouseMove((int) MouseInfo.getPointerInfo().getLocation().getX() - distanceX, (int) MouseInfo.getPointerInfo().getLocation().getY() - distanceY);
-				} catch (AWTException ignored) {
-				}
-			}
-			if (SwingUtilities.isRightMouseButton(var1)) mudclient.currentMouseButtonDown = 2;
-			else mudclient.currentMouseButtonDown = 1;
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mouseDragged(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final void mouseEntered(MouseEvent var1) {
-		try {
-			updateControlShiftState(var1);
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mouseEntered(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final void mouseExited(MouseEvent var1) {
-		try {
-			updateControlShiftState(var1);
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mouseExited(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void mouseMoved(MouseEvent var1) {
-		try {
-			updateControlShiftState(var1);
-			mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
-			mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
-			mudclient.lastMouseAction = 0;
-			mudclient.currentMouseButtonDown = 0;
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mouseMoved(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void mousePressed(MouseEvent var1) {
-		try {
-			if (var1.getButton() == MouseEvent.BUTTON2) {
-					mudclient.mouseLastProcessedX = mudclient.mouseX;
-					mudclient.mouseLastProcessedY = mudclient.mouseY;
-				return;
-			}
-			updateControlShiftState(var1);
-			mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
-			mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
-
-			if (!SwingUtilities.isRightMouseButton(var1)) mudclient.currentMouseButtonDown = 1;
-			else mudclient.currentMouseButtonDown = 2;
-
-			mudclient.lastMouseButtonDown = mudclient.currentMouseButtonDown;
-			mudclient.lastMouseAction = 0;
-			mudclient.addMouseClick(mudclient.currentMouseButtonDown, mudclient.mouseX, mudclient.mouseY);
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mousePressed(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void mouseReleased(MouseEvent var1) {
-		try {
-			if (var1.getButton() == MouseEvent.BUTTON2) {
-				mudclient.mouseLastProcessedX = 0;
-				mudclient.mouseLastProcessedY = 0;
-				return;
-			}
-			updateControlShiftState(var1);
-			mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
-			mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
-			mudclient.currentMouseButtonDown = 0;
-		} catch (RuntimeException var3) {
-			throw GenUtil.makeThrowable(var3, "e.mouseReleased(" + (var1 != null ? "{...}" : "null") + ')');
-		}
-	}
-
-	@Override
-	public final synchronized void mouseWheelMoved(MouseWheelEvent e) {
-		updateControlShiftState(e);
-
-		boolean touchedMessagePanelArea = getHeight() - e.getY() <= 75;
-
-		boolean scrollableMessagePanel = mudclient.hasScroll(mudclient.messageTabSelected) && touchedMessagePanelArea;
-		boolean mayBeScrollable = mudclient.showUiTab != 0;
-		boolean zoomable = !scrollableMessagePanel && !mayBeScrollable;
-
-
-		// Disables zoom while visible
-		boolean inScrollable = (Config.S_SPAWN_AUCTION_NPCS && mudclient.auctionHouse.isVisible() || mudclient.onlineList.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.skillGuideInterface.isVisible()
-			|| Config.S_WANT_QUEST_MENUS && mudclient.questGuideInterface.isVisible() || mudclient.clan.getClanInterface().isVisible() || mudclient.experienceConfigInterface.isVisible()
-			|| mudclient.ironmanInterface.isVisible() || mudclient.achievementInterface.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.doSkillInterface.isVisible()
-			|| Config.S_ITEMS_ON_DEATH_MENU && mudclient.lostOnDeathInterface.isVisible() || mudclient.territorySignupInterface.isVisible()
-			|| mudclient.isShowDialogBank());
-
-		if (!inScrollable && zoomable && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff())) {
-			e.consume();
-			final int zoomIncrement = 10;
-			int zoomAmount = e.getWheelRotation() * zoomIncrement;
-			int newZoom = C_LAST_ZOOM + zoomAmount;
-			// Keep C_LAST_ZOOM aka the zoom increments on the range of [0, 255]
-			if (newZoom >= 0 && newZoom <= 255) {
-				C_LAST_ZOOM = newZoom;
-			}
-		}
-
-		if (inScrollable || !zoomable) {
-			e.consume();
-			mudclient.runScroll(e.getWheelRotation());
 		}
 	}
 
@@ -455,12 +190,16 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 			mudclient = new mudclient(this);
 			mudclient.packetHandler = new PacketHandler(mudclient);
 			loadLogo();
-			this.addMouseListener(this);
-			this.addMouseMotionListener(this);
-			this.addKeyListener(this);
+
+			mouseHandler = new MouseHandler();
+			keyHandler = new KeyHandler();
+
+			this.addMouseListener(mouseHandler);
+			this.addMouseMotionListener(mouseHandler);
+			this.addKeyListener(keyHandler);
 			this.setFocusTraversalKeysEnabled(false);
 			this.addComponentListener(this);
-			this.addMouseWheelListener(this);
+			this.addMouseWheelListener(mouseHandler);
 		} catch (RuntimeException var2) {
 			throw GenUtil.makeThrowable(var2, "client.init()");
 		}
@@ -536,6 +275,18 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 
 	@Override
 	public void componentShown(ComponentEvent e) {
+	}
+
+	void resizeMudclient(int width, int height) {
+		mudclient.resizeWidth = width;
+		mudclient.resizeHeight = height;
+	}
+
+	void resetArrowKeys() {
+		mudclient.keyUp = false;
+		mudclient.keyDown = false;
+		mudclient.keyLeft = false;
+		mudclient.keyRight = false;
 	}
 
 	@Override
@@ -688,14 +439,37 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 		this.addConsumer(arg0);
 	}
 
-	public final void draw(Graphics g, int x, int var3, int y) {
+	public final void draw() {
 		this.commitToImage(true);
-		g.drawImage(this.backingImage, x, y, this);
+
+		// Re-scale when needed
+		if (orsc.mudclient.newRenderingScalar != oldRenderingScalar) {
+			updateRenderingScalarAndResize(orsc.mudclient.newRenderingScalar, mudclient.getGameWidth(), mudclient.getGameHeight());
+			oldRenderingScalar = orsc.mudclient.newRenderingScalar;
+		}
+
+		g2dForGameImage.drawImage(this.backingImage, 0, 0, null);
+
+		// Forward the image to be drawn by ScaledWindow.java
+		scaledWindow.setGameImage(game_image);
 	}
 
-	@Override
-	public void draw() {
-		draw(getGraphics(), mudclient.screenOffsetX, 256, mudclient.screenOffsetY);
+	/** Updates the rendering scalar and resizes the window accordingly */
+	private static void updateRenderingScalarAndResize(float scalar, int newWidth, int newHeight) {
+		int imageType = ScaledWindow.getBufferedImageType();
+
+		// Reset the game image with the current type to ensure that affineOp
+		// scaling will always have matching source and destination types
+		game_image = new BufferedImage(newWidth, newHeight, imageType);
+
+		// Handle rendering scalar value changes
+		orsc.mudclient.renderingScalar = scalar;
+
+		// Resize window only after it has begun rendering the game image,
+		// (ie. not the loading screen)
+		if (scaledWindow.isViewportLoaded()) {
+			scaledWindow.resizeWindowToScalar();
+		}
 	}
 
 	@Override
@@ -740,8 +514,14 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 
 	@Override
 	public void resized() {
-		imageProducer.setDimensions(mudclient.getSurface().width2, mudclient.getSurface().height2);
+		int newWidth = mudclient.getSurface().width2;
+		int newHeight = mudclient.getSurface().height2;
+
+		imageProducer.setDimensions(newWidth, newHeight);
 		initGraphics();
+
+		game_image = new BufferedImage(newWidth, newHeight, ScaledWindow.getBufferedImageType());
+		g2dForGameImage = game_image.createGraphics();
 	}
 
 	@Override
@@ -791,5 +571,291 @@ public class ORSCApplet extends Applet implements MouseListener, MouseMotionList
 
 	public void setIconImage(String serverName) {
 
+	}
+
+	public class MouseHandler implements MouseListener, MouseMotionListener, MouseWheelListener {
+		@Override
+		public final void mouseClicked(MouseEvent var1) {
+			try {
+				updateControlShiftState(var1);
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mouseClicked(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void mousePressed(MouseEvent var1) {
+			try {
+				if (var1.getButton() == MouseEvent.BUTTON2) {
+					mudclient.mouseLastProcessedX = mudclient.mouseX;
+					mudclient.mouseLastProcessedY = mudclient.mouseY;
+					return;
+				}
+				updateControlShiftState(var1);
+				mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
+				mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
+
+				if (!SwingUtilities.isRightMouseButton(var1)) mudclient.currentMouseButtonDown = 1;
+				else mudclient.currentMouseButtonDown = 2;
+
+				mudclient.lastMouseButtonDown = mudclient.currentMouseButtonDown;
+				mudclient.lastMouseAction = 0;
+				mudclient.addMouseClick(mudclient.currentMouseButtonDown, mudclient.mouseX, mudclient.mouseY);
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mousePressed(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void mouseReleased(MouseEvent var1) {
+			try {
+				if (var1.getButton() == MouseEvent.BUTTON2) {
+					mudclient.mouseLastProcessedX = 0;
+					mudclient.mouseLastProcessedY = 0;
+					return;
+				}
+				updateControlShiftState(var1);
+				mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
+				mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
+				mudclient.currentMouseButtonDown = 0;
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mouseReleased(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final void mouseEntered(MouseEvent var1) {
+			try {
+				updateControlShiftState(var1);
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mouseEntered(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final void mouseExited(MouseEvent var1) {
+			try {
+				updateControlShiftState(var1);
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mouseExited(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void mouseDragged(MouseEvent var1) {
+			try {
+				updateControlShiftState(var1);
+				mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
+				mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
+
+				if (mudclient.mouseLastProcessedX != 0 && mudclient.mouseLastProcessedY != 0) {
+					int distanceX = (mudclient.mouseX - mudclient.mouseLastProcessedX)/2;
+					int distanceY = (mudclient.mouseY - mudclient.mouseLastProcessedY)/2;
+					boolean touchedMessagePanelArea = mudclient.getGameHeight() - Math.max(mudclient.mouseY, mudclient.mouseLastProcessedY) <= 66;
+
+					boolean scrollableMessagePanel = mudclient.hasScroll(mudclient.messageTabSelected) && touchedMessagePanelArea;
+					boolean mayBeScrollable = mudclient.showUiTab != 0;
+					boolean zoomable = (!scrollableMessagePanel && !mayBeScrollable) || osConfig.C_SWIPE_TO_SCROLL_MODE == 0;
+
+					if (!mudclient.isInFirstPersonView() && zoomable && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff()) && !var1.isControlDown()) {
+						if (osConfig.C_SWIPE_TO_ZOOM_MODE != 0) {
+							int dir = osConfig.C_SWIPE_TO_ZOOM_MODE == 2 ? -1 : 1;
+							int newZoom = C_LAST_ZOOM + dir * distanceY;
+							// Keep C_LAST_ZOOM aka the zoom increments on the range of [0, 255]
+							if (newZoom >= 0 && newZoom <= 255) {
+								C_LAST_ZOOM = newZoom;
+							}
+						}
+					} else if (mudclient.isInFirstPersonView() && mudclient.cameraAllowPitchModification) {
+						mudclient.cameraPitch = (mudclient.cameraPitch + (-distanceY * 2)) & 1023;
+
+						// Limit on the half circled where everything is right side up
+						if (mudclient.cameraPitch > 256 && mudclient.cameraPitch <= 512)
+							mudclient.cameraPitch = 256;
+
+						if (mudclient.cameraPitch < 768 && mudclient.cameraPitch > 512)
+							mudclient.cameraPitch = 768;
+					}
+					if (osConfig.C_SWIPE_TO_ROTATE_MODE != 0) {
+						// camera set to auto does not like manual like rotation
+						if (!mudclient.getOptionCameraModeAuto()) {
+							int dir = osConfig.C_SWIPE_TO_ROTATE_MODE == 2 ? -1 : 1;
+							float clientDist = distanceX / (getWidth() / (float) mudclient.getGameWidth());
+							mudclient.cameraRotation = (255 & mudclient.cameraRotation + (int) (dir * clientDist));
+						} else {
+							// swipe to left gives negative distanceX, to left negative
+							int dir = osConfig.C_SWIPE_TO_ROTATE_MODE == 2 ? -1 : 1;
+							boolean toLeft = dir * distanceX < 0;
+							if (toLeft) {
+								mudclient.keyLeft = true;
+							} else {
+								mudclient.keyRight = true;
+							}
+						}
+					}
+					if (!zoomable) {
+						if (osConfig.C_SWIPE_TO_SCROLL_MODE != 0) {
+							int dir = osConfig.C_SWIPE_TO_SCROLL_MODE == 2 ? -1 : 1;
+							mudclient.runScroll(dir * distanceY);
+						}
+					}
+
+					// To make the mouse move:
+					//mudclient.mouseLastProcessedX = mudclient.mouseX;
+					//mudclient.mouseLastProcessedY = mudclient.mouseY;
+
+					// Move the mouse back to the last processed position.
+					try {
+						Robot robot = new Robot();
+						//robot.mouseMove((int)getLocationOnScreen().getX() + mudclient.mouseLastProcessedX, (int)getLocationOnScreen().getY() + mudclient.mouseLastProcessedY);
+						robot.mouseMove((int) MouseInfo.getPointerInfo().getLocation().getX() - distanceX, (int) MouseInfo.getPointerInfo().getLocation().getY() - distanceY);
+					} catch (AWTException ignored) {
+					}
+				}
+				if (SwingUtilities.isRightMouseButton(var1)) mudclient.currentMouseButtonDown = 2;
+				else mudclient.currentMouseButtonDown = 1;
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mouseDragged(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void mouseMoved(MouseEvent var1) {
+			try {
+				updateControlShiftState(var1);
+				mudclient.mouseX = var1.getX() - mudclient.screenOffsetX;
+				mudclient.mouseY = var1.getY() - mudclient.screenOffsetY;
+				mudclient.lastMouseAction = 0;
+				mudclient.currentMouseButtonDown = 0;
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.mouseMoved(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void mouseWheelMoved(MouseWheelEvent e) {
+			updateControlShiftState(e);
+
+			boolean touchedMessagePanelArea = getHeight() - e.getY() <= 75;
+
+			boolean scrollableMessagePanel = mudclient.hasScroll(mudclient.messageTabSelected) && touchedMessagePanelArea;
+			boolean mayBeScrollable = mudclient.showUiTab != 0;
+			boolean zoomable = !scrollableMessagePanel && !mayBeScrollable;
+
+
+			// Disables zoom while visible
+			boolean inScrollable = (Config.S_SPAWN_AUCTION_NPCS && mudclient.auctionHouse.isVisible() || mudclient.onlineList.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.skillGuideInterface.isVisible()
+				|| Config.S_WANT_QUEST_MENUS && mudclient.questGuideInterface.isVisible() || mudclient.clan.getClanInterface().isVisible() || mudclient.experienceConfigInterface.isVisible()
+				|| mudclient.ironmanInterface.isVisible() || mudclient.achievementInterface.isVisible() || Config.S_WANT_SKILL_MENUS && mudclient.doSkillInterface.isVisible()
+				|| Config.S_ITEMS_ON_DEATH_MENU && mudclient.lostOnDeathInterface.isVisible() || mudclient.territorySignupInterface.isVisible()
+				|| mudclient.isShowDialogBank());
+
+			if (!inScrollable && zoomable && (S_ZOOM_VIEW_TOGGLE || mudclient.getLocalPlayer().isStaff())) {
+				e.consume();
+				final int zoomIncrement = 10;
+				int zoomAmount = e.getWheelRotation() * zoomIncrement;
+				int newZoom = C_LAST_ZOOM + zoomAmount;
+				// Keep C_LAST_ZOOM aka the zoom increments on the range of [0, 255]
+				if (newZoom >= 0 && newZoom <= 255) {
+					C_LAST_ZOOM = newZoom;
+				}
+			}
+
+			if (inScrollable || !zoomable) {
+				e.consume();
+				mudclient.runScroll(e.getWheelRotation());
+			}
+		}
+	}
+
+	public class KeyHandler implements KeyListener {
+
+		@Override
+		public final void keyTyped(KeyEvent var1) {
+			try {
+				updateControlShiftState(var1);
+			} catch (RuntimeException var3) {
+				throw GenUtil.makeThrowable(var3, "e.keyTyped(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void keyPressed(KeyEvent var1) {
+			try {
+				updateControlShiftState(var1);
+				char keyChar = var1.getKeyChar();
+				int keyCode = var1.getKeyCode();
+				boolean hitInputFilter = false;
+				mudclient.handleKeyPress((byte) 126, (int) keyChar);
+				mudclient.lastMouseAction = 0;
+
+				if (keyCode == 112) mudclient.interlace = !mudclient.interlace;
+				if (keyCode == 113) Config.C_SIDE_MENU_OVERLAY = !Config.C_SIDE_MENU_OVERLAY;
+				if (keyCode == KeyEvent.VK_F3) C_LAST_ZOOM = 75;
+				if (keyCode == KeyEvent.VK_F4) mudclient.toggleFirstPersonView();
+				if (keyCode == KeyEvent.VK_F10) mudclient.cycleScalingType(); // type
+				if (keyCode == KeyEvent.VK_F11) mudclient.scaleDown(); // scale down
+				if (keyCode == KeyEvent.VK_F12) mudclient.scaleUp(); // scale up
+				if (keyCode == 39) mudclient.keyRight = true;
+				if (keyCode == 37) mudclient.keyLeft = true;
+				if (keyCode == 13 || keyCode == 10) mudclient.enterPressed = true;
+				if (keyCode == KeyEvent.VK_UP) mudclient.keyUp = true;
+				if (keyCode == KeyEvent.VK_DOWN) mudclient.keyDown = true;
+				if (keyCode == KeyEvent.VK_PAGE_DOWN) mudclient.pageDown = true;
+				if (keyCode == KeyEvent.VK_PAGE_UP) mudclient.pageUp = true;
+
+				for (int var5 = 0; var5 < Fonts.inputFilterChars.length(); ++var5)
+					if (Fonts.inputFilterChars.charAt(var5) == keyChar) {
+						hitInputFilter = true;
+						break;
+					}
+
+				if (hitInputFilter && mudclient.inputTextCurrent.length() < 20)
+					mudclient.inputTextCurrent = mudclient.inputTextCurrent + keyChar;
+
+				if (hitInputFilter && mudclient.chatMessageInput.length() < 80 && !mudclient.getIsSleeping())
+					mudclient.chatMessageInput = mudclient.chatMessageInput + keyChar;
+
+				// Backspace
+				if (keyChar == '\b' && mudclient.inputTextCurrent.length() > 0)
+					mudclient.inputTextCurrent = mudclient.inputTextCurrent.substring(0,
+						mudclient.inputTextCurrent.length() - 1);
+
+				// Backspace
+				if (keyChar == '\b' && mudclient.chatMessageInput.length() > 0)
+					mudclient.chatMessageInput = mudclient.chatMessageInput.substring(0,
+						mudclient.chatMessageInput.length() - 1);
+
+				if (keyChar == '\n' || keyChar == '\r') {
+					mudclient.inputTextFinal = mudclient.inputTextCurrent;
+					mudclient.chatMessageInputCommit = mudclient.chatMessageInput;
+				}
+			} catch (RuntimeException var6) {
+				throw GenUtil.makeThrowable(var6, "e.keyPressed(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
+
+		@Override
+		public final synchronized void keyReleased(KeyEvent var1) {
+			try {
+				updateControlShiftState(var1);
+				char c = var1.getKeyChar();
+				int keyCode = var1.getKeyCode();
+
+				if (keyCode == 39) mudclient.keyRight = false;
+				if (keyCode == 37) mudclient.keyLeft = false;
+				if (keyCode == KeyEvent.VK_UP) mudclient.keyUp = false;
+				if (keyCode == KeyEvent.VK_DOWN) mudclient.keyDown = false;
+				if (keyCode == KeyEvent.VK_PAGE_DOWN) mudclient.pageDown = false;
+				if (keyCode == KeyEvent.VK_PAGE_UP) mudclient.pageUp = false;
+
+				if (keyCode == KeyEvent.VK_ALT) {
+					mudclient.mouseLastProcessedX = 0;
+					mudclient.mouseLastProcessedY = 0;
+				}
+			} catch (RuntimeException var4) {
+				throw GenUtil.makeThrowable(var4, "e.keyReleased(" + (var1 != null ? "{...}" : "null") + ')');
+			}
+		}
 	}
 }

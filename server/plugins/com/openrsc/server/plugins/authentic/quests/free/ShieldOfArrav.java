@@ -9,6 +9,7 @@ import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.plugins.QuestInterface;
 import com.openrsc.server.plugins.authentic.npcs.varrock.ManPhoenix;
+import com.openrsc.server.plugins.custom.minigames.ArmyOfObscurity;
 import com.openrsc.server.plugins.custom.quests.free.PeelingTheOnion;
 import com.openrsc.server.plugins.shared.constants.Quest;
 import com.openrsc.server.plugins.shared.model.QuestReward;
@@ -111,7 +112,20 @@ public class ShieldOfArrav implements QuestInterface, UseBoundTrigger,
 					PeelingTheOnion.bookcaseSearch(player);
 					return;
 				}
-				if (player.getQuestStage(this) == 1) {
+
+				boolean eligibleToFindShieldOfArravBook = player.getQuestStage(this) == 1;
+
+				if (config().ARMY_OF_OBSCURITY && (obj.getX() == 132 && obj.getY() == 455)) {
+					int stage = ArmyOfObscurity.getStage(player);
+					if (stage == ArmyOfObscurity.STAGE_TALKED_TO_RELDO
+						|| stage == ArmyOfObscurity.STAGE_ATTEMPTED_TO_TAKE_BOOK
+						|| stage == ArmyOfObscurity.STAGE_GOT_NEW_WORD
+						|| (stage >= ArmyOfObscurity.STAGE_OBTAINED_NECRONOMICON && !eligibleToFindShieldOfArravBook)) {
+						ArmyOfObscurity.searchBookcase(player, stage);
+						return;
+					}
+				}
+				if (eligibleToFindShieldOfArravBook) {
 					say(player, null, "Aha the shield of Arrav");
 					say(player, null, "That was what I was looking for");
 					mes("You take the book from the bookcase");

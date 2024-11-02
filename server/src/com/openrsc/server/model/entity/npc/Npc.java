@@ -1,7 +1,6 @@
 package com.openrsc.server.model.entity.npc;
 
 import com.openrsc.server.constants.*;
-import com.openrsc.server.content.BadLuckMitigation;
 import com.openrsc.server.content.DropTable;
 import com.openrsc.server.content.EnchantedCrowns;
 import com.openrsc.server.database.GameDatabaseException;
@@ -14,10 +13,7 @@ import com.openrsc.server.external.NPCDef;
 import com.openrsc.server.external.NPCLoc;
 import com.openrsc.server.model.Point;
 import com.openrsc.server.model.container.Item;
-import com.openrsc.server.model.entity.EntityType;
-import com.openrsc.server.model.entity.GroundItem;
-import com.openrsc.server.model.entity.KillType;
-import com.openrsc.server.model.entity.Mob;
+import com.openrsc.server.model.entity.*;
 import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.model.world.World;
 import com.openrsc.server.model.world.region.TileValue;
@@ -865,6 +861,36 @@ public class Npc extends Mob {
 		} else if (!shouldRespawn) {
 			setUnregistering(true);
 		}
+	}
+
+	@Override
+	public boolean isInvisibleTo(final Entity observer) {
+		if (!getConfig().WANT_INVISIBLE_NPCS) {
+			return false;
+		}
+
+		if (!observer.isPlayer()) {
+			return super.isInvisibleTo(observer);
+		}
+
+		Player playerObserver = (Player)observer;
+
+		if (playerObserver.isAdmin()) {
+			return false;
+		}
+
+		if (getConfig().WANT_COMBAT_ODYSSEY && getID() == NpcId.BIGGUM_FLODROT.id()) {
+			int prestige = playerObserver.getCache().hasKey("co_prestige") ? playerObserver.getCache().getInt("co_prestige") : 0;
+			boolean playerHasBiggum = playerObserver.getCarriedItems().hasCatalogID(ItemId.BIGGUM_FLODROT.id())
+				|| playerObserver.getBank().hasItemId(ItemId.BIGGUM_FLODROT.id());
+			return !(prestige >= 1 && !playerHasBiggum);
+		}
+
+		if (getConfig().ARMY_OF_OBSCURITY && getID() == NpcId.ASH.id()) {
+			return (playerObserver.getCache().hasKey("army_of_obscurity") ? playerObserver.getCache().getInt("army_of_obscurity") : 0) == -1;
+		}
+
+		return false;
 	}
 
 	private void startRespawning() {

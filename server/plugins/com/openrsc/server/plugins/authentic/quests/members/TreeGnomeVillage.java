@@ -954,10 +954,18 @@ public class TreeGnomeVillage implements QuestInterface, TalkNpcTrigger,
 					player.teleport(659, 633, false);
 				}
 			} else {
-				mes("The wall is damaged");
-				delay(3);
-				mes("But not enough to climb through");
-				delay(3);
+				if (player.getY() >= 633) {
+					mes("The wall is damaged");
+					delay(3);
+					mes("But not enough to climb through");
+					delay(3);
+				} else {
+					mes("The wall is glitchy");
+					delay(3);
+					mes("you manage to climb over");
+					delay(3);
+					player.teleport(659, 633, false);
+				}
 			}
 		}
 		else if (obj.getID() == KHAZARD_CHEST_OPEN || obj.getID() == KHAZARD_CHEST_CLOSED) {

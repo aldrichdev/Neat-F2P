@@ -14,233 +14,35 @@ import com.openrsc.server.util.rsc.StringUtil;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * RSC Protocol-203 Parser of Incoming Packets to respective Protocol Independent Structs
+ *
+ * This is the final version of the protocol before "Retro Revival" in 2009.
+ * Contemporary open source clients for 203 include STS203C and STShell by Reines.
+ *
+ * mudclient203.jar was released on 2005-11-08.
+ * mudclient204.jar (same protocol version) was released on 2006-05-25.
  * **/
 public class Payload203Parser implements PayloadParser<OpcodeIn> {
+
+	private static final Map<Integer, OpcodeIn> opcodes203 = new HashMap<Integer, OpcodeIn>();
+
+	private final Map<Integer, OpcodeIn> opcodes;
+
+	public Payload203Parser(Map<Integer, OpcodeIn> opcodes) {
+		this.opcodes = opcodes;
+	}
+
+	public Payload203Parser() {
+		this.opcodes = opcodes203;
+	}
+
 	@Override
 	public OpcodeIn toOpcodeEnum(Packet packet, Player player) {
-		OpcodeIn opcode = null;
-		switch (packet.getID()) {
-			case 67:
-				opcode = OpcodeIn.HEARTBEAT;
-				break;
-			case 16:
-				opcode = OpcodeIn.WALK_TO_ENTITY;
-				break;
-			case 187:
-				opcode = OpcodeIn.WALK_TO_POINT;
-				break;
-			case 31:
-				opcode = OpcodeIn.CONFIRM_LOGOUT;
-				break;
-			case 102:
-				opcode = OpcodeIn.LOGOUT;
-				break;
-			case 59:
-				opcode = OpcodeIn.BLINK;
-				break;
-			case 29:
-				opcode = OpcodeIn.COMBAT_STYLE_CHANGED;
-				break;
-			case 116:
-				opcode = OpcodeIn.QUESTION_DIALOG_ANSWER;
-				break;
-			case 235:
-				opcode = OpcodeIn.PLAYER_APPEARANCE_CHANGE;
-				break;
-			case 132:
-				opcode = OpcodeIn.SOCIAL_ADD_IGNORE;
-				break;
-			case 195:
-				opcode = OpcodeIn.SOCIAL_ADD_FRIEND;
-				break;
-			case 218:
-				opcode = OpcodeIn.SOCIAL_SEND_PRIVATE_MESSAGE;
-				break;
-			case 167:
-				opcode = OpcodeIn.SOCIAL_REMOVE_FRIEND;
-				break;
-			case 241:
-				opcode = OpcodeIn.SOCIAL_REMOVE_IGNORE;
-				break;
-			case 176:
-				opcode = OpcodeIn.DUEL_FIRST_ACCEPTED;
-				break;
-			case 33:
-				opcode = OpcodeIn.DUEL_OFFER_ITEM;
-				break;
-			case 77:
-				opcode = OpcodeIn.DUEL_SECOND_ACCEPTED;
-				break;
-			case 14:
-				opcode = OpcodeIn.INTERACT_WITH_BOUNDARY;
-				break;
-			case 127:
-				opcode = OpcodeIn.INTERACT_WITH_BOUNDARY2;
-				break;
-			case 180:
-				opcode = OpcodeIn.CAST_ON_BOUNDARY;
-				break;
-			case 161:
-				opcode = OpcodeIn.USE_WITH_BOUNDARY;
-				break;
-			case 153:
-				opcode = OpcodeIn.NPC_TALK_TO;
-				break;
-			case 202:
-				opcode = OpcodeIn.NPC_COMMAND;
-				break;
-			case 190:
-				opcode = OpcodeIn.NPC_ATTACK;
-				break;
-			case 50:
-				opcode = OpcodeIn.CAST_ON_NPC;
-				break;
-			case 135:
-				opcode = OpcodeIn.NPC_USE_ITEM;
-				break;
-			case 229:
-				opcode = OpcodeIn.PLAYER_CAST_PVP;
-				break;
-			case 113:
-				opcode = OpcodeIn.PLAYER_USE_ITEM;
-				break;
-			case 171:
-				opcode = OpcodeIn.PLAYER_ATTACK;
-				break;
-			case 103:
-				opcode = OpcodeIn.PLAYER_DUEL;
-				break;
-			case 142:
-				opcode = OpcodeIn.PLAYER_INIT_TRADE_REQUEST;
-				break;
-			case 165:
-				opcode = OpcodeIn.PLAYER_FOLLOW;
-				break;
-			case 249:
-				opcode = OpcodeIn.CAST_ON_GROUND_ITEM;
-				break;
-			case 53:
-				opcode = OpcodeIn.GROUND_ITEM_USE_ITEM;
-				break;
-			case 91:
-				opcode = OpcodeIn.ITEM_USE_ITEM;
-				break;
-			case 170:
-				opcode = OpcodeIn.ITEM_UNEQUIP_FROM_INVENTORY;
-				break;
-			case 169:
-				opcode = OpcodeIn.ITEM_EQUIP_FROM_INVENTORY;
-				break;
-			case 90:
-				opcode = OpcodeIn.ITEM_COMMAND;
-				break;
-			case 246:
-				opcode = OpcodeIn.ITEM_DROP;
-				break;
-			case 137:
-				opcode = OpcodeIn.CAST_ON_SELF;
-				break;
-			case 158:
-				opcode = OpcodeIn.CAST_ON_LAND;
-				break;
-			case 136:
-				opcode = OpcodeIn.OBJECT_COMMAND;
-				break;
-			case 79:
-				opcode = OpcodeIn.OBJECT_COMMAND2;
-				break;
-			case 99:
-				opcode = OpcodeIn.CAST_ON_SCENERY;
-				break;
-			case 115:
-				opcode = OpcodeIn.USE_ITEM_ON_SCENERY;
-				break;
-			case 166:
-				opcode = OpcodeIn.SHOP_CLOSE;
-				break;
-			case 236:
-				opcode = OpcodeIn.SHOP_BUY;
-				break;
-			case 221:
-				opcode = OpcodeIn.SHOP_SELL;
-				break;
-			case 55:
-				opcode = OpcodeIn.PLAYER_ACCEPTED_INIT_TRADE_REQUEST;
-				break;
-			case 230:
-				opcode = OpcodeIn.PLAYER_DECLINED_TRADE;
-				break;
-			case 46:
-				opcode = OpcodeIn.PLAYER_ADDED_ITEMS_TO_TRADE_OFFER;
-				break;
-			case 104:
-				opcode = OpcodeIn.PLAYER_ACCEPTED_TRADE;
-				break;
-			case 60:
-				opcode = OpcodeIn.PRAYER_ACTIVATED;
-				break;
-			case 254:
-				opcode = OpcodeIn.PRAYER_DEACTIVATED;
-				break;
-			case 111:
-				opcode = OpcodeIn.GAME_SETTINGS_CHANGED;
-				break;
-			case 216:
-				opcode = OpcodeIn.CHAT_MESSAGE;
-				break;
-			case 38:
-				opcode = OpcodeIn.COMMAND;
-				break;
-			case 64:
-				opcode = OpcodeIn.PRIVACY_SETTINGS_CHANGED;
-				break;
-			case 206:
-				opcode = OpcodeIn.REPORT_ABUSE;
-				break;
-			case 212:
-				opcode = OpcodeIn.BANK_CLOSE;
-				break;
-			case 22:
-				opcode = OpcodeIn.BANK_WITHDRAW;
-				break;
-			case 23:
-				opcode = OpcodeIn.BANK_DEPOSIT;
-				break;
-			case 45:
-				opcode = OpcodeIn.SLEEPWORD_ENTERED;
-				break;
-			case 84:
-				opcode = OpcodeIn.SKIP_TUTORIAL;
-				break;
-			case 0:
-			case 1:
-				opcode = OpcodeIn.LOGIN;
-				break;
-			case 2:
-				opcode = OpcodeIn.REGISTER_ACCOUNT;
-				break;
-			case 4:
-				opcode = OpcodeIn.CAST_ON_INVENTORY_ITEM;
-				break;
-			case 8:
-				opcode = OpcodeIn.DUEL_FIRST_SETTINGS_CHANGED;
-				break;
-			case 197:
-				opcode = OpcodeIn.DUEL_DECLINED;
-				break;
-			case 247:
-				opcode = OpcodeIn.GROUND_ITEM_TAKE;
-				break;
-			case 163:
-				opcode = OpcodeIn.KNOWN_PLAYERS;
-				break;
-			default:
-				break;
-		}
-		return opcode;
+		return opcodes.get(packet.getID());
 	}
 
 	@Override
@@ -641,7 +443,6 @@ public class Payload203Parser implements PayloadParser<OpcodeIn> {
 				break;
 
 			case HEARTBEAT:
-			case SKIP_TUTORIAL:
 			case LOGOUT:
 			case CONFIRM_LOGOUT:
 				NoPayloadStruct n = new NoPayloadStruct();
@@ -683,245 +484,246 @@ public class Payload203Parser implements PayloadParser<OpcodeIn> {
 
 	}
 
+	public static final boolean isPossiblyValid(int opcode, int length) {
+		return isPossiblyValid(opcodes203, opcode, length);
+	}
+
 	// a basic check is done on authentic opcodes against their possible lengths
-	public static boolean isPossiblyValid(int opcode, int length, int protocolVer) {
+	public static final boolean isPossiblyValid(Map<Integer, OpcodeIn> opcodes, int opcode, int length) {
 		int payloadLength = length - 1; // subtract off opcode length.
-
-		if (protocolVer >= 203) {
-			switch (opcode) {
-				// HEARTBEAT
-				case 67:
-					return payloadLength == 0;
-				// WALK_TO_ENTITY
-				case 16:
-					return payloadLength >= 4;
-				// WALK_TO_POINT
-				case 187:
-					return payloadLength >= 4;
-				// CONFIRM_LOGOUT
-				case 31:
-					return payloadLength == 0;
-				// LOGOUT
-				case 102:
-					return payloadLength == 0;
-				// ADMIN_TELEPORT
-				case 59:
-					return payloadLength == 4;
-				// COMBAT_STYLE_CHANGE
-				case 29:
-					return payloadLength == 1;
-				// QUESTION_DIALOG_ANSWER
-				case 116:
-					return payloadLength == 1;
-
-				// PLAYER-APPEARANCE_CHANGE
-				case 235:
-					return payloadLength == 8;
-				// SOCIAL_ADD_IGNORE
-				case 132:
-					return payloadLength >= 8;
-				// SOCIAL_ADD_FRIEND
-				case 195:
-					return payloadLength >= 8;
-				// SOCIAL_SEND_PRIVATE_MESSAGE
-				case 218:
-					return payloadLength >= 8;
-				// SOCIAL_REMOVE_FRIEND
-				case 167:
-					return payloadLength >= 8;
-				// SOCIAL_REMOVE_IGNORE
-				case 241:
-					return payloadLength >= 8;
-				// DUEL_FIRST_SETTINGS_CHANGED
-				case 8:
-					return payloadLength == 4;
-				// DUEL_FIRST_ACCEPTED
-				case 176:
-					return payloadLength == 0;
-				// DUEL_DECLINED
-				case 197:
-					return payloadLength == 0;
-				// DUEL_OFFER_ITEM
-				case 33:
-					return payloadLength >= 1;
-				// DUEL_SECOND_ACCEPTED
-				case 77:
-					return payloadLength == 0;
-
-				// INTERACT_WITH_BOUNDARY
-				case 14:
-					return payloadLength == 5;
-				// INTERACT_WITH_BOUNDARY2
-				case 127:
-					return payloadLength == 5;
-				// CAST_ON_BOUNDARY
-				case 180:
-					return payloadLength == 7;
-				// USE_WITH_BOUNDARY
-				case 161:
-					return payloadLength == 7;
-
-				// NPC_TALK_TO
-				case 153:
-					return payloadLength == 2;
-				// NPC_COMMAND1
-				case 202:
-					return payloadLength == 2;
-				// NPC_ATTACK1
-				case 190:
-					return payloadLength == 2;
-				// CAST_ON_NPC
-				case 50:
-					return payloadLength == 4;
-				// NPC_USE_ITEM
-				case 135:
-					return payloadLength == 4;
-
-				// PLAYER_CAST_PVP
-				case 229:
-					return payloadLength == 4;
-				// PLAYER_USE_ITEM
-				case 113:
-					return payloadLength == 4;
-				// PLAYER_ATTACK
-				case 171:
-					return payloadLength == 2;
-				// PLAYER_DUEL
-				case 103:
-					return payloadLength == 2;
-				// PLAYER_INIT_TRADE_REQUEST
-				case 142:
-					return payloadLength == 2;
-				// PLAYER_FOLLOW
-				case 165:
-					return payloadLength == 2;
-
-				// CAST_ON_GROUND_ITEM
-				case 249:
-					return payloadLength == 8;
-				// GROUND_ITEM_USE_ITEM
-				case 53:
-					return payloadLength == 8;
-				// GROUND_ITEM_TAKE
-				case 247:
-					// Appears to be a genuine client bug (or anti-bot trap) introduced
-					// somewhere between 179-183 that garbage data is appended to the
-					// end, so it's more than 6 bytes even though it doesn't need to be.
-					// Fixed after 204.
-					return payloadLength >= 6;
-
-				// CAST_ON_INVENTORY_ITEM
-				case 4:
-					return payloadLength == 4;
-				// ITEM_USE_ITEM
-				case 91:
-					return payloadLength == 4;
-				// ITEM_UNEQUIP_FROM_INVENTORY
-				case 170:
-					return payloadLength == 2;
-				// ITEM_EQUIP_FROM_INVENTORY
-				case 169:
-					return payloadLength == 2;
-				// ITEM_COMMAND
-				case 90:
-					return payloadLength == 2;
-				// ITEM_DROP
-				case 246:
-					return payloadLength == 2;
-
-				// CAST_ON_SELF
-				case 137:
-					return payloadLength == 2;
-				// CAST_ON_LAND
-				case 158:
-					return payloadLength == 6;
-
-				// OBJECT_COMMAND1
-				case 136:
-					return payloadLength == 4;
-				// OBJECT_COMMAND2
-				case 79:
-					return payloadLength == 4;
-				// CAST_ON_SCENERY
-				case 99:
-					return payloadLength == 6;
-				// USE_ITEM_ON_SCENERY
-				case 115:
-					return payloadLength == 6;
-
-				// SHOP_CLOSE
-				case 166:
-					return payloadLength == 0;
-				// SHOP_BUY
-				case 236:
-					return payloadLength == 6;
-				// SHOP_SELL
-				case 221:
-					return payloadLength == 6;
-
-				// PLAYER_ACCEPTED_INIT_TRADE_REQUEST
-				case 55:
-					return payloadLength == 0;
-				// PLAYER_DECLINED_TRADE
-				case 230:
-					return payloadLength == 0;
-				// PLAYER_ADDED_ITEMS_TO_TRADE_OFFER
-				case 46:
-					return payloadLength >= 1;
-				// PLAYER_ACCEPTED_TRADE
-				case 104:
-					return payloadLength == 0;
-
-				// PRAYER_ACTIVATED
-				case 60:
-					return payloadLength == 1;
-				// PRAYER_DEACTIVATED
-				case 254:
-					return payloadLength == 1;
-
-				// GAME_SETTINGS_CHANGED
-				case 111:
-					return payloadLength == 2;
-				// CHAT_MESSAGE
-				case 216:
-					return payloadLength >= 1;
-				// COMMAND
-				case 38:
-					return payloadLength >= 1;
-				// PRIVACY_SETTINGS_CHANGED
-				case 64:
-					return payloadLength == 4;
-				// REPORT_ABUSE
-				case 206:
-					return payloadLength == 10;
-				// BANK_CLOSE
-				case 212:
-					return payloadLength == 0;
-				// BANK_WITHDRAW
-				case 22:
-					return payloadLength >= 8;
-				// BANK_DEPOSIT
-				case 23:
-					return payloadLength >= 8;
-
-				// SLEEPWORD_ENTERED
-				case 45:
-					return payloadLength >= 1;
-
-				// SKIP_TUTORIAL
-				case 84:
-					return payloadLength == 0;
-
-				// KNOWN_PLAYERS
-				case 163:
-					return payloadLength >= 2;
-
-				// Unknown OPCODE
-				default:
-					System.out.println(String.format("Received inauthentic opcode %d from authentic claiming client (wrong length)", opcode));
-					return false;
-			}
+		OpcodeIn op = opcodes.get(opcode);
+		if (op == null) {
+			System.out.println(String.format("Received unknown opcode %d from authentic claiming client", opcode));
+			return false;
 		}
+		switch (op) {
+			case HEARTBEAT:
+				return payloadLength == 0;
+			case WALK_TO_ENTITY:
+				return payloadLength >= 4;
+			case WALK_TO_POINT:
+				return payloadLength >= 4;
+			case CONFIRM_LOGOUT:
+				return payloadLength == 0;
+			case LOGOUT:
+				return payloadLength == 0;
+			case COMBAT_STYLE_CHANGED:
+				return payloadLength == 1;
+			case QUESTION_DIALOG_ANSWER:
+				return payloadLength == 1;
+			case PLAYER_APPEARANCE_CHANGE:
+				return payloadLength == 8;
+			case SOCIAL_ADD_IGNORE:
+				return payloadLength >= 8;
+			case SOCIAL_ADD_FRIEND:
+				return payloadLength >= 8;
+			case SOCIAL_SEND_PRIVATE_MESSAGE:
+				return payloadLength >= 8;
+			case SOCIAL_REMOVE_FRIEND:
+				return payloadLength >= 8;
+			case SOCIAL_REMOVE_IGNORE:
+				return payloadLength >= 8;
+
+			case DUEL_FIRST_SETTINGS_CHANGED:
+				return payloadLength == 4;
+			case DUEL_FIRST_ACCEPTED:
+				return payloadLength == 0;
+			case DUEL_DECLINED:
+				return payloadLength == 0;
+			case DUEL_OFFER_ITEM:
+				return payloadLength >= 1;
+			case DUEL_SECOND_ACCEPTED:
+				return payloadLength == 0;
+
+			case INTERACT_WITH_BOUNDARY:
+				return payloadLength == 5;
+			case INTERACT_WITH_BOUNDARY2:
+				return payloadLength == 5;
+			case CAST_ON_BOUNDARY:
+				return payloadLength == 7;
+			case USE_WITH_BOUNDARY:
+				return payloadLength == 7;
+
+			case NPC_TALK_TO:
+				return payloadLength == 2;
+			case NPC_COMMAND:
+				return payloadLength == 2;
+			case NPC_ATTACK:
+				return payloadLength == 2;
+			case CAST_ON_NPC:
+				return payloadLength == 4;
+			case NPC_USE_ITEM:
+				return payloadLength == 4;
+
+			case PLAYER_CAST_PVP:
+				return payloadLength == 4;
+			case PLAYER_USE_ITEM:
+				return payloadLength == 4;
+			case PLAYER_ATTACK:
+				return payloadLength == 2;
+			case PLAYER_DUEL:
+				return payloadLength == 2;
+			case PLAYER_INIT_TRADE_REQUEST:
+				return payloadLength == 2;
+			case PLAYER_FOLLOW:
+				return payloadLength == 2;
+
+			case CAST_ON_GROUND_ITEM:
+				return payloadLength == 8;
+			case GROUND_ITEM_USE_ITEM:
+				return payloadLength == 8;
+			case GROUND_ITEM_TAKE:
+				// Appears to be a genuine client bug (or anti-bot trap) introduced
+				// somewhere between 179-183 that garbage data is appended to the
+				// end, so it's more than 6 bytes even though it doesn't need to be.
+				// Fixed after 204.
+				return payloadLength >= 6;
+
+			case CAST_ON_INVENTORY_ITEM:
+				return payloadLength == 4;
+			case ITEM_USE_ITEM:
+				return payloadLength == 4;
+			case ITEM_UNEQUIP_FROM_INVENTORY:
+				return payloadLength == 2;
+			case ITEM_EQUIP_FROM_INVENTORY:
+				return payloadLength == 2;
+			case ITEM_COMMAND:
+				return payloadLength == 2;
+			case ITEM_DROP:
+				return payloadLength == 2;
+
+			case CAST_ON_SELF:
+				return payloadLength == 2;
+			case CAST_ON_LAND:
+				return payloadLength == 6;
+
+			case OBJECT_COMMAND:
+				return payloadLength == 4;
+			case OBJECT_COMMAND2:
+				return payloadLength == 4;
+			case CAST_ON_SCENERY:
+				return payloadLength == 6;
+			case USE_ITEM_ON_SCENERY:
+				return payloadLength == 6;
+
+			case SHOP_CLOSE:
+				return payloadLength == 0;
+			case SHOP_BUY:
+				return payloadLength == 6;
+			case SHOP_SELL:
+				return payloadLength == 6;
+
+			case PLAYER_ACCEPTED_INIT_TRADE_REQUEST:
+				return payloadLength == 0;
+			case PLAYER_DECLINED_TRADE:
+				return payloadLength == 0;
+			case PLAYER_ADDED_ITEMS_TO_TRADE_OFFER:
+				return payloadLength >= 1;
+			case PLAYER_ACCEPTED_TRADE:
+				return payloadLength == 0;
+
+			case PRAYER_ACTIVATED:
+				return payloadLength == 1;
+			case PRAYER_DEACTIVATED:
+				return payloadLength == 1;
+
+			case GAME_SETTINGS_CHANGED:
+				return payloadLength == 2;
+			case CHAT_MESSAGE:
+				return payloadLength >= 1;
+			case COMMAND:
+				return payloadLength >= 1;
+			case PRIVACY_SETTINGS_CHANGED:
+				return payloadLength == 4;
+			case REPORT_ABUSE:
+				return payloadLength == 10;
+			case BANK_CLOSE:
+				return payloadLength == 0;
+			case BANK_WITHDRAW:
+				return payloadLength >= 8;
+			case BANK_DEPOSIT:
+				return payloadLength >= 8;
+
+			case SLEEPWORD_ENTERED:
+				return payloadLength >= 1;
+
+			case KNOWN_PLAYERS:
+				return payloadLength >= 2;
+		}
+		System.out.println(String.format("Received UNHANDLED opcode %d from authentic claiming client", opcode));
 		return false;
+	}
+
+	static {
+		opcodes203.put(67, OpcodeIn.HEARTBEAT);
+		opcodes203.put(16, OpcodeIn.WALK_TO_ENTITY);
+		opcodes203.put(187, OpcodeIn.WALK_TO_POINT);
+		opcodes203.put(31, OpcodeIn.CONFIRM_LOGOUT);
+		opcodes203.put(102, OpcodeIn.LOGOUT);
+		opcodes203.put(59, OpcodeIn.BLINK);
+		opcodes203.put(29, OpcodeIn.COMBAT_STYLE_CHANGED);
+		opcodes203.put(116, OpcodeIn.QUESTION_DIALOG_ANSWER);
+		opcodes203.put(235, OpcodeIn.PLAYER_APPEARANCE_CHANGE);
+		opcodes203.put(132, OpcodeIn.SOCIAL_ADD_IGNORE);
+		opcodes203.put(195, OpcodeIn.SOCIAL_ADD_FRIEND);
+		opcodes203.put(218, OpcodeIn.SOCIAL_SEND_PRIVATE_MESSAGE);
+		opcodes203.put(167, OpcodeIn.SOCIAL_REMOVE_FRIEND);
+		opcodes203.put(241, OpcodeIn.SOCIAL_REMOVE_IGNORE);
+		opcodes203.put(176, OpcodeIn.DUEL_FIRST_ACCEPTED);
+		opcodes203.put(33, OpcodeIn.DUEL_OFFER_ITEM);
+		opcodes203.put(77, OpcodeIn.DUEL_SECOND_ACCEPTED);
+		opcodes203.put(14, OpcodeIn.INTERACT_WITH_BOUNDARY);
+		opcodes203.put(127, OpcodeIn.INTERACT_WITH_BOUNDARY2);
+		opcodes203.put(180, OpcodeIn.CAST_ON_BOUNDARY);
+		opcodes203.put(161, OpcodeIn.USE_WITH_BOUNDARY);
+		opcodes203.put(153, OpcodeIn.NPC_TALK_TO);
+		opcodes203.put(202, OpcodeIn.NPC_COMMAND);
+		opcodes203.put(190, OpcodeIn.NPC_ATTACK);
+		opcodes203.put(50, OpcodeIn.CAST_ON_NPC);
+		opcodes203.put(135, OpcodeIn.NPC_USE_ITEM);
+		opcodes203.put(229, OpcodeIn.PLAYER_CAST_PVP);
+		opcodes203.put(113, OpcodeIn.PLAYER_USE_ITEM);
+		opcodes203.put(171, OpcodeIn.PLAYER_ATTACK);
+		opcodes203.put(103, OpcodeIn.PLAYER_DUEL);
+		opcodes203.put(142, OpcodeIn.PLAYER_INIT_TRADE_REQUEST);
+		opcodes203.put(165, OpcodeIn.PLAYER_FOLLOW);
+		opcodes203.put(249, OpcodeIn.CAST_ON_GROUND_ITEM);
+		opcodes203.put(53, OpcodeIn.GROUND_ITEM_USE_ITEM);
+		opcodes203.put(91, OpcodeIn.ITEM_USE_ITEM);
+		opcodes203.put(170, OpcodeIn.ITEM_UNEQUIP_FROM_INVENTORY);
+		opcodes203.put(169, OpcodeIn.ITEM_EQUIP_FROM_INVENTORY);
+		opcodes203.put(90, OpcodeIn.ITEM_COMMAND);
+		opcodes203.put(246, OpcodeIn.ITEM_DROP);
+		opcodes203.put(137, OpcodeIn.CAST_ON_SELF);
+		opcodes203.put(158, OpcodeIn.CAST_ON_LAND);
+		opcodes203.put(136, OpcodeIn.OBJECT_COMMAND);
+		opcodes203.put(79, OpcodeIn.OBJECT_COMMAND2);
+		opcodes203.put(99, OpcodeIn.CAST_ON_SCENERY);
+		opcodes203.put(115, OpcodeIn.USE_ITEM_ON_SCENERY);
+		opcodes203.put(166, OpcodeIn.SHOP_CLOSE);
+		opcodes203.put(236, OpcodeIn.SHOP_BUY);
+		opcodes203.put(221, OpcodeIn.SHOP_SELL);
+		opcodes203.put(55, OpcodeIn.PLAYER_ACCEPTED_INIT_TRADE_REQUEST);
+		opcodes203.put(230, OpcodeIn.PLAYER_DECLINED_TRADE);
+		opcodes203.put(46, OpcodeIn.PLAYER_ADDED_ITEMS_TO_TRADE_OFFER);
+		opcodes203.put(104, OpcodeIn.PLAYER_ACCEPTED_TRADE);
+		opcodes203.put(60, OpcodeIn.PRAYER_ACTIVATED);
+		opcodes203.put(254, OpcodeIn.PRAYER_DEACTIVATED);
+		opcodes203.put(111, OpcodeIn.GAME_SETTINGS_CHANGED);
+		opcodes203.put(216, OpcodeIn.CHAT_MESSAGE);
+		opcodes203.put(38, OpcodeIn.COMMAND);
+		opcodes203.put(64, OpcodeIn.PRIVACY_SETTINGS_CHANGED);
+		opcodes203.put(206, OpcodeIn.REPORT_ABUSE);
+		opcodes203.put(212, OpcodeIn.BANK_CLOSE);
+		opcodes203.put(22, OpcodeIn.BANK_WITHDRAW);
+		opcodes203.put(23, OpcodeIn.BANK_DEPOSIT);
+		opcodes203.put(45, OpcodeIn.SLEEPWORD_ENTERED);
+		opcodes203.put(0, OpcodeIn.LOGIN);
+		opcodes203.put(1, OpcodeIn.LOGIN);
+		opcodes203.put(4, OpcodeIn.CAST_ON_INVENTORY_ITEM);
+		opcodes203.put(8, OpcodeIn.DUEL_FIRST_SETTINGS_CHANGED);
+		opcodes203.put(197, OpcodeIn.DUEL_DECLINED);
+		opcodes203.put(247, OpcodeIn.GROUND_ITEM_TAKE);
+		opcodes203.put(163, OpcodeIn.KNOWN_PLAYERS);
 	}
 }

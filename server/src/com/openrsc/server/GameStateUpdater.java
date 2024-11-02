@@ -209,15 +209,11 @@ public final class GameStateUpdater {
 			for (final Iterator<Npc> it$ = playerToUpdate.getLocalNpcs().iterator(); it$.hasNext(); ) {
 				Npc localNpc = it$.next();
 
-				if (playerToUpdate.getConfig().WANT_INSTANCED_NPCS && !playerToUpdate.isAdmin()) {
-					if (playerToUpdate.getConfig().WANT_COMBAT_ODYSSEY
-						&& localNpc.getID() == NpcId.BIGGUM_FLODROT.id()
-						&& !playerToUpdate.canSeeBiggum()) {
-						it$.remove(); // removes Biggum from player's localNpcs list (can happen if player restarts The Odyssey)
-						mobsUpdate.add(new AbstractMap.SimpleEntry<>(UPDATE_REQUIRED, 1));
-						mobsUpdate.add(new AbstractMap.SimpleEntry<>(NOT_MOVING, 1));
-						mobsUpdate.add(new AbstractMap.SimpleEntry<>(REMOVE_NPC, 2));
-					}
+				if (localNpc.isInvisibleTo(playerToUpdate)) {
+					it$.remove();
+					mobsUpdate.add(new AbstractMap.SimpleEntry<>(UPDATE_REQUIRED, 1));
+					mobsUpdate.add(new AbstractMap.SimpleEntry<>(NOT_MOVING, 1));
+					mobsUpdate.add(new AbstractMap.SimpleEntry<>(REMOVE_NPC, 2));
 				}
 
 				if (!localNpc.withinAuthenticRangeAdditionally(playerToUpdate) || !playerToUpdate.withinRange(localNpc) || // remove because they are out of range
@@ -246,13 +242,10 @@ public final class GameStateUpdater {
 			}
 
 			for (final Npc newNPC : playerToUpdate.getViewArea().getNpcsInView()) {
-				if (playerToUpdate.getConfig().WANT_INSTANCED_NPCS && !playerToUpdate.isAdmin()) {
-					if (playerToUpdate.getConfig().WANT_COMBAT_ODYSSEY
-						&& newNPC.getID() == NpcId.BIGGUM_FLODROT.id()
-						&& !playerToUpdate.canSeeBiggum()) {
-						continue;
-					}
+				if (newNPC.isInvisibleTo(playerToUpdate)) {
+					continue;
 				}
+
 				if (newNPC.getID() == NpcId.NED_BOAT.id() && !playerToUpdate.getCache().hasKey("ned_hired")) {
 					// TODO: probably this is incorrect & should be removed.
 					// There are authentically 4 versions of the Lady Lumbridge interior, to accommodate Ned being present or not & ship being crashed or not.

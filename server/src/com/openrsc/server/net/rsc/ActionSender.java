@@ -63,6 +63,16 @@ public class ActionSender {
 			generator = new Payload235Generator();
 		} else if (player.isUsing203CompatibleClient()) {
 			generator = new Payload203Generator();
+		} else if (player.isUsing202CompatibleClient()) {
+			generator = new Payload202Generator();
+		} else if (player.isUsing201CompatibleClient()) {
+			generator = new Payload201Generator();
+		} else if (player.isUsing199CompatibleClient()) {
+			generator = new Payload199Generator();
+		} else if (player.isUsing198CompatibleClient()) {
+			generator = new Payload198Generator();
+		} else if (player.isUsing196CompatibleClient()) {
+			generator = new Payload196Generator();
 		} else if (player.isUsing177CompatibleClient()) {
 			generator = new Payload177Generator();
 		} else if (player.isUsing140CompatibleClient()) {
@@ -760,6 +770,8 @@ public class ActionSender {
 			LOGGER.info(server.getConfig().DISABLE_MINIMAP_ROTATION + " 84");
 			LOGGER.info(server.getConfig().ALLOW_BEARDED_LADIES + " 85");
 			LOGGER.info(server.getConfig().PRIDE_MONTH + " 86");
+			LOGGER.info(Crypto.getPublicExponent() + " 87");
+			LOGGER.info(Crypto.getPublicModulus() + " 88");
 		}
 		Packet p = prepareServerConfigs(server);
 		// ConnectionAttachment attachment = new ConnectionAttachment();
@@ -872,6 +884,8 @@ public class ActionSender {
 		configs.add((byte) (server.getConfig().DISABLE_MINIMAP_ROTATION ? 1 : 0)); // 84
 		configs.add((byte) (server.getConfig().ALLOW_BEARDED_LADIES ? 1 : 0)); // 85
 		configs.add((byte) (server.getConfig().PRIDE_MONTH ? 1 : 0)); // 86
+		configs.add(Crypto.getPublicExponent().toString()); // 87
+		configs.add(Crypto.getPublicModulus().toString()); // 88
 
 		struct.configs = configs;
 		struct.setOpcode(OpcodeOut.SEND_SERVER_CONFIGS);

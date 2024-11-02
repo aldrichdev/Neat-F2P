@@ -3,6 +3,11 @@ package com.openrsc.server.net;
 import com.openrsc.server.net.rsc.ISAACContainer;
 import com.openrsc.server.net.rsc.ReverseOpcodeLookup;
 import com.openrsc.server.net.rsc.enums.OpcodeIn;
+import com.openrsc.server.net.rsc.parsers.impl.Payload196Parser;
+import com.openrsc.server.net.rsc.parsers.impl.Payload198Parser;
+import com.openrsc.server.net.rsc.parsers.impl.Payload199Parser;
+import com.openrsc.server.net.rsc.parsers.impl.Payload201Parser;
+import com.openrsc.server.net.rsc.parsers.impl.Payload202Parser;
 import com.openrsc.server.net.rsc.parsers.impl.Payload203Parser;
 import com.openrsc.server.net.rsc.parsers.impl.Payload235Parser;
 import io.netty.buffer.ByteBuf;
@@ -184,8 +189,18 @@ public final class RSCProtocolDecoder extends ByteToMessageDecoder implements At
 										if (authenticClient > 204) {
 											isPossiblyValid = Payload235Parser.isPossiblyValid(opcode, length, 235)
 												|| Payload235Parser.isPossiblyValid(opcode, length, 175);
+										} else if (authenticClient > 202) {
+											isPossiblyValid = Payload203Parser.isPossiblyValid(opcode, length);
+										} else if (authenticClient > 201) {
+											isPossiblyValid = Payload202Parser.isPossiblyValid(opcode, length);
+										} else if (authenticClient > 199) {
+											isPossiblyValid = Payload201Parser.isPossiblyValid(opcode, length);
+										} else if (authenticClient > 198) {
+											isPossiblyValid = Payload199Parser.isPossiblyValid(opcode, length);
+										} else if (authenticClient > 196) {
+											isPossiblyValid = Payload198Parser.isPossiblyValid(opcode, length);
 										} else {
-											isPossiblyValid = Payload203Parser.isPossiblyValid(opcode, length, 203);
+											isPossiblyValid = Payload196Parser.isPossiblyValid(opcode, length);
 										}
 										if (isPossiblyValid) {
 											Packet packet = new Packet(opcode, bufferOrdered);

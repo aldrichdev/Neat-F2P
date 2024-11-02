@@ -286,7 +286,7 @@ public class BlackKnightsFortress implements QuestInterface, TalkNpcTrigger,
 		switch (obj.getID()) {
 			case DOOR_ENTRANCE:
 				if (obj.getLocation().equals(DOOR_LOCATION) && player.getX() <= 270) {
-					if (player.getCarriedItems().getEquipment().hasEquipped(ItemId.IRON_CHAIN_MAIL_BODY.id())
+					if ((player.getCarriedItems().getEquipment().hasEquipped(ItemId.IRON_CHAIN_MAIL_BODY.id()) || player.getCarriedItems().getEquipment().hasEquipped(ItemId.IRON_CHAIN_MAIL_TOP.id()))
 						&& player.getCarriedItems().getEquipment().hasEquipped(ItemId.MEDIUM_BRONZE_HELMET.id())) {
 						doDoor(obj, player);
 						player.teleport(271, 441, false);

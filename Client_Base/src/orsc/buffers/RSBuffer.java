@@ -72,7 +72,7 @@ public class RSBuffer extends RSBuffer_Base {
 		}
 	}
 
-	private void readBytes(int count, byte[] out) {
+	public void readBytes(int count, byte[] out) {
 		try {
 			for (int i = 0; i < count; ++i) {
 				out[i] = this.dataBuffer[this.packetEnd++];
@@ -84,7 +84,7 @@ public class RSBuffer extends RSBuffer_Base {
 		}
 	}
 
-	private void writeBytes(byte[] src, int count) {
+	public void writeBytes(byte[] src, int count) {
 		try {
 			for (int i = 0; i < count; ++i) {
 				this.dataBuffer[this.packetEnd++] = src[i];
@@ -322,7 +322,7 @@ public class RSBuffer extends RSBuffer_Base {
 
 			this.readBytes(pointerPosition, encodedBuffer);
 			BigInteger var7 = new BigInteger(encodedBuffer);
-			BigInteger var8 = var7.modPow(var3, var1);
+			BigInteger var8 = var7.modPow(var1, var3);
 			byte[] var9 = var8.toByteArray();
 			this.packetEnd = 0;
 			this.putShort(var9.length);

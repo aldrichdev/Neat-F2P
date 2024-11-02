@@ -208,7 +208,7 @@ public class ServerConfiguration {
 	public int RESPAWN_LOCATION_Y;
 	public boolean FORM_FITTING_CHAINMAIL;
 	public boolean WANT_COMBAT_ODYSSEY;
-	public boolean WANT_INSTANCED_NPCS;
+	public boolean WANT_INVISIBLE_NPCS;
 	public boolean EQUIP_QUEST_ITEMS_WITHOUT_QUESTS;
 	public boolean WANT_PACKET_REGISTER;
 	public double PARTY_ADDITIONAL_XP_PERCENT_PER_PLAYER;
@@ -285,6 +285,7 @@ public class ServerConfiguration {
 	public boolean PRIDE_MONTH = false;
 	public boolean A_BONE_TO_PICK = false;
 	public boolean A_LUMBRIDGE_CAROL = false;
+	public boolean ARMY_OF_OBSCURITY = false;
 	public int BASED_MAP_DATA = 64;
 	public int BASED_CONFIG_DATA = 85;
 	public boolean CAN_FEATURE_MEMBS;
@@ -634,7 +635,7 @@ public class ServerConfiguration {
 		WANT_OPENPK_PRESETS = tryReadBool("want_openpk_presets").orElse(false);
 		FORM_FITTING_CHAINMAIL = tryReadBool("form_fitting_chainmail").orElse(false);
 		WANT_COMBAT_ODYSSEY = tryReadBool("want_combat_odyssey").orElse(false);
-		WANT_INSTANCED_NPCS = tryReadBool("want_instanced_npcs").orElse(false);
+		WANT_INVISIBLE_NPCS = tryReadBool("want_invisible_npcs").orElse(false);
 		EQUIP_QUEST_ITEMS_WITHOUT_QUESTS = tryReadBool("equip_quest_items_without_quests").orElse(false);
 		WANT_PACKET_REGISTER = tryReadBool("want_packet_register").orElse(true);
 
@@ -745,6 +746,7 @@ public class ServerConfiguration {
 		PRIDE_MONTH = tryReadBool("pride_month").orElse(false) && SystemUtil.isJune();
 		A_BONE_TO_PICK = tryReadBool("a_bone_to_pick").orElse(false);
 		A_LUMBRIDGE_CAROL = tryReadBool("a_lumbridge_carol").orElse(false);
+		ARMY_OF_OBSCURITY = tryReadBool("army_of_obscurity").orElse(false);
 
 		// adminIp = Arrays.asList(ADMIN_IP.split(","));
 	}

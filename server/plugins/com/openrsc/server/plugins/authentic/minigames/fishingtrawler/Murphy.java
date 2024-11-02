@@ -57,11 +57,6 @@ public class Murphy implements MiniGameInterface, TalkNpcTrigger {
 	@Override
 	public void onTalkNpc(Player player, Npc n) {
 		if (n.getID() == NpcId.MURPHY_LAND.id()) { // Murphy on land
-			if (player.isIronMan(IronmanMode.Ironman.id()) || player.isIronMan(IronmanMode.Ultimate.id())
-				|| player.isIronMan(IronmanMode.Hardcore.id()) || player.isIronMan(IronmanMode.Transfer.id())) {
-				player.message("As an Ironman, you cannot use the Trawler.");
-				return;
-			}
 			if (!player.getCache().hasKey("fishingtrawler")) {
 				say(player, n, "good day to you sir");
 				npcsay(player, n, "well hello my brave adventurer");

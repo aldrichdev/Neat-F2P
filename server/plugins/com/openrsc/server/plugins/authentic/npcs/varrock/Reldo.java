@@ -6,6 +6,7 @@ import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.plugins.custom.minigames.ArmyOfObscurity;
 import com.openrsc.server.plugins.triggers.TalkNpcTrigger;
 
 import java.util.ArrayList;
@@ -24,6 +25,20 @@ public final class Reldo implements TalkNpcTrigger {
 			int chiselqueststate = player.getCache().getInt("superchiselquest");
 			if (chiselqueststate >= 2) {
 				superchiselQuestDialogue(player, npc, chiselqueststate);
+				return;
+			}
+		}
+
+		boolean hasObtainedShieldOfArravBookButNotYetToldReldoAboutIt =
+			player.getQuestStage(Quests.SHIELD_OF_ARRAV) != 1 && player.getCache().hasKey("read_arrav");
+
+		if (config().ARMY_OF_OBSCURITY && hasObtainedShieldOfArravBookButNotYetToldReldoAboutIt) {
+			int stage = ArmyOfObscurity.getStage(player);
+			if (stage == ArmyOfObscurity.STAGE_AGREED_TO_GET_BOOK
+				|| stage == ArmyOfObscurity.STAGE_TALKED_TO_RELDO
+				|| stage == ArmyOfObscurity.STAGE_GOT_NEW_WORD
+				|| ifheld(player, ItemId.NECRONOMICON.id())) {
+				ArmyOfObscurity.reldoDialogue(player, npc, stage);
 				return;
 			}
 		}

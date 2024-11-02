@@ -281,6 +281,7 @@ public class NpcDrops {
 
 		// Other
 		this.ashesNpcs.add(NpcId.LESSER_DEMON.id());
+		this.ashesNpcs.add(NpcId.LESSER_DEMON_WMAZEKEY.id());
 		this.ashesNpcs.add(NpcId.GREATER_DEMON.id());
 		this.ashesNpcs.add(NpcId.BLACK_DEMON.id());
 		this.ashesNpcs.add(NpcId.OTHAINIAN.id());

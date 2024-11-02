@@ -2334,6 +2334,8 @@ public class EntityHandler {
 		npcs.add(new NPCDef("Forester", "He looks after McGrubor's wood", "", 24, 22, 17, 23, false, sprites, 1, 56576, 43520, 15523536, 145, 220, 6, 6, 5, i++));
 		sprites = new int[]{6, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 		npcs.add(new NPCDef("McGrubor", "Grumpy old McGruber", "", 20, 20, 20, 20, false, sprites, 0xAAAAAA, 12277060, 0x007900, 15523536, 160, 220, 6, 6, 5, i++));
+		sprites = new int[]{0, 557, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+		npcs.add(new NPCDef("Ash", "Groovy", "", 20, 20, 20, 20, false, sprites, 0x50321E, 0x00137F, 0x794B1E, 15523536, 160, 220, 6, 6, 5, i++));
 
 		if (Config.S_WANT_CUSTOM_SPRITES) {
 			// Ranael
@@ -4122,6 +4124,11 @@ public class EntityHandler {
 		items.add(new ItemDef("Christmas sweater", "Knitted with love!", "", 5, 87, "items:christmassweater", false, true, 64, 0xcf7602, false, true, false, 1588));
 		items.add(new ItemDef("Christmas sweater", "Knitted with love!", "", 5, 87, "items:christmassweater", false, true, 64, 0x106105, false, true, false, 1589));
 
+		// Halloween 2024
+		items.add(new ItemDef("Necronomicon Ex Mortis", "This looks very homemade", "read", 1, 28, "items:28", false, false, 0, 0x777777, false, true, false, 1590));
+		items.add(new ItemDef("Ancient amulet", "A sinister looking amulet", "", 1, 125, "items:125", false, true, 1024, 0x010101, false, true, false, 1591));
+		items.add(new ItemDef("Boomstick", "A 12-Gauge, Double-Barreled Remington", "", 1, 606, "items:606", false, true, 16, 16737817, false, true, false, 1592));
+
 		// Custom certificate names
 		if (Config.S_WANT_BANK_NOTES && !Config.S_WANT_CERT_AS_NOTES) {
 			for (int i : new int[]{1543, 1546, 1547, 1548, 1549, 1550, 1551, 1552}) {
@@ -4856,6 +4863,11 @@ public class EntityHandler {
 			animations.add(new AnimationDef("fchristmassweater", "equipment", 0x6804b5, 0, true, false, 0));//553 - purple
 			animations.add(new AnimationDef("fchristmassweater", "equipment", 0xcf7602, 0, true, false, 0));//554 - orange
 			animations.add(new AnimationDef("fchristmassweater", "equipment", 0x106105, 0, true, false, 0));//555 - green
+
+			// Halloween 2024
+			animations.add(new AnimationDef("boomstick", "equipment", 0, 0, true, false, 0));//556
+			animations.add(new AnimationDef("ashtorso", "equipment", 0, 0, true, false, 0));//557
+			animations.add(new AnimationDef("amulet", "equipment", 16763980, 3,0, true, false, 0)); //558
 		}
 	}
 
