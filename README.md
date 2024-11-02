@@ -32,6 +32,8 @@ https://www.neatf2p.com
 -   `want_pcap_logging` = `false` (this may be temporary, not sure if we need these logs)
 -   `log4j*.xml` files have the `CatchAllAppender` removed, which prevents `.log.gz` files from being generated every time a player connects
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
+-   There is logic in `LoginRequest.java` to prevent normal accounts from logging in in such a way that exceeds the log in limit (`MAX_PLAYERS_PER_IP`), if they have the same IP that an admin or mod recently logged in. This prevents me (Beast Fable) and other mods from logging into 3 or more normal accounts just because I am an admin.
+-   RSC+ screenshots show the updated level (if you have the stat screen open when the level happens). An inauthentic change was (not intentionally) made in `Skills.java` for this. This is a temporary difference, since a fix to RSC+ should soon be made that fixes this there.
 
 ## Tribute
 
