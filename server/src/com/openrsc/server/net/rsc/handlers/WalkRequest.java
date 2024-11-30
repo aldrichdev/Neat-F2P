@@ -64,18 +64,14 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 					player.setRanAwayTimer();
 					ActionSender.sendSound(player, "retreat");
 
-					System.out.println("ranawaytimer for runner:" + player.getRanAwayTimer());
+					// If the player is retreating but can't be re-attacked yet, cancel any range events until they can be re-attacked
+					if (!player.canBeReattacked()) {
+						stopRanging(player);
+					}
 
-					if (player.canBeReattacked()) {
-						final GameEventHandler gameEventHandler = player.getWorld().getServer().getGameEventHandler();
-
-						// If another player is ranging the player, cancel it
-						for (final GameTickEvent gameTickEvent : gameEventHandler.getEvents(RangeEvent.class)) {
-							RangeEvent rangeEvent = (RangeEvent) gameTickEvent;
-							if (rangeEvent.getTarget().equals(player)) {
-								gameEventHandler.remove(gameTickEvent);
-							}
-						}
+					// The same should apply for the opponent if they sit still
+					if (opponent.isPlayer() && !((Player)opponent).canBeReattacked()) {
+						stopRanging(opponent);
 					}
 
 					if (player.getConfig().WANT_PARTIES) {
@@ -83,6 +79,7 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 							player.getParty().sendParty();
 						}
 					}
+
 					if (opponent.isPlayer() && opponent.getConfig().WANT_PARTIES) {
 						if(((Player) opponent).getParty() != null){
 							((Player) opponent).getParty().sendParty();
@@ -115,5 +112,17 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 			path.finish();
 		}
 		player.getWalkingQueue().setPath(path);
+	}
+	
+	/** Cancels any range events from the `player` provided. */
+	private void stopRanging(Player player) {
+		final GameEventHandler gameEventHandler = player.getWorld().getServer().getGameEventHandler();
+
+		for (final GameTickEvent gameTickEvent : gameEventHandler.getEvents(RangeEvent.class)) {
+			RangeEvent rangeEvent = (RangeEvent) gameTickEvent;
+			if (rangeEvent.getTarget().equals(player)) {
+				gameEventHandler.remove(gameTickEvent);
+			}
+		}
 	}
 }
