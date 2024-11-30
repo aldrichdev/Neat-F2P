@@ -62,6 +62,20 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 					player.setRanAwayTimer();
 					ActionSender.sendSound(player, "retreat");
 
+					System.out.println("ranawaytimer for runner:" + player.getRanAwayTimer());
+
+					if (player.canBeReattacked()) {
+						final GameEventHandler gameEventHandler = player.getWorld().getServer().getGameEventHandler();
+
+						// If another player is ranging the player, cancel it
+						for (final GameTickEvent gameTickEvent : gameEventHandler.getEvents(RangeEvent.class)) {
+							RangeEvent rangeEvent = (RangeEvent) gameTickEvent;
+							if (rangeEvent.getTarget().equals(player)) {
+								gameEventHandler.remove(gameTickEvent);
+							}
+						}
+					}
+
 					if (player.getConfig().WANT_PARTIES) {
 						if(player.getParty() != null){
 							player.getParty().sendParty();
