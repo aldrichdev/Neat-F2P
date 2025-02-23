@@ -23,15 +23,7 @@ public final class GeneralStore extends AbstractShop {
 		2), new Item(ItemId.TINDERBOX.id(), 2), new Item(ItemId.CHISEL.id(), 2), new Item(ItemId.HAMMER.id(), 5),
 		new Item(ItemId.SLEEPING_BAG.id(), 10) };
 
-	int[] varrockItems = new int[shopItems.length + 1];
-	System.arraycopy(shopItems, 0, varrockItems, 0, shopItems.length);
-
-	// Add black 2h to varrockItems
-	// TODO: How do we set the black 2h price?
-	varrockItems[8] = new Item(ItemId.BLACK_2_HANDED_SWORD.id(), 1);
-
 	private final Shop dwarvenShop = new Shop(true, 12400, 130, 40, 3, Arrays.copyOfRange(shopItems, 0, 7));
-	private final Shop varrockShop = new Shop(true, 30000, 100, 60, 2, varrockItems);
 	private Shop[] shops = null;
 
 	@Override
@@ -57,14 +49,17 @@ public final class GeneralStore extends AbstractShop {
 			shops = new Shop[9];
 			final int toIndex = world.getServer().getConfig().FEATURES_SLEEP ? 8 : 7; // do not stock sleeping bag if server does not feature sleep
 			final Shop genShop = new Shop(true, 12400, 130, 40, 3, Arrays.copyOfRange(shopItems, 0, toIndex));
+			final Shop varrockShop = new Shop(true, 12400, 130, 40, 3, getVarrockItems());
+			final Shop alKharidShop = new Shop(true, 12400, 130, 40, 3, getAlKharidItems());
+			final Shop rimmingtonShop = new Shop(true, 12400, 130, 40, 3, getRimmingtonItems());
 
 			shops[0] = new Shop(dwarvenShop, "Dwarven Mine", NpcId.DWARVEN_SHOPKEEPER.id());
 			shops[1] = new Shop(varrockShop, "Varrock", NpcId.SHOPKEEPER_VARROCK.id(), NpcId.SHOP_ASSISTANT_VARROCK.id());
 			shops[2] = new Shop(genShop, "Falador", NpcId.SHOPKEEPER_FALADOR.id(), NpcId.SHOP_ASSISTANT_FALADOR.id());
 			shops[3] = new Shop(genShop, "Lumbridge", NpcId.SHOPKEEPER_LUMBRIDGE.id(), NpcId.SHOP_ASSISTANT_LUMBRIDGE.id());
-			shops[4] = new Shop(genShop, "Rimmington", NpcId.SHOPKEEPER_RIMMINGTON.id(), NpcId.SHOP_ASSISTANT_RIMMINGTON.id());
+			shops[4] = new Shop(rimmingtonShop, "Rimmington", NpcId.SHOPKEEPER_RIMMINGTON.id(), NpcId.SHOP_ASSISTANT_RIMMINGTON.id());
 			shops[5] = new Shop(genShop, "Karamja", NpcId.SHOPKEEPER_KARAMJA.id(), NpcId.SHOP_ASSISTANT_KARAMJA.id());
-			shops[6] = new Shop(genShop, "Al_Kharid", NpcId.SHOPKEEPER_ALKHARID.id(), NpcId.SHOP_ASSISTANT_ALKHARID.id());
+			shops[6] = new Shop(alKharidShop, "Al_Kharid", NpcId.SHOPKEEPER_ALKHARID.id(), NpcId.SHOP_ASSISTANT_ALKHARID.id());
 			shops[7] = new Shop(genShop, "Edgeville", NpcId.SHOPKEEPER_EDGEVILLE.id(), NpcId.SHOP_ASSISTANT_EDGEVILLE.id());
 			shops[8] = new Shop(genShop, "Lostcity", NpcId.FAIRY_SHOPKEEPER.id(), NpcId.FAIRY_SHOP_ASSISTANT.id());
 
@@ -152,4 +147,34 @@ public final class GeneralStore extends AbstractShop {
 
 		return accessedShop;
 	}
+
+	/** Gets a list of items in the Varrock General Store,
+	 * adding Black 2h to the list. This is Neat F2P specific.
+	 */
+	private Item[] getVarrockItems() {
+		return getUpdatedGeneralStoreItems(ItemId.BLACK_2_HANDED_SWORD.id(), 1);
+    }
+
+	/** Gets a list of items in the Al Kharid General Store,
+	 * adding Black Scimitar to the list. This is Neat F2P specific.
+	 */
+	private Item[] getAlKharidItems() {
+		return getUpdatedGeneralStoreItems(ItemId.BLACK_SCIMITAR.id(), 1);
+    }
+
+	/** Gets a list of items in the Rimmington General Store,
+	 * adding Black Axe to the list. This is Neat F2P specific.
+	 */
+	private Item[] getRimmingtonItems() {
+		return getUpdatedGeneralStoreItems(ItemId.BLACK_AXE.id(), 1);
+    }
+
+	/** Adds an extra item to shopItems and returns the array of items. */
+	private Item[] getUpdatedGeneralStoreItems(int itemId, int getItemCount) {
+		Item[] newGeneralStoreItems = new Item[shopItems.length + 1];
+        System.arraycopy(shopItems, 0, newGeneralStoreItems, 0, shopItems.length);
+		newGeneralStoreItems[8] = new Item(itemId, 1);
+
+		return newGeneralStoreItems;
+    }
 }
