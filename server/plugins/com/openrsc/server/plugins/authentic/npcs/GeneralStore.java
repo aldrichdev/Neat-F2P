@@ -23,7 +23,15 @@ public final class GeneralStore extends AbstractShop {
 		2), new Item(ItemId.TINDERBOX.id(), 2), new Item(ItemId.CHISEL.id(), 2), new Item(ItemId.HAMMER.id(), 5),
 		new Item(ItemId.SLEEPING_BAG.id(), 10) };
 
+	int[] varrockItems = new int[shopItems.length + 1];
+	System.arraycopy(shopItems, 0, varrockItems, 0, shopItems.length);
+
+	// Add black 2h to varrockItems
+	// TODO: How do we set the black 2h price?
+	varrockItems[8] = new Item(ItemId.BLACK_2_HANDED_SWORD.id(), 1);
+
 	private final Shop dwarvenShop = new Shop(true, 12400, 130, 40, 3, Arrays.copyOfRange(shopItems, 0, 7));
+	private final Shop varrockShop = new Shop(true, 30000, 100, 60, 2, varrockItems);
 	private Shop[] shops = null;
 
 	@Override
@@ -51,7 +59,7 @@ public final class GeneralStore extends AbstractShop {
 			final Shop genShop = new Shop(true, 12400, 130, 40, 3, Arrays.copyOfRange(shopItems, 0, toIndex));
 
 			shops[0] = new Shop(dwarvenShop, "Dwarven Mine", NpcId.DWARVEN_SHOPKEEPER.id());
-			shops[1] = new Shop(genShop, "Varrock", NpcId.SHOPKEEPER_VARROCK.id(), NpcId.SHOP_ASSISTANT_VARROCK.id());
+			shops[1] = new Shop(varrockShop, "Varrock", NpcId.SHOPKEEPER_VARROCK.id(), NpcId.SHOP_ASSISTANT_VARROCK.id());
 			shops[2] = new Shop(genShop, "Falador", NpcId.SHOPKEEPER_FALADOR.id(), NpcId.SHOP_ASSISTANT_FALADOR.id());
 			shops[3] = new Shop(genShop, "Lumbridge", NpcId.SHOPKEEPER_LUMBRIDGE.id(), NpcId.SHOP_ASSISTANT_LUMBRIDGE.id());
 			shops[4] = new Shop(genShop, "Rimmington", NpcId.SHOPKEEPER_RIMMINGTON.id(), NpcId.SHOP_ASSISTANT_RIMMINGTON.id());
