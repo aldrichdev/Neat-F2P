@@ -32,6 +32,7 @@ https://www.neatf2p.com
 -   `want_pcap_logging` = `false` (this may be temporary, not sure if we need these logs)
 -   `log4j*.xml` files have the `CatchAllAppender` removed, which prevents `.log.gz` files from being generated every time a player connects
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
+-   Varrock, Al Kharid and Rimmington general stores have 1 stock of the black 2 hander, scimitar and axe, respectfully.
 
 ## Tribute
 

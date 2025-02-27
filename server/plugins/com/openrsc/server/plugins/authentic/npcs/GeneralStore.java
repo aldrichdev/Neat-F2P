@@ -153,28 +153,30 @@ public final class GeneralStore extends AbstractShop {
 	 */
 	private Item[] getVarrockItems() {
 		return getUpdatedGeneralStoreItems(ItemId.BLACK_2_HANDED_SWORD.id(), 1);
-    }
+	}
 
 	/** Gets a list of items in the Al Kharid General Store,
 	 * adding Black Scimitar to the list. This is Neat F2P specific.
 	 */
 	private Item[] getAlKharidItems() {
 		return getUpdatedGeneralStoreItems(ItemId.BLACK_SCIMITAR.id(), 1);
-    }
+	}
 
 	/** Gets a list of items in the Rimmington General Store,
 	 * adding Black Axe to the list. This is Neat F2P specific.
 	 */
 	private Item[] getRimmingtonItems() {
 		return getUpdatedGeneralStoreItems(ItemId.BLACK_AXE.id(), 1);
-    }
+	}
 
 	/** Adds an extra item to shopItems and returns the array of items. */
 	private Item[] getUpdatedGeneralStoreItems(int itemId, int getItemCount) {
 		Item[] newGeneralStoreItems = new Item[shopItems.length + 1];
-        System.arraycopy(shopItems, 0, newGeneralStoreItems, 0, shopItems.length);
+		System.arraycopy(shopItems, 0, newGeneralStoreItems, 0, shopItems.length);
+
+		// Neat will always have sleep, so we can confidently assign this to index 8
 		newGeneralStoreItems[8] = new Item(itemId, 1);
 
 		return newGeneralStoreItems;
-    }
+	}
 }
