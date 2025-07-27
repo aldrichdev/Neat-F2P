@@ -35,6 +35,9 @@ https://www.neatf2p.com
 -   There is logic in `LoginRequest.java` to prevent normal accounts from logging in in such a way that exceeds the log in limit (`MAX_PLAYERS_PER_IP`), if they have the same IP that an admin or mod recently logged in. This prevents me (Beast Fable) and other mods from logging into 3 or more normal accounts just because I am an admin.
 -   RSC+ screenshots show the updated level (if you have the stat screen open when the level happens). An inauthentic change was (not intentionally) made in `Skills.java` for this. This is a temporary difference, since a fix to RSC+ should soon be made that fixes this there.
 -   Varrock, Al Kharid and Rimmington general stores have 1 stock of the black 2 hander, scimitar and axe, respectfully.
+- There are more changes from Open RSC, for which I submitted merge requests for but have not been merged yet:
+  - `CF-3573` - Range escape bug fix - Range stops when the target was in combat and just left, until they can be re-attacked
+  - `CF-3597` - Players mining in the wilderness can now be attacked by other players
 
 ## Tribute
 
