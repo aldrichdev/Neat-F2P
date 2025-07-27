@@ -79,7 +79,7 @@ public class ButtonListener implements ActionListener {
 
       case "bugs":
       case "cockroach": { // bug report
-        Utils.openWebpage("https://gitlab.com/open-runescape-classic/core/-/issues");
+        Utils.openWebpage("https://gitlab.com/openrsc/openrsc/-/issues");
         return;
       }
       case "chat":
@@ -284,12 +284,12 @@ public class ButtonListener implements ActionListener {
       }
 
       case "openrsc-large": {
-        Utils.openWebpage("https://gitlab.com/open-runescape-classic/core/-/tree/develop/Client_Base");
+        Utils.openWebpage("https://gitlab.com/openrsc/openrsc/-/tree/develop/Client_Base");
         return;
       }
 
       case "aposbot-large": {
-        Utils.openWebpage("https://gitlab.com/open-runescape-classic/APOS");
+        Utils.openWebpage("https://gitlab.com/openrsc/APOS");
         return;
       }
 
@@ -299,7 +299,7 @@ public class ButtonListener implements ActionListener {
       }
 
       case "idlersc-large": {
-        Utils.openWebpage("https://gitlab.com/open-runescape-classic/idlersc");
+        Utils.openWebpage("https://gitlab.com/openrsc/idlersc");
         return;
       }
 

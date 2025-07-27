@@ -1,7 +1,9 @@
 package com.openrsc.server.net.rsc.handlers;
 
-
+import com.openrsc.server.event.rsc.handler.GameEventHandler;
 import com.openrsc.server.event.rsc.impl.projectile.ProjectileEvent;
+import com.openrsc.server.event.rsc.impl.projectile.RangeEvent;
+import com.openrsc.server.event.rsc.GameTickEvent;
 import com.openrsc.server.model.Path;
 import com.openrsc.server.model.Path.PathType;
 import com.openrsc.server.model.Point;
@@ -62,6 +64,16 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 					player.setRanAwayTimer();
 					ActionSender.sendSound(player, "retreat");
 
+					// If the player is retreating but can't be re-attacked yet, cancel any range events until they can be re-attacked
+					if (!player.canBeReattacked()) {
+						stopRanging(player);
+					}
+
+					// The same should apply for the opponent if they sit still
+					if (opponent.isPlayer() && !((Player)opponent).canBeReattacked()) {
+						stopRanging((Player)opponent);
+					}
+
 					if (player.getConfig().WANT_PARTIES) {
 						if(player.getParty() != null){
 							player.getParty().sendParty();
@@ -99,5 +111,17 @@ public class WalkRequest implements PayloadProcessor<WalkStruct, OpcodeIn> {
 			path.finish();
 		}
 		player.getWalkingQueue().setPath(path);
+	}
+	
+	/** Cancels any range events where the target is `player`. */
+	private void stopRanging(Player player) {
+		final GameEventHandler gameEventHandler = player.getWorld().getServer().getGameEventHandler();
+
+		for (final GameTickEvent gameTickEvent : gameEventHandler.getEvents(RangeEvent.class)) {
+			RangeEvent rangeEvent = (RangeEvent) gameTickEvent;
+			if (rangeEvent.getTarget().equals(player)) {
+				gameEventHandler.remove(gameTickEvent);
+			}
+		}
 	}
 }

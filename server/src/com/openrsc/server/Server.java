@@ -299,6 +299,7 @@ public class Server implements Runnable {
 		sqlExecutor.setThreadFactory(new NamedThreadFactory(getName() + " : SqlThread", getConfig()));
 		sqlThreadPool = MoreExecutors.listeningDecorator(sqlExecutor);
 		MessageFilter.loadGoodAndBadWordsFromDisk();
+		StringUtil.loadJagGoodAndBadWordsFromDisk(); // static/hardcoded jag good and badwords for retro protocols
 
 		maxItemId = 0;
 	}

@@ -5,6 +5,7 @@ import com.openrsc.server.constants.NpcId;
 import com.openrsc.server.constants.Quests;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.plugins.custom.minigames.ArmyOfObscurity;
 import com.openrsc.server.plugins.triggers.TalkNpcTrigger;
 
 import java.util.ArrayList;
@@ -19,56 +20,77 @@ public class Urhney implements TalkNpcTrigger {
 		npcsay(player, n, "Go away, I'm meditating");
 
 		ArrayList<String> options = new ArrayList<>();
-		boolean beforeAmulet = player.getQuestStage(Quests.THE_RESTLESS_GHOST) == 1
-			&& !player.getCarriedItems().hasCatalogID(ItemId.AMULET_OF_GHOSTSPEAK.id(), Optional.empty());
-		boolean afterAmulet = player.getQuestStage(Quests.THE_RESTLESS_GHOST) >= 2
-			&& !player.getCarriedItems().hasCatalogID(ItemId.AMULET_OF_GHOSTSPEAK.id(), Optional.empty());
-		if (beforeAmulet) {
-			options.add("Father Aereck sent me to talk to you");
+		final String sentToTalk = "Father Aereck sent me to talk to you";
+		final String lostAmulet = "I've lost the amulet";
+		final String thatsFriendly = "Well that's friendly";
+		final String repossess = "I've come to repossess your house";
+		String armyOfObscurity = "Halloween event";
+		final String lostBoomstick = "I lost the Boomstick";
+
+		if (player.getQuestStage(Quests.THE_RESTLESS_GHOST) == 1
+			&& !player.getCarriedItems().hasCatalogID(ItemId.AMULET_OF_GHOSTSPEAK.id(), Optional.empty())) {
+			options.add(sentToTalk);
 		}
-		else if (afterAmulet) {
-			options.add("I've lost the amulet");
+		else if (player.getQuestStage(Quests.THE_RESTLESS_GHOST) >= 2
+			&& !player.getCarriedItems().hasCatalogID(ItemId.AMULET_OF_GHOSTSPEAK.id(), Optional.empty())) {
+			options.add(lostAmulet);
 		}
-		options.add("Well that's friendly");
-		options.add("I've come to repossess your house");
+		options.add(thatsFriendly);
+		options.add(repossess);
+
+		// Halloween 2024
+		if (config().ARMY_OF_OBSCURITY) {
+			int stage = ArmyOfObscurity.getStage(player);
+			if (stage >= ArmyOfObscurity.STAGE_NOT_STARTED
+				&& stage <= ArmyOfObscurity.STAGE_ATTEMPTED_TO_TAKE_BOOK) {
+				armyOfObscurity = "Who is this guy in your house?";
+				options.add(armyOfObscurity);
+			} else if (stage == ArmyOfObscurity.STAGE_TOLD_ASH_WORDS_BAD) {
+				armyOfObscurity = "Do you know how to get the book";
+				options.add(armyOfObscurity);
+			} else if (stage == ArmyOfObscurity.STAGE_GOT_NEW_WORD) {
+				armyOfObscurity = "About the enchantment-breaking spell";
+				options.add(armyOfObscurity);
+			} else if (stage == ArmyOfObscurity.STAGE_COMPLETED) {
+				armyOfObscurity = "Where did Ash go?";
+				options.add(armyOfObscurity);
+			}
+		}
+
+		// Recover Boomstick if lost
+		if (ArmyOfObscurity.getStage(player) == ArmyOfObscurity.STAGE_COMPLETED 
+			&& !player.getCarriedItems().hasCatalogID(ItemId.BOOMSTICK.id())) {
+			options.add(lostBoomstick);
+		}
+
 		String[] finalOptions = new String[options.size()];
 		int option = multi(player, n, options.toArray(finalOptions));
 
-		if (option == 2) {
+		if (option == -1) {
+			return;
+		} else if (options.get(option).equals(sentToTalk)) {
+			beforeAmuletDialog(player, n);
+		} else if (options.get(option).equals(lostAmulet)) {
+			mes("Father Urhney sighs");
+			delay(3);
+
+			npcsay(player, n, "How careless can you get",
+				"Those things aren't easy to come by you know",
+				"It's a good job I've got a spare");
+			give(player, ItemId.AMULET_OF_GHOSTSPEAK.id(), 1);
+			mes("Father Urhney hands you an amulet");
+			delay(3);
+			npcsay(player, n, "Be more careful this time");
+			say(player, n, "Ok I'll try to be");
+		} else if (options.get(option).equals(thatsFriendly)) {
+			npcsay(player, n, "I said go away!");
+			say(player, n, "Ok, ok");
+		} else if (options.get(option).equals(repossess)) {
 			repossessDialog(player, n);
-		}
-
-		else if (option == 1) {
-			if (beforeAmulet || afterAmulet) {
-				npcsay(player, n, "I said go away!");
-				say(player, n, "Ok, ok");
-			}
-			else {
-				repossessDialog(player, n);
-			}
-		}
-
-		else if (option == 0) {
-			if (beforeAmulet) {
-				beforeAmuletDialog(player, n);
-			}
-			else if (afterAmulet) {
-				mes("Father Urhney sighs");
-				delay(3);
-
-				npcsay(player, n, "How careless can you get",
-					"Those things aren't easy to come by you know",
-					"It's a good job I've got a spare");
-				give(player, ItemId.AMULET_OF_GHOSTSPEAK.id(), 1);
-				mes("Father Urhney hands you an amulet");
-				delay(3);
-				npcsay(player, n, "Be more careful this time");
-				say(player, n, "Ok I'll try to be");
-			}
-			else {
-				npcsay(player, n, "I said go away!");
-				say(player, n, "Ok, ok");
-			}
+		} else if (config().ARMY_OF_OBSCURITY && options.get(option).equals(armyOfObscurity)) {
+			ArmyOfObscurity.fatherUrhneyDialogue(player, n);
+		} else if (options.get(option).equals(lostBoomstick)) {
+			ArmyOfObscurity.recoverBoomstick(player, n);
 		}
 	}
 

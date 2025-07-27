@@ -9,6 +9,7 @@ import com.openrsc.server.model.entity.player.Player;
 import com.openrsc.server.plugins.RuneScript;
 import com.openrsc.server.plugins.triggers.OpInvTrigger;
 import com.openrsc.server.plugins.triggers.UseInvTrigger;
+import com.openrsc.server.util.rsc.MessageType;
 
 import java.util.Optional;
 
@@ -48,9 +49,9 @@ public class Bones implements OpInvTrigger, UseInvTrigger {
 			player.getCarriedItems().getInventory().getLastIndexById(item.getCatalogId(), Optional.of(false)));
 		if(toRemove == null) return;
 
-		player.message("You dig a hole in the ground");
+		player.playerServerMessage(MessageType.QUEST, "you dig a hole in the ground");
 		delay();
-		player.message("You bury the " + item.getDef(player.getWorld()).getName().toLowerCase());
+		player.playerServerMessage(MessageType.QUEST, "You bury the bones");
 		if (player.getCarriedItems().remove(toRemove) != -1) {
 			giveBonesExperience(player, item);
 		}

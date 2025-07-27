@@ -114,7 +114,8 @@ public final class CommandHandler implements PayloadProcessor<CommandStruct, Opc
 				"weirdplayer",
 				"stay",
 				"reset",
-				"uptime"
+				"uptime",
+				"enable_protocol_extensions"
 			};
 			if (player.isPlayerMod() && !Arrays.asList(ignoredCommands).contains(cmd.toLowerCase())) {
 				player.getWorld().getServer().getDiscordService().staffCommandLog(player, "::" + cmd + " " + String.join(" ", args));

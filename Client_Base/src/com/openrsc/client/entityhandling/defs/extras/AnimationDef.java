@@ -6,8 +6,8 @@ public class AnimationDef {
 	private int charColour;
 	private int blueMask;
 	private int genderModel;
-	private boolean hasA;
-	private boolean hasF;
+	private boolean hasA; // Has fighting animation
+	private boolean hasF; // Has special fighting animation for the weapon; used authentically on zombweapon, skelweapon, gobweapon
 	public int number;
 
 
@@ -50,9 +50,9 @@ public class AnimationDef {
 
 	public boolean hasA() {
 		return hasA;
-	}
+	} // Has fighting animation; false for sheep and ranged weapons
 
-	public boolean hasF() {
+	public boolean hasF() { // Has special fighting animation for the weapon; used authentically on zombweapon, skelweapon, gobweapon
 		return hasF;
 	}
 

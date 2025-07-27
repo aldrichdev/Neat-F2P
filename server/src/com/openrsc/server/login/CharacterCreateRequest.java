@@ -13,6 +13,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.net.InetSocketAddress;
 
+import static com.openrsc.server.util.rsc.StringUtil.rot13;
+
 /**
  * Used to create a Character on the Login thread
  */
@@ -312,21 +314,8 @@ public class CharacterCreateRequest extends LoginExecutorProcess{
 		return (byte) RegisterLoginResponse.REGISTER_SUCCESSFUL;
 	}
 
-	private String rot13(String word) {
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < word.length(); i++) {
-			char c = word.charAt(i);
-			if       (c >= 'a' && c <= 'm') c += 13;
-			else if  (c >= 'A' && c <= 'M') c += 13;
-			else if  (c >= 'n' && c <= 'z') c -= 13;
-			else if  (c >= 'N' && c <= 'Z') c -= 13;
-			sb.append(c);
-		}
-		return sb.toString();
-	}
-
 	private boolean isDisallowedUsername(String username) {
-		final String [] disallowed = { "nff", "shpx", "fuvg", "fu1g", "fhpx", "cravf", "intbb", "inttvan", "intvan", "chffl", "juber", "fyhg", "crrabe", "crra0e", "c33a", "c33a0e", "qvpx", "p0px", "pbpx", "phag", "zbq", "z0q", "zbqrengbe", "nqzva", "nqz1a", "nqzvavfgengbe", "nszna", "wntrk", "wnin", "cuhpx", "shx", "shk", "shd", "snd", "sbp", "sbx", "sbbx", "srx", "snpx", "sbrx", "srpx", "sphx", "shxp", "spx", "shvpx", "suhpx", "cuhx", "puvg", "fpuvg", "fuwg", "fung", "furg", "fvug", "fugv", "fug", "penc", "ovgpu", "owgpu", "13vgpu", "ovpu", "ovngpu", "ovbgpu", "onfgneq", "fcnfgvp", "ergneq", "a1tn", "a1te", "avtn", "avte", "avtre", "puvax", "jbc", "pbba", "fgnyva", "uvgyre", "anmv", "dhrre", "xjrre", "snt", "sntbg", "yrfob", "oryyraq", "travgny", "qvx", "jnat", "fuybat", "pbx", "cevp", "jvyyl", "obare", "rerpg", "rerpgvba", "onyf", "obyybpx", "grfgvpyr", "fpebghz", "ahgf", "pyvg", "fyvg", "inqtr", "snaal", "gjng", "chfl", "chfv", "chff", "oernfg", "gvg", "gvgf", "obbo", "avcyr", "nefr", "genaftraqre", "genafftraqre", "genal", "genal", "genavr", "genaavr", "genaal", "cbb", "cbbc", "nahf", "erpghz", "nany", "ohgg", "nffubyr", "nffu01r", "hevangr", "cvff", "hevar", "gheq", "snrprf", "rkperzrag", "rkpergr", "sneg", "pnpx", "fcrez", "phz", "fchax", "fzrt", "frzra", "rwnphyng", "encr", "encvfg", "fgnyx", "jnax", "znfgheongr", "znfgreongvat", "cvzc", "cebfgvghg", "crqb", "crqbcuvyr", "cnrqb", "cnrqbcuvyr", "fyncre", "fynt", "yvpx", "oybwbo", "sryng", "phavyvat", "anxrq", "haqerff", "ahqr", "pbaqbz", "qvyqb", "ivoengbe", "obaqntr", "fcnax", "ubeal", "guebo", "gnzcba", "oybbqent", "cnagl", "cbea", "cnfjbeq", "cnff", "cjbeq", "fvrnt urvy", "fvrt urvy", "snx", "snpxvat", "fperj", "avttn", "zbqehar", "nubyr", "arteb", "ywpx", "qwpx", "gwgf", "ubeavr", "zhfgreongr", "avtt", "aytt", "a1tt", "qrrm", "q33m" };
+		final String [] disallowed = { "13vgpu", "n d  c", "n d c", "nqz1a", "nqzva", "nqzvavfgengbe", "nszna", "nubyr", "nany", "naqerj gngr", "nahf", "nd c", "ndc", "nefr", "nff", "nffu01r", "nffubyr", "o d  c", "o d c", "onyf", "onfgneq", "oryyraq", "ovngpu", "ovpu", "ovqra", "ovrgpuf", "ovbgpu", "ovgpu", "owgpu", "oybwbo", "oybbqent", "obyybpx", "obaqntr", "obare", "obbo", "oernfg", "ohxxnxr", "ohgg", "ohgg cyht", "ohggcyht", "p.h.z", "p0px", "pnpx", "puvatpubat", "puvax", "puvg", "pyvg", "pbpnvar", "pbpx", "pbx", "pbaqbz", "pbba", "penc", "pelcgb", "phpx", "phz", "phavyvat", "phag", "q33m", "qrrm", "qvpx", "qvwpx", "qvx", "qvyqb", "qwpx", "qbanyq gehzc", "rwnphyng", "rerpg", "rerpgvba", "rkperzrag", "rkpergr", "snpx", "snpxvat", "snrprf", "snt", "snttbg", "sntbg", "snx", "snaal", "snd", "sneg", "sng junyr", "spx", "sphx", "srpx", "srx", "sryng", "srghf", "stg", "suhpx", "sbp", "sbrx", "sbx", "sbbx", "sberfxva", "serr cnyrfgvar", "shpx", "shpxgneq", "shvpx", "shx", "shxp", "shd", "shk", "tnat onat", "tnatonat", "travgny", "tbg gur onyyf", "unznf", "uvgyre", "ubbxre", "ubeavr", "ubeal", "v jnf zhgrq", "wntrk", "wnin", "wvunq", "whatyrohaal", "xnznyn", "xarrtebj", "xd c", "xd crg", "xjrre", "ynql obl", "ynqlobl", "yrfob", "yvogneq", "yvpx", "ywpx", "z0q", "znfgreongvat", "znfgheongr", "zvqqtrg", "zvqtrg", "zbq", "zbqrengbe", "zbqehar", "zhfgreongr", "a1tn", "a1tt", "a1te", "anxrq", "anmv", "artre", "arteb", "atrtru", "avt obar", "avt obarf", "avtn", "avtne", "avtre", "avtt", "avttn", "avttnu", "avttrne", "avttrre", "avttre", "avtttre", "avttttre", "avttbe", "avtthu", "avtthe", "avtyrg", "avte", "avten", "avcyr", "avddre", "aytre", "aytt", "ayttre", "ahqr", "ahgf", "c33a", "c33a0e", "cnrqb", "cnrqbcuvyr", "cnagl", "cnff", "cnfjbeq", "crqb", "crqbcuvyr", "crr crr", "crra0e", "crrabe", "crrcrr", "cravf", "cunt", "cuhpx", "cuhx", "cvzc", "cvarzryba", "cvff", "cvffubyr", "cbb", "cbb cbb", "cbbc", "cbbcbb", "cbepuzbaxrl", "cbea", "cbeauho", "cbjregevccvat", "cevp", "cebfgvghg", "cebfgvghgr", "cebfgvghgvba", "chppl", "chu frr", "chup", "chufrr", "chfv", "chff", "chffrr", "chffvrf", "chffl", "chfl", "cjbeq", "dhrre", "enturnq", "encr", "encre", "encvat", "encvfg", "erpghz", "erttva", "ergneq", "ergneqrq", "ergneg", "euncr", "efp qlanfgl", "efp rzh", "efp eri", "efp eribyhgvba", "efp ina", "efp inavyyn", "efpqlanfgl", "efprzh", "efprzhyngvba", "efpe", "efperi", "efpi", "efpina", "efpinavyyn", "efcvfg", "fnaqavttre", "fpuvg", "fperj", "fpebghz", "frzra", "frk", "frk7", "fu1g", "fung", "fur znyr", "furznyr", "furg", "fuvg", "fuwg", "fuybat", "fug", "fugv", "fvrnt urvy", "fvrt urvy", "fvug", "fynt", "fyncre", "fyvg", "fybcrurnq", "fyhg", "fzrt", "favttre", "fbsggg", "fcnax", "fcnfgvp", "fcrnepuhpxre", "fcrez", "fcvp", "fchax", "fgnyva", "fgnyx", "fhpx", "gnvag", "gnzcba", "grfgvpyr", "guebo", "gvg", "gvgf", "gwgf", "gbzjnat", "genavr", "genaavr", "genaavrf", "genaal", "genaftraqre", "genafftraqre", "genafirfgvgr", "genal", "gehzc", "gheq", "gjng", "haqerff", "he fb fnq", "hevangr", "hevar", "inqtr", "inttvan", "intvan", "intbb", "ivoengbe", "ivetva", "jnat", "jnax", "jnaxvat", "jryphz", "junyr phz", "junyrphz", "juber", "jvyyl", "jbc", "mvccreurnq" };
 
 		final String[] staff = { "m0d", "mod", "moderator", "mordorator", "admin", "administrator",
 			"afman", "owner", "jagex", "java" };

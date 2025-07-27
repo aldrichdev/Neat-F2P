@@ -23,9 +23,16 @@ import java.util.Map;
 
 /**
  * RSC Protocol-203 Generator for Outgoing Packets from respective Protocol Independent Structs
+ *
+ * This is the final version of the protocol before "Retro Revival" in 2009.
+ *
+ * Contemporary open source clients for 203 include STS203C and STSHell by Reines.
+ *
+ * mudclient203.jar was released on 2005-11-08.
+ * mudclient204.jar (same protocol version) was released on 2006-05-25.
  * **/
 public class Payload203Generator implements PayloadGenerator<OpcodeOut> {
-	private static final Map<OpcodeOut, Integer> opcodeMap = new HashMap<OpcodeOut, Integer>() {{
+	private static final Map<OpcodeOut, Integer> opcodes203 = new HashMap<OpcodeOut, Integer>() {{
 		put(OpcodeOut.SEND_LOGOUT_REQUEST_CONFIRM, 4);
 		put(OpcodeOut.SEND_QUESTS, 5);
 		put(OpcodeOut.SEND_DUEL_OPPONENTS_ITEMS, 6);
@@ -66,12 +73,10 @@ public class Payload203Generator implements PayloadGenerator<OpcodeOut> {
 		put(OpcodeOut.SEND_STATS, 156);
 		put(OpcodeOut.SEND_STAT, 159);
 		put(OpcodeOut.SEND_TRADE_OTHER_ACCEPTED, 162);
-		put(OpcodeOut.SEND_LOGOUT, 165);
 		put(OpcodeOut.SEND_DUEL_CONFIRMWINDOW, 172);
 		put(OpcodeOut.SEND_DUEL_WINDOW, 176);
 		put(OpcodeOut.SEND_WELCOME_INFO, 182);
 		put(OpcodeOut.SEND_CANT_LOGOUT, 183);
-		put(OpcodeOut.SEND_28_BYTES_UNUSED, 189);
 		put(OpcodeOut.SEND_PLAYER_COORDS, 191);
 		put(OpcodeOut.SEND_SLEEPWORD_INCORRECT, 194);
 		put(OpcodeOut.SEND_BANK_CLOSE, 203);
@@ -79,11 +84,8 @@ public class Payload203Generator implements PayloadGenerator<OpcodeOut> {
 		put(OpcodeOut.SEND_PRAYERS_ACTIVE, 206);
 		put(OpcodeOut.SEND_DUEL_ACCEPTED, 210);
 		put(OpcodeOut.SEND_REMOVE_WORLD_ENTITY, 211);
-		put(OpcodeOut.SEND_APPEARANCE_KEEPALIVE, 213);
 		put(OpcodeOut.SEND_BOX, 222);
-		put(OpcodeOut.SEND_OPEN_RECOVERY, 224); // part of rsc era protocol
 		put(OpcodeOut.SEND_DUEL_CLOSE, 225);
-		put(OpcodeOut.SEND_OPEN_DETAILS, 232); // part of rsc era protocol
 		put(OpcodeOut.SEND_UPDATE_PLAYERS, 234);
 		put(OpcodeOut.SEND_GAME_SETTINGS, 240);
 		put(OpcodeOut.SEND_SLEEP_FATIGUE, 244);
@@ -93,10 +95,20 @@ public class Payload203Generator implements PayloadGenerator<OpcodeOut> {
 		put(OpcodeOut.SEND_DUEL_OTHER_ACCEPTED, 253);
 	}};
 
+	private final Map<OpcodeOut, Integer> opcodes;
+
+	public Payload203Generator() {
+		this.opcodes = opcodes203;
+	}
+
+	public Payload203Generator(Map<OpcodeOut, Integer> opcodes) {
+		this.opcodes = opcodes;
+	}
+
 	@Override
 	public PacketBuilder fromOpcodeEnum(OpcodeOut opcode, Player player) {
 		PacketBuilder builder = null;
-		Integer opcodeNum = opcodeMap.getOrDefault(opcode, null);
+		Integer opcodeNum = opcodes.getOrDefault(opcode, null);
 		if (opcodeNum != null) {
 			builder = new PacketBuilder().setID(opcodeNum);
 		}
@@ -111,18 +123,10 @@ public class Payload203Generator implements PayloadGenerator<OpcodeOut> {
 
 		if (builder != null && possiblyValid) {
 			switch (payload.getOpcode()) {
-				// not currently implemented
-				case SEND_28_BYTES_UNUSED:
-					break;
-
 				// no payload opcodes
-				case SEND_LOGOUT:
 				case SEND_LOGOUT_REQUEST_CONFIRM:
 				case SEND_CANT_LOGOUT:
 				case SEND_APPEARANCE_SCREEN:
-				case SEND_APPEARANCE_KEEPALIVE:
-				case SEND_OPEN_RECOVERY:
-				case SEND_OPEN_DETAILS:
 				case SEND_DEATH:
 				case SEND_SLEEPWORD_INCORRECT:
 				case SEND_STOPSLEEP:

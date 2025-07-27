@@ -103,55 +103,41 @@ public class Eating implements OpInvTrigger {
 				mes("You eat the " + item.getDef(player.getWorld()).getName().toLowerCase());
 				say(player, null, "Ow! I nearly broke a tooth!");
 				player.message("You feel strangely heavier and more tired");
-			} else if (id == ItemId.EQUA_LEAVES.id())
+			} else if (id == ItemId.EQUA_LEAVES.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the leaves..chewy but tasty");
-
-			else if (id == ItemId.DWELLBERRIES.id())
+			} else if (id == ItemId.DWELLBERRIES.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the berrys..quite tasty");
-
-			else if (id == ItemId.LEMON.id())
+			} else if (id == ItemId.LEMON.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the lemon ..it's very sour");
-
-			else if (id == ItemId.LEMON_SLICES.id())
+			} else if (id == ItemId.LEMON_SLICES.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the lemon slices ..they're very sour");
-
-			else if (id == ItemId.DICED_LEMON.id())
+			} else if (id == ItemId.DICED_LEMON.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the lemon cubes ..they're very sour");
-
-			else if (id == ItemId.LIME.id())
+			} else if (id == ItemId.LIME.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the lime ..it's quite sour");
-
-			else if (id == ItemId.LIME_SLICES.id() || id == ItemId.LIME_CHUNKS.id())
+			} else if (id == ItemId.LIME_SLICES.id() || id == ItemId.LIME_CHUNKS.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the " + item.getDef(player.getWorld()).getName().toLowerCase() + "..they're quite sour");
-
-			else if (id == ItemId.GRAPEFRUIT.id())
+			} else if (id == ItemId.GRAPEFRUIT.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the grapefruit ...it's somewhat bitter");
-
-			else if (id == ItemId.GRAPEFRUIT_SLICES.id())
+			} else if (id == ItemId.GRAPEFRUIT_SLICES.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the grapefruit slices ...they're somewhat bitter");
-
-			else if (id == ItemId.DICED_GRAPEFRUIT.id())
+			} else if (id == ItemId.DICED_GRAPEFRUIT.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the grapefruit cubes ...they're somewhat bitter");
-
-			else if (id == ItemId.ORANGE.id())
+			} else if (id == ItemId.ORANGE.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the orange ...yum");
-
-			else if (id == ItemId.ORANGE_SLICES.id())
+			} else if (id == ItemId.ORANGE_SLICES.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the orange slices ...yum");
-
-			else if (id == ItemId.DICED_ORANGE.id())
+			} else if (id == ItemId.DICED_ORANGE.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the orange cubes ...yum");
-
-			else if (id == ItemId.FRESH_PINEAPPLE.id())
+			} else if (id == ItemId.FRESH_PINEAPPLE.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the pineapple ...yum");
-
-			else if (id == ItemId.PINEAPPLE_CHUNKS.id())
+			} else if (id == ItemId.PINEAPPLE_CHUNKS.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the pineapple chunks ..yum");
-
-			else if (id == ItemId.CREAM.id())
+			} else if (id == ItemId.CREAM.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the cream..you get some on your nose");
-
-			else if (id == ItemId.GNOMEBOWL.id()) {
+			} else if (id == ItemId.COOKEDMEAT.id()) {
+				player.playerServerMessage(MessageType.QUEST, "You eat the meat");
+			} else if (id == ItemId.GNOMEBOWL.id()) {
 				player.playerServerMessage(MessageType.QUEST, "You eat the gnome bowl");
 				player.message("it's pretty tastless");
 				resetGnomeCooking(player);
@@ -216,8 +202,9 @@ public class Eating implements OpInvTrigger {
 				delay(3);
 				say(player, null, "yuck");
 				player.message("it's rotten, you spit it out");
-			} else
+			} else {
 				player.playerServerMessage(MessageType.QUEST, "You eat the " + item.getDef(player.getWorld()).getName().toLowerCase());
+			}
 
 			final boolean heals = player.getSkills().getLevel(Skill.HITS.id()) < player.getSkills().getMaxStat(Skill.HITS.id());
 			if (heals) {

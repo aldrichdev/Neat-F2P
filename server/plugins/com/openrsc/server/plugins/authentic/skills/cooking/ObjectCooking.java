@@ -1,14 +1,12 @@
 package com.openrsc.server.plugins.authentic.skills.cooking;
 
-import com.openrsc.server.constants.ItemId;
-import com.openrsc.server.constants.NpcId;
-import com.openrsc.server.constants.Quests;
-import com.openrsc.server.constants.Skill;
+import com.openrsc.server.constants.*;
 import com.openrsc.server.external.ItemCookingDef;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.plugins.custom.minigames.ArmyOfObscurity;
 import com.openrsc.server.plugins.triggers.UseLocTrigger;
 import com.openrsc.server.util.rsc.DataConversions;
 import com.openrsc.server.util.rsc.Formulae;
@@ -22,7 +20,7 @@ import static com.openrsc.server.plugins.Functions.*;
 public class ObjectCooking implements UseLocTrigger {
 	@Override
 	public void onUseLoc(Player owner, GameObject object, Item item) {
-		if (object.getID() == 119 && owner.getQuestStage(Quests.COOKS_ASSISTANT) > -1) {
+		if (object.getID() == SceneryId.COOKS_RANGE.id() && owner.getQuestStage(Quests.COOKS_ASSISTANT) > -1) {
 			Npc cook = ifnearvisnpc(owner, NpcId.COOK.id(), 20);
 			if (cook != null) {
 				npcsay(owner, cook, "Hey! Who said you could use that?");
@@ -35,7 +33,7 @@ public class ObjectCooking implements UseLocTrigger {
 							   final GameObject object) {
 
 		// Tutorial Meat
-		if (object.getID() == 491) {
+		if (object.getID() == SceneryId.RANGE_TUTORIAL_ISLAND.id()) {
 			if (item.getCatalogId() == ItemId.RAW_RAT_MEAT.id()) {
 				thinkbubble(item);
 				player.playSound("cooking");
@@ -76,7 +74,7 @@ public class ObjectCooking implements UseLocTrigger {
 
 		// Raw Oomlie Meat (Always burn)
 		else if (item.getCatalogId() == ItemId.RAW_OOMLIE_MEAT.id()) {
-			if (object.getID() == 97 || object.getID() == 274) {
+			if (object.getID() == SceneryId.FIRE.id() || object.getID() == SceneryId.FIREPLACE.id()) {
 				mes("You cook the meat on the fire...");
 				delay(3);
 			}
@@ -94,7 +92,7 @@ public class ObjectCooking implements UseLocTrigger {
 		}
 
 		// Poison (Hazeel Cult)
-		else if (item.getCatalogId() == ItemId.POISON.id() && object.getID() == 435 && object.getX() == 618 && object.getY() == 3453) {
+		else if (item.getCatalogId() == ItemId.POISON.id() && object.getID() == SceneryId.RANGE_CARNILLEAN.id() && object.getX() == 618 && object.getY() == 3453) {
 			if (player.getQuestStage(Quests.THE_HAZEEL_CULT) == 3 && player.getCache().hasKey("evil_side")) {
 				mes("you poor the poison into the hot pot");
 				delay(3);
@@ -121,6 +119,9 @@ public class ObjectCooking implements UseLocTrigger {
 			} else {
 				player.message("Nothing interesting happens");
 			}
+		} else if (item.getCatalogId() == ItemId.NECRONOMICON.id()) {
+			ArmyOfObscurity.burnNecronomicon(player);
+			return;
 		} else {
 			final ItemCookingDef cookingDef = item.getCookingDef(player.getWorld());
 			if (cookingDef == null) {
@@ -134,15 +135,7 @@ public class ObjectCooking implements UseLocTrigger {
 				player.playerServerMessage(MessageType.QUEST, "You need a cooking level of " + cookingDef.getReqLevel() + " to cook " + itemName);
 				return;
 			}
-			if (object.getID() == 11) {
-				if (!player.withinRange(object, 2)) {
-					return;
-				}
-			} else {
-				if (!player.withinRange(object, 1)) {
-					return;
-				}
-			}
+
 			// Some need a RANGE not a FIRE
 			boolean needOven = false;
 			int timeToCook = 3;
@@ -152,7 +145,7 @@ public class ObjectCooking implements UseLocTrigger {
 			}
 			if (player.getCarriedItems().getEquipment().hasEquipped(ItemId.COOKING_CAPE.id()))
 				timeToCook *= 0.7;
-			if ((object.getID() == 97 || object.getID() == 274) && needOven) {
+			if ((object.getID() == SceneryId.FIRE.id() || object.getID() == SceneryId.FIREPLACE.id()) && needOven) {
 				player.playerServerMessage(MessageType.QUEST, "You need a proper oven to cook this");
 				return;
 			}
@@ -226,14 +219,14 @@ public class ObjectCooking implements UseLocTrigger {
 
 	@Override
 	public boolean blockUseLoc(Player player, GameObject obj, Item item) {
-		int[] ids = new int[]{97, 11, 119, 274, 435, 491};
+		int[] ids = new int[]{SceneryId.FIRE.id(), SceneryId.RANGE.id(), SceneryId.COOKS_RANGE.id(), SceneryId.FIREPLACE.id(), SceneryId.RANGE_CARNILLEAN.id(), SceneryId.RANGE_TUTORIAL_ISLAND.id()};
 		Arrays.sort(ids);
 		if ((item.getCatalogId() == ItemId.RAW_OOMLIE_MEAT.id() || item.getCatalogId() == ItemId.SEAWEED.id()
 				|| item.getCatalogId() == ItemId.UNCOOKED_SWAMP_PASTE.id() || item.getCatalogId() == ItemId.COOKEDMEAT.id())
 				&& Arrays.binarySearch(ids, obj.getID()) >= 0) {
 			return true;
 		}
-		if (item.getCatalogId() == ItemId.POISON.id() && obj.getID() == 435 && obj.getX() == 618 && obj.getY() == 3453) {
+		if (item.getCatalogId() == ItemId.POISON.id() && obj.getID() == SceneryId.RANGE_CARNILLEAN.id() && obj.getX() == 618 && obj.getY() == 3453) {
 			return true;
 		}
 		// Gnome Cooking Items
@@ -242,6 +235,9 @@ public class ObjectCooking implements UseLocTrigger {
 			|| item.getCatalogId() == ItemId.GNOMEBOWL.id() || item.getCatalogId() == ItemId.GNOMECRUNCHIE.id()
 			|| item.getCatalogId() == ItemId.FULL_COCKTAIL_GLASS.id()) {
 			return false;
+		}
+		if (item.getCatalogId() == ItemId.NECRONOMICON.id() && (obj.getID() == SceneryId.FIRE.id() || obj.getID() == SceneryId.FIREPLACE.id())) {
+			return true;
 		}
 		final ItemCookingDef cookingDef = item.getCookingDef(player.getWorld());
 		return cookingDef != null && Arrays.binarySearch(ids, obj.getID()) >= 0;
@@ -287,7 +283,7 @@ public class ObjectCooking implements UseLocTrigger {
 		if (isGenMeat)
 			itemName = "meat";
 		String message = "You cook the " + itemName + " on the " +
-			((object.getID() == 97 || object.getID() == 274) ? "fire" : "stove") +
+			((object.getID() == SceneryId.FIRE.id() || object.getID() == SceneryId.FIREPLACE.id()) ? "fire" : "stove") +
 			(isGenMeat ? "..." : "");
 		if (needsOven) {
 			message = "You cook the " + itemName + " in the oven...";

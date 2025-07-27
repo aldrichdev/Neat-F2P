@@ -525,7 +525,9 @@ public class CombatOdyssey implements DropObjTrigger, KillNpcTrigger, OpInvTrigg
 	public void onTalkNpc(Player player, Npc npc) {
 		if (npc.getID() != NpcId.BIGGUM_FLODROT.id()) return;
 
-		if (!player.canSeeBiggum()) {
+		// If the player hasn't completed the Odyssey before, or they're holding Biggum,
+		// they shouldn't be able to see or talk to him.
+		if (getPrestige(player) < 1 || ifheld(ItemId.BIGGUM_FLODROT.id(), 1)) {
 			if (player.isAdmin()) {
 				// Admins can still see Biggum
 				say("Hello!");

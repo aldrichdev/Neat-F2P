@@ -19,6 +19,7 @@ import orsc.util.StringUtil;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.util.HashMap;
@@ -1036,6 +1037,8 @@ public class PacketHandler {
 			disableMinimapRotation = this.getClientStream().getUnsignedByte(); // 84
 			allowBeardedLadies = this.getClientStream().getUnsignedByte(); // 85
 			prideMonth = this.getClientStream().getUnsignedByte(); // 86
+			MiscFunctions.RSA_EXPONENT = new BigInteger(this.getClientStream().readString()); // 87
+			MiscFunctions.RSA_MODULUS = new BigInteger(this.getClientStream().readString()); // 88
 		} else {
 			serverName = packetsIncoming.readString(); // 1
 			serverNameWelcome = packetsIncoming.readString(); // 2
@@ -1123,6 +1126,8 @@ public class PacketHandler {
 			disableMinimapRotation = packetsIncoming.getUnsignedByte(); // 84
 			allowBeardedLadies = packetsIncoming.getUnsignedByte(); // 85
 			prideMonth = packetsIncoming.getUnsignedByte(); // 86
+			MiscFunctions.RSA_EXPONENT = new BigInteger(packetsIncoming.readString()); // 87
+			MiscFunctions.RSA_MODULUS = new BigInteger(packetsIncoming.readString()); // 88
 		}
 
 		if (Config.DEBUG) {
@@ -1212,7 +1217,9 @@ public class PacketHandler {
 					"\nS_SHOW_UNDERGROUND_FLICKER_TOGGLE " + showUndergroundFlickerToggle + // 83
 					"\nS_DISABLE_MINIMAP_ROTATION " + disableMinimapRotation + // 84
 					"\nS_ALLOW_BEARDED_LADIES " + allowBeardedLadies + // 85
-					"\nS_PRIDE_MONTH " + prideMonth // 86
+					"\nS_PRIDE_MONTH " + prideMonth + // 86
+					"\nRSA_EXPONENT " + MiscFunctions.RSA_EXPONENT + // 87
+					"\nRSA_MODULUS " + MiscFunctions.RSA_MODULUS // 88
 			);
 		}
 
@@ -2397,6 +2404,11 @@ public class PacketHandler {
 				mc.setShowDialogMessage(true);
 				mc.setWelcomeLastLoggedInHost(null);
 				mc.setWelcomeScreenShown(true);
+
+				// Re-validate the current scaling upon logging in, in case something
+				// went wrong during the initial window creation and resizing.
+				ScaledWindow.getInstance().validateAppletSize();
+				mudclient.scalarChangedSinceLogin = false;
 			}
 		}
 	}

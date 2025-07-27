@@ -835,7 +835,8 @@ public enum NpcId {
 	PRAESENS(831),
 	FUTURUM(832),
 	FORESTER_WOODCUTTING_GUILD(833),
-	MCGRUBOR(834);
+	MCGRUBOR(834),
+	ASH(835);
 
 	private int npcId;
 

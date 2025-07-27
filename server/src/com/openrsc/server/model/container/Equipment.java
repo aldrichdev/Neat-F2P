@@ -20,6 +20,27 @@ public class Equipment {
 	private final Item[] list = new Item[SLOT_COUNT];
 	private final Player player;
 
+	private static final int[] chainBodyIds = {
+		ItemId.BRONZE_CHAIN_MAIL_BODY.id(),
+		ItemId.IRON_CHAIN_MAIL_BODY.id(),
+		ItemId.STEEL_CHAIN_MAIL_BODY.id(),
+		ItemId.BLACK_CHAIN_MAIL_BODY.id(),
+		ItemId.MITHRIL_CHAIN_MAIL_BODY.id(),
+		ItemId.ADAMANTITE_CHAIN_MAIL_BODY.id(),
+		ItemId.RUNE_CHAIN_MAIL_BODY.id(),
+		ItemId.DRAGON_SCALE_MAIL.id()
+	};
+	private static final int[] chainTopIds = {
+		ItemId.BRONZE_CHAIN_MAIL_TOP.id(),
+		ItemId.IRON_CHAIN_MAIL_TOP.id(),
+		ItemId.STEEL_CHAIN_MAIL_TOP.id(),
+		ItemId.BLACK_CHAIN_MAIL_TOP.id(),
+		ItemId.MITHRIL_CHAIN_MAIL_TOP.id(),
+		ItemId.ADAMANTITE_CHAIN_MAIL_TOP.id(),
+		ItemId.RUNE_CHAIN_MAIL_TOP.id(),
+		ItemId.DRAGON_SCALE_MAIL_TOP.id()
+	};
+
 	public Equipment(Player player) {
 		synchronized (list) {
 			this.player = player;
@@ -167,6 +188,20 @@ public class Equipment {
 					curEquipDef.getWearableId(),
 					false
 				);
+
+				if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
+					for (int i = 0; i < chainTopIds.length; ++i) {
+						if (request.item.getCatalogId() == chainTopIds[i]) {
+							// If we can't remove the item, just worry about the swap
+							if (player.getCarriedItems().remove(request.item) == -1) {
+								break;
+							}
+							player.getCarriedItems().getInventory().add(new Item(chainBodyIds[i]));
+							break;
+						}
+					}
+				}
+
 				break;
 			case FROM_EQUIPMENT:
 				synchronized (list) {
@@ -179,7 +214,18 @@ public class Equipment {
 						if (remove(request.item, request.item.getAmount()) == -1)
 							return false;
 						request.item.setWielded(false);
-						player.getCarriedItems().getInventory().add(request.item, updateClient);
+
+						Item itemToAdd = request.item;
+						if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
+							for (int i = 0; i < chainTopIds.length; ++i) {
+								if (request.item.getCatalogId() == chainTopIds[i]) {
+									itemToAdd = new Item(chainBodyIds[i]);
+									break;
+								}
+							}
+						}
+
+						player.getCarriedItems().getInventory().add(itemToAdd, updateClient);
 
 					}
 				}
@@ -189,13 +235,24 @@ public class Equipment {
 					synchronized (player.getBank().getItems()) {
 						// Can't unequip something if bank is full
 						if (player.getBank().full()) {
-							player.message("You need more inventory space to unequip that.");
+							player.message("You need more bank space to unequip that.");
 							return false;
 						}
 						if (remove(request.item, request.item.getAmount()) == -1)
 							return false;
 						request.item.setWielded(false);
-						player.getBank().add(request.item, updateClient);
+
+						Item itemToAdd = request.item;
+						if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
+							for (int i = 0; i < chainTopIds.length; ++i) {
+								if (request.item.getCatalogId() == chainTopIds[i]) {
+									itemToAdd = new Item(chainBodyIds[i]);
+									break;
+								}
+							}
+						}
+
+						player.getBank().add(itemToAdd, updateClient);
 						if (updateClient) {
 							ActionSender.showBank(player);
 						}
@@ -241,38 +298,17 @@ public class Equipment {
 
 		// Turn chain tops into chain bodies and vice-versa
 		if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
-			int[] bodyIds = {
-				ItemId.BRONZE_CHAIN_MAIL_BODY.id(),
-				ItemId.IRON_CHAIN_MAIL_BODY.id(),
-				ItemId.STEEL_CHAIN_MAIL_BODY.id(),
-				ItemId.BLACK_CHAIN_MAIL_BODY.id(),
-				ItemId.MITHRIL_CHAIN_MAIL_BODY.id(),
-				ItemId.ADAMANTITE_CHAIN_MAIL_BODY.id(),
-				ItemId.RUNE_CHAIN_MAIL_BODY.id(),
-				ItemId.DRAGON_SCALE_MAIL.id()
-			};
-			int[] topIds = {
-				ItemId.BRONZE_CHAIN_MAIL_TOP.id(),
-				ItemId.IRON_CHAIN_MAIL_TOP.id(),
-				ItemId.STEEL_CHAIN_MAIL_TOP.id(),
-				ItemId.BLACK_CHAIN_MAIL_TOP.id(),
-				ItemId.MITHRIL_CHAIN_MAIL_TOP.id(),
-				ItemId.ADAMANTITE_CHAIN_MAIL_TOP.id(),
-				ItemId.RUNE_CHAIN_MAIL_TOP.id(),
-				ItemId.DRAGON_SCALE_MAIL_TOP.id()
-			};
-
 			Item newItem = null;
 			if (player.isMale()) {
-				for (int i = 0; i < topIds.length; ++i) {
-					if (topIds[i] == request.item.getCatalogId()) {
-						newItem = new Item(bodyIds[i]);
+				for (int i = 0; i < chainTopIds.length; ++i) {
+					if (chainTopIds[i] == request.item.getCatalogId()) {
+						newItem = new Item(chainBodyIds[i]);
 					}
 				}
 			} else {
-				for (int i = 0; i < bodyIds.length; ++i) {
-					if (bodyIds[i] == request.item.getCatalogId()) {
-						newItem = new Item(topIds[i]);
+				for (int i = 0; i < chainBodyIds.length; ++i) {
+					if (chainBodyIds[i] == request.item.getCatalogId()) {
+						newItem = new Item(chainTopIds[i]);
 					}
 				}
 			}
@@ -379,8 +415,17 @@ public class Equipment {
 				player.getCarriedItems().getInventory().remove(toEquip, updateClient); // Remove from inventory
 
 				for (Item item : items) {
+					int id = item.getCatalogId();
+					if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
+						for (int i = 0; i < chainTopIds.length; ++i) {
+							if (chainTopIds[i] == item.getCatalogId()) {
+								id = chainBodyIds[i];
+								break;
+							}
+						}
+					}
 					player.getCarriedItems().getInventory().add( // Add to inventory
-						new Item(item.getCatalogId(), item.getAmount()), updateClient);
+						new Item(id, item.getAmount()), updateClient);
 				}
 				add(new Item(toEquip.getCatalogId(), toEquip.getAmount())); // Add to equipment
 
@@ -439,7 +484,17 @@ public class Equipment {
 				if (!itemDef.isStackable()) {
 					player.getBank().remove(toEquip.getCatalogId(), 1, updateClient);
 					for (Item item : itemsToUnequip) {
-						player.getBank().add(new Item(item.getCatalogId(), item.getAmount()), updateClient);
+						int id = item.getCatalogId();
+						if (player.getConfig().WANT_CUSTOM_SPRITES && player.getConfig().FORM_FITTING_CHAINMAIL) {
+							for (int i = 0; i < chainTopIds.length; ++i) {
+								if (chainTopIds[i] == item.getCatalogId()) {
+									id = chainBodyIds[i];
+									break;
+								}
+							}
+						}
+
+						player.getBank().add(new Item(id, item.getAmount()), updateClient);
 					}
 
 					if (toEquip.getAmount() > 1) {

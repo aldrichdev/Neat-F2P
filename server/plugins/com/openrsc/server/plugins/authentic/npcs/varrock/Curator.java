@@ -6,8 +6,11 @@ import com.openrsc.server.constants.Quests;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.npc.Npc;
 import com.openrsc.server.model.entity.player.Player;
+import com.openrsc.server.plugins.custom.minigames.ArmyOfObscurity;
 import com.openrsc.server.plugins.triggers.TalkNpcTrigger;
 import com.openrsc.server.plugins.triggers.UseNpcTrigger;
+
+import java.util.ArrayList;
 
 import static com.openrsc.server.plugins.Functions.*;
 
@@ -70,8 +73,21 @@ public class Curator implements TalkNpcTrigger, UseNpcTrigger {
 			}
 		}
 
-		int option = multi(player, n, "Have you any interesting news?",
-			"Do you know where I could find any treasure?");
+		ArrayList<String> options = new ArrayList<>();
+		options.add("Have you any interesting news?");
+		options.add("Do you know where I could find any treasure?");
+
+		// Halloween 2024
+		if (config().ARMY_OF_OBSCURITY) {
+			if (ArmyOfObscurity.getStage(player) == ArmyOfObscurity.STAGE_OFF_TO_MUSEUM) {
+				options.add("Do you have any ancient amulets lying around?");
+			} else if ((ArmyOfObscurity.getStage(player) == ArmyOfObscurity.STAGE_COMPLETED || ArmyOfObscurity.getStage(player) >= ArmyOfObscurity.STAGE_OBTAINED_AMULET)
+				&& !ifheld(player, ItemId.ZOMBITE_AMULET.id(), 1) && !player.getCarriedItems().getEquipment().hasEquipped(ItemId.ZOMBITE_AMULET.id())) {
+				options.add("I've lost the amulet you gave me");
+			}
+		}
+
+		int option = multi(player, n, options.toArray(new String[0]));
 
 		if (option == 0) {
 			npcsay(player, n, "No, I'm only interested in old stuff");
@@ -82,6 +98,40 @@ public class Curator implements TalkNpcTrigger, UseNpcTrigger {
 			say(player, n, "No, I meant treasures for me");
 			npcsay(player, n, "Any treasures this museum knows about",
 				"It aquires");
+		}
+
+		else if (config().ARMY_OF_OBSCURITY && option == 2) {
+			if (ArmyOfObscurity.getStage(player) == ArmyOfObscurity.STAGE_OFF_TO_MUSEUM) {
+				npcsay(player, n, "Ancient amulets you say?",
+					"Typically no",
+					"But a strange man tried to put an amulet in one of my display cases",
+					"He insisted that it was ancient and valuable",
+					"I confiscated the amulet and had him forcefully removed",
+					"I can't have such hysterics in my museum",
+					"The amulet looks neither ancient nor valuable though",
+					"You can have it if you want");
+				mes("The museum curator hands you the amulet");
+				delay(5);
+				give(player, ItemId.ZOMBITE_AMULET.id(), 1);
+				ArmyOfObscurity.setStage(player, ArmyOfObscurity.STAGE_OBTAINED_AMULET);
+			} else if (ArmyOfObscurity.getStage(player) >= ArmyOfObscurity.STAGE_OBTAINED_AMULET) {
+				npcsay(player, n, "Luckily for you",
+					"It seems like trinkets have a way of finding their way back to me",
+					"Try to be more careful from now on");
+				mes("The museum curator hands you the amulet");
+				delay(5);
+				give(player, ItemId.ZOMBITE_AMULET.id(), 1);
+			} else if (ArmyOfObscurity.getStage(player) == ArmyOfObscurity.STAGE_COMPLETED) {
+				npcsay(player, n, "Luckily for you",
+					"I found it smuggled into one of my display cases...",
+					"Are you sure you weren't the one that put it there?");
+				say(player, n, "no, it wasn't me");
+				npcsay(player, n, "I hope it doesn't keep coming back then",
+					"Please try to be more careful from now on");
+				mes("The museum curator hands you the amulet");
+				delay(5);
+				give(player, ItemId.ZOMBITE_AMULET.id(), 1);
+			}
 		}
 	}
 

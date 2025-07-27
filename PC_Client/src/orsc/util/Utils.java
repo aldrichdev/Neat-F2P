@@ -9,6 +9,7 @@ import java.net.URL;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
 import java.util.TimeZone;
 
 import javax.swing.ImageIcon;
@@ -64,5 +65,37 @@ public class Utils {
 
 	public static String stripHtml(final String text) {
 		return text.replaceAll("\\<.*?\\>", "");
+	}
+
+	public static int getJavaVersion() {
+		try {
+			String versionText = System.getProperty("java.version");
+			if (versionText.startsWith("1.")) {
+				versionText = versionText.substring(2);
+			}
+
+			if (versionText.contains(".")) {
+				return Integer.parseInt(versionText.substring(0, versionText.indexOf(".")));
+			} else {
+				return Integer.parseInt(versionText);
+			}
+		} catch (Exception e) {
+			return -1;
+		}
+	}
+
+	public static boolean isWindowsOS() {
+		return System.getProperty("os.name").contains("Windows");
+	}
+
+	public static boolean isModernWindowsOS() {
+		return "Windows 11".equals(System.getProperty("os.name"))
+			|| "Windows 10".equals(System.getProperty("os.name"))
+			|| "Windows 8.1".equals(System.getProperty("os.name"));
+	}
+
+	public static boolean isMacOS() {
+		String os = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
+		return (os.contains("mac") || os.contains("darwin"));
 	}
 }
