@@ -38,6 +38,7 @@ https://www.neatf2p.com
 - There are more changes from Open RSC, for which I submitted merge requests for but have not been merged yet:
   - `CF-3573` - Range escape bug fix - Range stops when the target was in combat and just left, until they can be re-attacked
   - `CF-3597` - Players mining in the wilderness can now be attacked by other players
+  
 ## Tribute
 
 -   Logg, for helping with my questions
