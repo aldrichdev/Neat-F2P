@@ -117,7 +117,7 @@ public class AttackHandler implements PayloadProcessor<TargetMobStruct, OpcodeIn
 						getPlayer().message("I can't get close enough");
 						return;
 					}
-					if (getPlayer().isBusy() || mob.isBusy() || !getPlayer().checkAttack(mob, false)) {
+					if (getPlayer().isBusy() || (mob.isNpc() && mob.isBusy()) || !getPlayer().checkAttack(mob, false)) {
 						return;
 					}
 					if (mob.isNpc()) {
