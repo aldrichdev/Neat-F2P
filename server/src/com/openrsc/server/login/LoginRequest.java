@@ -127,6 +127,7 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 	public abstract void loadingComplete(Player loadedPlayer);
 
 	protected void processInternal() {
+		System.out.println("--- processInternal has been called!");
 		ValidatedLogin vl = validateLogin();
 		int loginResponse = vl.responseCode;
 
@@ -135,7 +136,13 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 		}
 		loginValidated(loginResponse);
 
+		System.out.println("--- isSimLogin:");
+		System.out.println(isSimLogin);
+		System.out.println("--- isLoginSuccessful(loginResponse)");
+		System.out.println(isLoginSuccessful(loginResponse));
+		
 		if (!isSimLogin && isLoginSuccessful(loginResponse)) {
+			System.out.println("--- loadedPlayer is being set!");
 			final Player loadedPlayer = getServer().getPlayerService().loadPlayer(this);
 			loadedPlayer.setLoggedIn(true);
 
@@ -240,11 +247,6 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 
 			int playersCount = getServer().getPacketFilter().getPlayersCount(getIpAddress());
 
-			System.out.println("playersCount:");
-			System.out.println(playersCount);
-			System.out.println("groupId:");
-			System.out.println(groupId);
-			
 			if (
 				(groupId == Group.USER || groupId == Group.PLAYER_MOD) && 
 				!getIpAddress().equals("127.0.0.1") &&
