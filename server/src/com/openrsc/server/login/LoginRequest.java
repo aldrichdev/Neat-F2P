@@ -289,7 +289,7 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 		}
 
 		System.out.println("Loaded player:");
-		System.out.println(loadedPlayer.id);
+		System.out.println(loadedPlayer.getUsername());
 		System.out.println("Username:");
 		System.out.println(username);
 
