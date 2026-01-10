@@ -291,12 +291,17 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 		}
 
 		System.out.println("Loaded player:");
-		System.out.println(loadedPlayer.getUsername());
+		if (loadedPlayer != null) {
+			System.out.println(loadedPlayer.getUsername());
+		}
+
 		System.out.println("Username:");
-		System.out.println(username);
+		if (username != null) {
+			System.out.println(username);
+		}
 
 		// Don't count mods & admin accounts in the loggedInTracker (they can bypass the MAX_PLAYERS_PER_IP)
-		if (!loadedPlayer.isMod()) {
+		if (loadedPlayer == null || !loadedPlayer.isMod()) {
 			getServer().getPacketFilter().addLoggedInPlayer(getIpAddress(), getUsernameHash());
 		}
 
