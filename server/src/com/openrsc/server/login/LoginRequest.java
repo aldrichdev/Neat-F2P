@@ -238,6 +238,8 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 				return new ValidatedLogin(LoginResponse.ACCOUNT_LOGGEDIN);
 			}
 
+			int playersCount = getServer().getPacketFilter().getPlayersCount(getIpAddress());
+
 			System.out.println("playersCount:");
 			System.out.println(playersCount);
 			System.out.println("groupId:");
