@@ -238,8 +238,16 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 				return new ValidatedLogin(LoginResponse.ACCOUNT_LOGGEDIN);
 			}
 
-			int playersCount = getServer().getPacketFilter().getPlayersCount(getIpAddress());
-			if (!isAdmin && !getIpAddress().equals("127.0.0.1") && playersCount >= getServer().getConfig().MAX_PLAYERS_PER_IP) {
+			System.out.println("playersCount:");
+			System.out.println(playersCount);
+			System.out.println("groupId:");
+			System.out.println(groupId);
+			
+			if (
+				(groupId == Group.USER || groupId == Group.PLAYER_MOD) && 
+				!getIpAddress().equals("127.0.0.1") &&
+				playersCount >= getServer().getConfig().MAX_PLAYERS_PER_IP
+			) {
 				LOGGER.info(getIpAddress() + " is using " + playersCount + " out of " + getServer().getConfig().MAX_PLAYERS_PER_IP + " allowed sessions, rejecting additional connection.");
 				return new ValidatedLogin(LoginResponse.IP_IN_USE);
 			}
@@ -279,7 +287,17 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 		if (reconnecting && clientVersion <= 204) {
 			return new ValidatedLogin(LoginResponse.RECONNECT_SUCCESFUL);
 		}
-		getServer().getPacketFilter().addLoggedInPlayer(getIpAddress(), getUsernameHash());
+
+		System.out.println("Loaded player:");
+		System.out.println(loadedPlayer.id);
+		System.out.println("Username:");
+		System.out.println(username);
+
+		// Don't count mods & admin accounts in the loggedInTracker (they can bypass the MAX_PLAYERS_PER_IP)
+		if (!loadedPlayer.isMod()) {
+			getServer().getPacketFilter().addLoggedInPlayer(getIpAddress(), getUsernameHash());
+		}
+
 		return new ValidatedLogin(LoginResponse.LOGIN_SUCCESSFUL[groupId]);
 	}
 
