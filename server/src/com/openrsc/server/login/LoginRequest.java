@@ -127,7 +127,6 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 	public abstract void loadingComplete(Player loadedPlayer);
 
 	protected void processInternal() {
-		System.out.println("--- processInternal has been called!");
 		ValidatedLogin vl = validateLogin();
 		int loginResponse = vl.responseCode;
 
@@ -135,14 +134,8 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 			loginResponse = RegisterLoginResponse.translateNewToOld(loginResponse, clientVersion, false);
 		}
 		loginValidated(loginResponse);
-
-		System.out.println("--- isSimLogin:");
-		System.out.println(isSimLogin);
-		System.out.println("--- isLoginSuccessful(loginResponse)");
-		System.out.println(isLoginSuccessful(loginResponse));
 		
 		if (!isSimLogin && isLoginSuccessful(loginResponse)) {
-			System.out.println("--- loadedPlayer is being set!");
 			final Player loadedPlayer = getServer().getPlayerService().loadPlayer(this);
 			loadedPlayer.setLoggedIn(true);
 
@@ -247,8 +240,9 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 
 			int playersCount = getServer().getPacketFilter().getPlayersCount(getIpAddress());
 
-			if (
-				(groupId == Group.USER || groupId == Group.PLAYER_MOD) && 
+			if ((groupId == Group.USER 
+				|| groupId == Group.EVENT 
+				|| groupId == Group.PLAYER_MOD) && 
 				!getIpAddress().equals("127.0.0.1") &&
 				playersCount >= getServer().getConfig().MAX_PLAYERS_PER_IP
 			) {
@@ -281,8 +275,6 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 			if(isAdmin) {
 				getServer().getPacketFilter().addAdminHost(getIpAddress());
 			}
-
-
 		} catch (GameDatabaseException e) {
 			LOGGER.catching(e);
 			return new ValidatedLogin(LoginResponse.LOGIN_UNSUCCESSFUL);
@@ -292,19 +284,13 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 			return new ValidatedLogin(LoginResponse.RECONNECT_SUCCESFUL);
 		}
 
-		// TODO: `loadedPlayer` doesn't have a value yet at this point.
-		// We do have `groupId` and `playerLoginData` though.
-		System.out.println("!!!!! Username:");
-		if (username != null) {
-			System.out.println(username);
-		}
-
-
-		System.out.println("!!!!! Group ID:" + groupId);
-
-		// Don't count mods & admin accounts in the loggedInTracker (they can bypass the MAX_PLAYERS_PER_IP)
-		if (groupId != Group.MOD && groupId != Group.SUPER_MOD && groupId != Group.ADMIN && groupId != Group.OWNER) { // !loadedPlayer.isMod()) {
-			System.out.println("!!!!! Adding player to loggedInTracker!");
+		// Don't count devs, mods & admin accounts in the loggedInTracker 
+		// (they can bypass the MAX_PLAYERS_PER_IP)
+		if (groupId != Group.DEV 
+			&& groupId != Group.MOD
+			&& groupId != Group.SUPER_MOD
+			&& groupId != Group.ADMIN
+			&& groupId != Group.OWNER) {
 			getServer().getPacketFilter().addLoggedInPlayer(getIpAddress(), getUsernameHash());
 		}
 
