@@ -292,18 +292,19 @@ public abstract class LoginRequest extends LoginExecutorProcess{
 			return new ValidatedLogin(LoginResponse.RECONNECT_SUCCESFUL);
 		}
 
-		System.out.println("Loaded player:");
-		if (loadedPlayer != null) {
-			System.out.println(loadedPlayer.getUsername());
-		}
-
-		System.out.println("Username:");
+		// TODO: `loadedPlayer` doesn't have a value yet at this point.
+		// We do have `groupId` and `playerLoginData` though.
+		System.out.println("!!!!! Username:");
 		if (username != null) {
 			System.out.println(username);
 		}
 
+
+		System.out.println("!!!!! Group ID:" + groupId);
+
 		// Don't count mods & admin accounts in the loggedInTracker (they can bypass the MAX_PLAYERS_PER_IP)
-		if (loadedPlayer == null || !loadedPlayer.isMod()) {
+		if (groupId != Group.MOD && groupId != Group.SUPER_MOD && groupId != Group.ADMIN && groupId != Group.OWNER) { // !loadedPlayer.isMod()) {
+			System.out.println("!!!!! Adding player to loggedInTracker!");
 			getServer().getPacketFilter().addLoggedInPlayer(getIpAddress(), getUsernameHash());
 		}
 
