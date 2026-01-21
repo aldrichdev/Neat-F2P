@@ -30,7 +30,7 @@
         android:hardwareAccelerated="true"
         android:icon="@drawable/ic_launcher"
         android:isGame="true"
-        android:label="OpenRSC"
+        android:label="NeatF2P"
         android:largeHeap="true"
         android:noHistory="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen"

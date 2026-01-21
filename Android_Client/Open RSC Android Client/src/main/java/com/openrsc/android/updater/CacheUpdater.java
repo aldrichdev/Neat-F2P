@@ -211,67 +211,17 @@ public class CacheUpdater extends Activity {
             System.out.println(" ");
             System.out.println("Please select which game you wish to play.");
             System.out.println(" ");
-            System.out.println("43594 openrsc / 43595 cabbage / 43235 uranium / 43599 coleslaw");
+            System.out.println("43594 neatf2p");
             System.out.println(" ");
 
             // setup the alert builder
             AlertDialog.Builder builder = new AlertDialog.Builder(CacheUpdater.this);
             builder.setTitle("Game Selection");
 
-            // add a list
-            //String[] games = {"RSC Preservation", "RSC Cabbage", "Open PK (beta)", "Dev Testing", "Local Instance"};
-            String[] games = {"RSC Preservation", "RSC Cabbage", "RSC Uranium", "RSC Coleslaw", "Local Instance"};
-            builder.setItems(games, (dialog, which) -> {
-                switch (which) {
-					case 0: // RSC Preservation
-						selectServer("https://game.openrsc.com", "43602");
-						break;
-                    case 1: // RSC Cabbage
-						selectServer("https://game.openrsc.com", "43595");
-						break;
-					case 2: // RSC Uranium
-						selectServer("https://game.openrsc.com", "43601");
-						break;
-					case 3: // RSC Coleslaw
-						selectServer("https://game.openrsc.com", "43599");
-						break;
-                    case 4: // Manual
-                        LinearLayout layout = new LinearLayout(CacheUpdater.this);
-
-                        // TextView to enter ip
-                        final EditText ipBox = new EditText(CacheUpdater.this);
-                        ipBox.setHint("192.168.1.100");
-                        layout.addView(ipBox);
-
-                        // TextView to enter port
-                        final EditText portBox = new EditText(CacheUpdater.this);
-                        portBox.setHint("43594");
-                        layout.addView(portBox);
-
-                        new AlertDialog.Builder(CacheUpdater.this)
-                                .setTitle("Local Instance")
-                                .setMessage("Enter details for local instance")
-                                .setView(layout)
-                                .setPositiveButton("Enter", (dialog1, whichButton) -> {
-                                    String ip_local = "192.168.1.100";
-                                    String port_local = "43594";
-
-                                    if (!ipBox.getText().toString().trim().equals("")) {
-                                        ip_local = ipBox.getText().toString().trim();
-                                    }
-                                    if (!portBox.getText().toString().trim().equals("")) {
-                                        port_local = portBox.getText().toString().trim();
-                                    }
-
-                                    selectServer(ip_local, port_local);
-                                })
-                                .show();
-                }
-            });
-
             AlertDialog dialog = builder.create();
 
-            dialog.show();
+            // Load Neat F2P directly
+            selectServer("192.3.118.9", "43594"); 
         }
 
         @Override

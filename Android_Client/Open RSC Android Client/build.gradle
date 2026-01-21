@@ -16,6 +16,14 @@ android {
         targetSdkVersion 31
         multiDexEnabled false
     }
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword "REDACTED"
+            keyAlias "REDACTED"
+            keyPassword "REDACTED"
+        }
+    }
     buildTypes {
         release {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-project.txt'
@@ -24,7 +32,8 @@ android {
             renderscriptDebuggable false
             multiDexEnabled = true
             renderscriptOptimLevel = 3
-            minifyEnabled = false
+            signingConfig signingConfigs.release
+            minifyEnabled false
         }
         debug {
             multiDexEnabled = true
@@ -50,7 +59,7 @@ android {
     namespace 'com.openrsc.client'
     applicationVariants.all { variant ->
         variant.outputs.all {
-            outputFileName = "openrsc.apk"
+            outputFileName = "neatf2p.apk"
         }
     }
 }
