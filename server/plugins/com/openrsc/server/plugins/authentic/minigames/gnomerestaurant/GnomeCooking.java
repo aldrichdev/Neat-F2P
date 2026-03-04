@@ -2,6 +2,7 @@ package com.openrsc.server.plugins.authentic.minigames.gnomerestaurant;
 
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Skill;
+import com.openrsc.server.constants.SceneryId;
 import com.openrsc.server.model.container.Item;
 import com.openrsc.server.model.entity.GameObject;
 import com.openrsc.server.model.entity.player.Player;
@@ -333,7 +334,8 @@ public class GnomeCooking implements OpInvTrigger, UseLocTrigger {
 	}
 
 	private boolean burnFood(Player player, int itemId, int myCookingLvl) {
-		return Formulae.burnFood(player, itemId, myCookingLvl);
+		// SceneryLoc doesn't apply here so we use SceneryId.RANGE to apply the default cooking values
+		return Formulae.burnFood(player, itemId, myCookingLvl, SceneryId.RANGE.id());
 	}
 
 	protected boolean addGnomeRecipeCache(final Player player, int baseId, int actionId) {

@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import com.openrsc.server.util.rsc.IntegerUtil;
 
 /**
  * Player cache
@@ -95,10 +96,15 @@ public class Cache {
 			value = Integer.parseInt((String)value);
 		}
 
+		if (value instanceof Long) {
+			value = IntegerUtil.convertLongToInteger((Long) value);
+		}
+
 		if (!(value instanceof Integer)) {
 			throw new IllegalArgumentException(
 				"Object found, but not an Integer: " + key);
 		}
+
 		return (Integer) value;
 	}
 
