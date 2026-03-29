@@ -175,7 +175,9 @@ public class ObjectCooking implements UseLocTrigger {
 			player.playerServerMessage(MessageType.QUEST, "You need a cooking level of " + cookingDef.getReqLevel() + " to cook " + itemName);
 			return;
 		}
+
 		Item cookedFood = new Item(cookingDef.getCookedId());
+
 		if (config().WANT_FATIGUE) {
 			if (config().STOP_SKILLING_FATIGUED >= 2
 				&& player.getFatigue() >= player.MAX_FATIGUE) {
@@ -183,15 +185,19 @@ public class ObjectCooking implements UseLocTrigger {
 				return;
 			}
 		}
+
 		item = player.getCarriedItems().getInventory().get(
 			player.getCarriedItems().getInventory().getLastIndexById(item.getCatalogId(), Optional.of(false))
 		);
+
 		if (item == null) return;
+
 		thinkbubble(item);
 		player.playSound("cooking");
 		delay(timeToCook);
+
 		if (player.getCarriedItems().remove(item) > -1) {
-			if (!Formulae.burnFood(player, item.getCatalogId(), player.getSkills().getLevel(Skill.COOKING.id()))
+			if (!Formulae.burnFood(player, item.getCatalogId(), player.getSkills().getLevel(Skill.COOKING.id()), gameObject.getID())
 					|| item.getCatalogId() == ItemId.RAW_LAVA_EEL.id()
 					|| (item.getCatalogId() == ItemId.UNCOOKED_PITTA_BREAD.id() && player.getSkills().getLevel(Skill.COOKING.id()) >= 58)) {
 				player.getCarriedItems().getInventory().add(cookedFood);

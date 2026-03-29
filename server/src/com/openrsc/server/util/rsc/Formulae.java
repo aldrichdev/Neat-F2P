@@ -2,6 +2,7 @@ package com.openrsc.server.util.rsc;
 
 import com.openrsc.server.constants.ItemId;
 import com.openrsc.server.constants.Skill;
+import com.openrsc.server.constants.SceneryId;
 import com.openrsc.server.external.*;
 import com.openrsc.server.model.Point;
 import com.openrsc.server.model.container.Item;
@@ -164,23 +165,78 @@ public final class Formulae {
 	}
 
 	/**
-	 * Decide if the food we are cooking should be burned or not Gauntlets of
-	 * Cooking. These gauntlets lowers lvl to burn of lobs, sword and shark
+	 * Decide if the food we are cooking should be burned or not.
+	 * @param player The player that is cooking.
+	 * @param foodId ID of the food item that is being cooked.
+	 * @param cookingLevel Cooking level of the player attempting to cook a food.
+	 * @param sceneryLocId The ID of the sceneryLoc (range, campfire or cook's range).
 	 */
-	public static boolean burnFood(Player player, int foodId, int cookingLevel) {
-		//gauntlets of cooking effective on lobsters, swordfish and shark
-		//chef: Wearing them means you will burn your lobsters, swordfish and shark less
-		final boolean gauntletBonus = player.getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_COOKING.id())
-			&& player.getCache().getInt("famcrest_gauntlets") == Gauntlets.COOKING.id();
-		int bonusLevel = gauntletBonus ? (foodId == ItemId.RAW_SWORDFISH.id() ? 6 :
-				foodId == ItemId.RAW_LOBSTER.id() || foodId == ItemId.RAW_SHARK.id() ? 11 : 0) : 0;
-		int effectiveLevel = cookingLevel + bonusLevel;
-		int levelReq = player.getWorld().getServer().getEntityHandler().getItemCookingDef(foodId).getReqLevel();
-		//if not on def file from cooking training table, level stop failing
-		//is usually 35 since player can cook item
-		int levelStopFail = player.getWorld().getServer().getEntityHandler().getItemPerfectCookingDef(foodId) != null ?
-			player.getWorld().getServer().getEntityHandler().getItemPerfectCookingDef(foodId).getReqLevel() : levelReq + 35;
-		return !Formulae.calcProductionSuccessfulLegacy(levelReq, effectiveLevel, true, levelStopFail);
+	public static boolean burnFood(Player player, int foodId, int cookingLevel, int sceneryLocId) {
+		ItemCookingDef food = player.getWorld().getServer().getEntityHandler().getItemCookingDef(foodId);
+
+		// These are the default values, that apply to normal ranges
+		Integer low = food.getLow();
+		Integer high = food.getHigh();
+
+		if (low == null || high == null) {
+			// If low/high values are null, they were omitted from the ItemCookingDef.xml file, so use the old formula.
+			int levelReq = food.getReqLevel();
+
+			// If not on def file from cooking training table, level stop failing is usually 35 since player can cook item
+			int levelStopFail = player.getWorld().getServer().getEntityHandler().getItemPerfectCookingDef(foodId) != null ?
+				player.getWorld().getServer().getEntityHandler().getItemPerfectCookingDef(foodId).getReqLevel() : levelReq + 35;
+
+			return !Formulae.calcProductionSuccessfulLegacy(levelReq, cookingLevel, true, levelStopFail);
+		}
+
+		if (low == 0 && high == 0) {
+			// These items always burn. (Usually a cooked food being cooked a second time)
+			return true;
+		}
+
+		final boolean hasCookingGauntletsEquipped = player.getCarriedItems().getEquipment().hasEquipped(ItemId.GAUNTLETS_OF_COOKING.id());
+		boolean hasUnlockedCookingGauntlets = false;
+
+		if (player.getCache().hasKey("famcrest_gauntlets")) {
+			hasUnlockedCookingGauntlets = player.getCache().getInt("famcrest_gauntlets") == Gauntlets.COOKING.id();
+		}
+
+		// These are the cooking values specific to fires (campfires, fireplaces)
+		Integer lowFire = food.getLowFire();
+		Integer highFire = food.getHighFire();
+
+		// If the scenery loc is a fire, use those values if they are available
+		if ((sceneryLocId == SceneryId.FIRE.id() || sceneryLocId == SceneryId.FIREPLACE.id()) && lowFire != null && highFire != null) {
+			low = lowFire;
+			high = highFire;
+		}
+
+		// These are the cooking values specific to cook's range (Lumbridge)
+		Integer lowCooksRange = food.getLowCooksRange();
+		Integer highCooksRange = food.getHighCooksRange();
+
+		// If scenery loc is a cook's range, use those values if they are available
+		if (sceneryLocId == SceneryId.COOKS_RANGE.id() && lowCooksRange != null && highCooksRange != null) {
+			low = lowCooksRange;
+			high = highCooksRange;
+		}
+
+		// These are the cooking values that apply if the user has cooking gauntlets equipped
+		Integer lowGauntlets = food.getLowGauntlets();
+		Integer highGauntlets = food.getHighGauntlets();
+
+		// If the player has unlocked cooking gauntlets and has them on, and there exist low & high values for them,
+		// use those (regardless of where the player is cooking)
+		if (hasUnlockedCookingGauntlets && hasCookingGauntletsEquipped && lowGauntlets != null && highGauntlets != null) {
+			low = lowGauntlets;
+			high = highGauntlets;
+		}
+
+		// Calculate the success rate as a percentage and compare against a random roll to see if the food burns
+		double successRate = interp(low, high, cookingLevel);
+		double roll = Math.random();
+
+		return successRate < roll;
 	}
 
 	public static boolean goodWine(int cookingLevel) {
@@ -363,7 +419,7 @@ public final class Formulae {
 	 * Calculates the chance of succeeding at a skilling event
 	 * @param low
 	 * @param high
-	 * @param level
+	 * @param level the player's level when attempting the skilling event
 	 * @return percent chance of success
 	 */
 	public static double interp(double low, double high, int level) {

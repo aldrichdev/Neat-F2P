@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import com.openrsc.server.util.rsc.IntegerUtil;
 
 /**
  * Player cache
@@ -93,6 +94,10 @@ public class Cache {
 		// in case cache is set with ::setcache
 		if (value instanceof String) {
 			value = Integer.parseInt((String)value);
+		}
+
+		if (value instanceof Long) {
+			value = IntegerUtil.convertLongToInteger((Long) value);
 		}
 
 		if (!(value instanceof Integer)) {

@@ -34,7 +34,7 @@ https://www.neatf2p.com
 -   The `players` table has a new column, `websiteUserId` for linking players to website accounts.
 -   There is logic in `LoginRequest.java` to prevent normal accounts from logging in in such a way that exceeds the log in limit (`MAX_PLAYERS_PER_IP`), if they have the same IP that an admin or mod recently logged in. This prevents me (Beast Fable) and other mods from logging into 3 or more normal accounts just because I am an admin.
 -   Varrock, Al Kharid and Rimmington general stores have 1 stock of the black 2 hander, scimitar and axe, respectfully.
-- There are more changes from Open RSC, for which I submitted merge requests for but have not been merged yet:
+- There are more changes from Open RSC, for which I submitted merge requests for but have not been merged yet. If at some point these changes become merged and put into the stable branch of core-framework, their commits should be reverted from this repository. They are:
   - `CF-3573` - Range escape bug fix - Range stops when the target was in combat and just left, until they can be re-attacked
   - `CF-3597` - Players mining in the wilderness can now be attacked by other players
   - `!3804` - Protect both players engaged in PvP combat from being attacked by NPCs if the other player retreats
