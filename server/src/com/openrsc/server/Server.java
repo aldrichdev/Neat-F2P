@@ -354,6 +354,7 @@ public class Server implements Runnable {
 						submitSql(() -> {
 								try {
 										boolean alive = ((JDBCDatabase) getDatabase()).getConnection().keepAlive();
+										LOGGER.info("DB keepalive check ran, alive=" + alive);
 										if (!alive) {
 												LOGGER.error("Database keepalive check failed and reconnect was unsuccessful");
 										}
