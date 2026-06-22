@@ -79,6 +79,7 @@ public class Server implements Runnable {
 	private final LoginExecutor loginExecutor;
 	private final ServerConfiguration config;
 	private ScheduledExecutorService scheduledExecutor;
+	private ScheduledExecutorService dbKeepAliveExecutor;
 	private final PluginHandler pluginHandler;
 	private final CombatScriptLoader combatScriptLoader;
 	private final EntityHandler entityHandler;
@@ -345,6 +346,24 @@ public class Server implements Runnable {
 				}
 				LOGGER.info("Database Connection Completed");
 
+				dbKeepAliveExecutor = Executors.newSingleThreadScheduledExecutor(
+						new ServerAwareThreadFactory(getName() + " : DbKeepAliveThread", config)
+				);
+
+				// Keep database connection alive in case there are no players for an extended period
+				dbKeepAliveExecutor.scheduleAtFixedRate(() -> {
+						submitSql(() -> {
+								try {
+										boolean alive = ((JDBCDatabase) getDatabase()).getConnection().keepAlive();
+										if (!alive) {
+											LOGGER.error("Database keepalive check failed and reconnect was unsuccessful");
+										}
+								} catch (final Throwable t) {
+										LOGGER.catching(t);
+								}
+						});
+				}, 10, 10, TimeUnit.MINUTES);
+
 				LOGGER.info("Checking For Database Structure Changes...");
 				PatchApplier patchApplier = new JDBCPatchApplier(
 						(JDBCDatabase) getDatabase(),
@@ -561,6 +580,11 @@ public class Server implements Runnable {
 				getWorld().unloadPlayers();
 
 				scheduledExecutor.shutdown();
+
+				if (dbKeepAliveExecutor != null) {
+					dbKeepAliveExecutor.shutdown();
+				}
+
 				try {
 					final boolean terminationResult = scheduledExecutor.awaitTermination(1, TimeUnit.MINUTES);
 					if (!terminationResult) {
@@ -601,6 +625,7 @@ public class Server implements Runnable {
 				bossGroupWs = null;
 				workerGroupWs = null;
 				scheduledExecutor = null;
+				dbKeepAliveExecutor = null;
 
 				maxItemId = 0;
 				serverStartedTime = 0;
