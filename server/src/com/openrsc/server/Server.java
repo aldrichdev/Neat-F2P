@@ -350,6 +350,7 @@ public class Server implements Runnable {
 						new ServerAwareThreadFactory(getName() + " : DbKeepAliveThread", config)
 				);
 
+				// Keep database connection alive in case there are no players for an extended period
 				dbKeepAliveExecutor.scheduleAtFixedRate(() -> {
 						submitSql(() -> {
 								try {
