@@ -354,15 +354,14 @@ public class Server implements Runnable {
 						submitSql(() -> {
 								try {
 										boolean alive = ((JDBCDatabase) getDatabase()).getConnection().keepAlive();
-										LOGGER.info("DB keepalive check ran, alive=" + alive);
 										if (!alive) {
-												LOGGER.error("Database keepalive check failed and reconnect was unsuccessful");
+											LOGGER.error("Database keepalive check failed and reconnect was unsuccessful");
 										}
 								} catch (final Throwable t) {
 										LOGGER.catching(t);
 								}
 						});
-				}, 2, 2, TimeUnit.MINUTES);
+				}, 10, 10, TimeUnit.MINUTES);
 
 				LOGGER.info("Checking For Database Structure Changes...");
 				PatchApplier patchApplier = new JDBCPatchApplier(
